@@ -1,0 +1,58 @@
+# Builds and tests the Windows app (apps/windows) on every push and pull
+# request, including the daily merges from MxU-Engineering/mxu-slides, so an
+# upstream change that breaks the Windows port shows up straight away.
+name: Windows app
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: apps/windows/global.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Check the C# models match the shared schema
+        run: node tools/codegen-csharp.mjs --check
+
+      - name: Build
+        run: dotnet build MxUSlides.slnx -c Release
+
+      - name: Unit tests
+        run: dotnet test --solution MxUSlides.slnx -c Release --no-build
+
+      - name: Self-test (drives the real app and saves pictures)
+        shell: pwsh
+        run: ./scripts/self-test.ps1 -Out "${{ runner.temp }}/self-test"
+
+      - name: Upload self-test pictures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-test
+          path: ${{ runner.temp }}/self-test
+          if-no-files-found: ignore
+
+      - name: Publish
+        shell: pwsh
+        run: ./scripts/publish.ps1
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: MxU-Slides-Windows
+          path: apps/windows/artifacts/MxU-Slides-Windows-win-x64.zip

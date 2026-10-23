@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MxU.Slides.Core/MxU.Slides.Core.csproj" />
+    <Project Path="src/MxU.Slides.Windows/MxU.Slides.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MxU.Slides.Core.Tests/MxU.Slides.Core.Tests.csproj" />
+  </Folder>
+</Solution>

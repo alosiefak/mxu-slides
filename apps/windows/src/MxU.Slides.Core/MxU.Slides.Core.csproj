@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Platform-neutral show logic shared by the Windows app and its tests:
+       document models (generated from packages/schema/documents.json), the
+       library store, lyric import, scene building, live show state, timers
+       and stage display layouts. No UI or Windows APIs live here. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MxU.Slides.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MxU.Slides.Core.Tests" />
+  </ItemGroup>
+</Project>

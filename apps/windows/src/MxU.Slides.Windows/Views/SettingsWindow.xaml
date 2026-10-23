@@ -1,0 +1,88 @@
+<Window x:Class="MxU.Slides.Windows.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Screens &amp; Settings" Width="640" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <StackPanel Margin="20">
+        <TextBlock Text="SCREENS" Style="{StaticResource SectionLabel}" />
+        <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10">
+            Choose which display shows the room (Audience) and which shows the band and speaker (Stage).
+            On a laptop with one screen, leave them on "Preview window" to see the outputs in ordinary windows.
+        </TextBlock>
+        <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="8" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Audience" VerticalAlignment="Center" />
+            <ComboBox x:Name="AudienceCombo" Grid.Column="1" />
+            <TextBlock Grid.Row="2" Text="Stage" VerticalAlignment="Center" />
+            <ComboBox x:Name="StageCombo" Grid.Row="2" Grid.Column="1" />
+        </Grid>
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+            <Button Content="Identify displays" Click="Identify_Click" Margin="0,0,8,0" />
+            <Button Content="Refresh list" Click="Refresh_Click" />
+        </StackPanel>
+        <CheckBox x:Name="OutputsAtLaunch" Content="Turn outputs on when MxU Slides starts (if their displays are connected)" />
+        <CheckBox x:Name="PreventSleep" Content="Keep the computer and screens awake while an output is showing" />
+
+        <TextBlock Text="TRANSITIONS" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90" />
+                <ColumnDefinition Width="200" />
+                <ColumnDefinition Width="20" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Default" VerticalAlignment="Center" />
+            <ComboBox x:Name="TransitionCombo" Grid.Column="1" />
+            <Slider x:Name="TransitionSeconds" Grid.Column="3" Minimum="0.1" Maximum="2" TickFrequency="0.1" IsSnapToTickEnabled="True"
+                    VerticalAlignment="Center" ValueChanged="TransitionSeconds_ValueChanged" />
+        </Grid>
+        <TextBlock x:Name="TransitionLabel" Style="{StaticResource Muted}" Margin="90,4,0,0" FontSize="11" />
+
+        <TextBlock Text="NEW SONGS" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90" />
+                <ColumnDefinition Width="200" />
+                <ColumnDefinition Width="20" />
+                <ColumnDefinition Width="110" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Theme" VerticalAlignment="Center" />
+            <ComboBox x:Name="ThemeCombo" Grid.Column="1" DisplayMemberPath="Name" />
+            <TextBlock Grid.Column="3" Text="Lines per slide" VerticalAlignment="Center" />
+            <ComboBox x:Name="LinesCombo" Grid.Column="4" Width="70" HorizontalAlignment="Left" />
+        </Grid>
+
+        <TextBlock Text="SOUND" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Video volume" VerticalAlignment="Center" />
+            <Slider x:Name="Volume" Grid.Column="1" Minimum="0" Maximum="1" VerticalAlignment="Center" />
+        </Grid>
+        <TextBlock Style="{StaticResource Muted}" Margin="90,4,0,0" FontSize="11" Text="Background loops are always silent; foreground videos play their sound." />
+
+        <TextBlock Text="LIBRARY" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
+        <TextBlock x:Name="LibraryPath" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,6" />
+        <StackPanel Orientation="Horizontal">
+            <Button Content="Open library folder" Click="OpenLibrary_Click" Margin="0,0,8,0" />
+            <Button Content="Open backups" Click="OpenBackups_Click" Margin="0,0,8,0" />
+            <Button Content="Open logs" Click="OpenLogs_Click" />
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+            <Button Content="Cancel" IsCancel="True" Margin="0,0,8,0" MinWidth="90" />
+            <Button Content="Save" IsDefault="True" Style="{StaticResource AccentButton}" MinWidth="90" Click="Save_Click" />
+        </StackPanel>
+    </StackPanel>
+</Window>
