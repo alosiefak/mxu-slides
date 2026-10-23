@@ -1,0 +1,27 @@
+# Keeps this fork's main branch up to date with MxU-Engineering/mxu-slides.
+# Runs daily and can be started by hand from the Actions tab ("Run workflow").
+# Upstream changes are merged in (fast-forward, or a merge commit if this fork
+# has its own commits). If they conflict with our changes the run fails and
+# GitHub emails the repo owner; resolve it locally with:
+#   git fetch upstream && git merge upstream/main && git push origin main
+name: Sync from MxU upstream
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC every day
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge upstream main into this fork
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method POST "repos/${{ github.repository }}/merge-upstream" \
+            -f branch=main \
+            --jq '"\(.merge_type): \(.message)"'
