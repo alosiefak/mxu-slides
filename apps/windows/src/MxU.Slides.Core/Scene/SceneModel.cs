@@ -250,6 +250,13 @@ public sealed record RenderItem
     public SceneBlendMode BlendMode { get; init; }
     public double BlurRadius { get; init; }
 
+    /// <summary>The matte (an object id on the same layer) this item is clipped to; <see cref="MaskOut"/> inverts it.</summary>
+    public string? MaskedBy { get; init; }
+    public bool MaskOut { get; init; }
+
+    /// <summary>Set on a matte: it is never drawn, only used to clip the items masked by it.</summary>
+    public string? MatteGroup { get; init; }
+
     /// <summary>The media this item should play when it is a video, so playback can be shared across views.</summary>
     public bool Loops { get; init; } = true;
 }

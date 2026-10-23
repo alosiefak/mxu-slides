@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Local API: the REST + WebSocket server (port 6980, scoped bearer tokens)
+       that lets phones, Stream Deck, Companion and scripts drive the show. Port of
+       the Mac's Packages/LocalAPI. The app supplies an IApiBridge; nothing here
+       knows about WPF or the document models. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MxU.Slides.LocalApi</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MxU.Slides.LocalApi.Tests" />
+  </ItemGroup>
+
+  <!-- packages/schema/codegen.mjs writes this beside the Mac's LocalAPI. It is embedded
+       as-is, so both apps serve the same document schemas in /openapi.json. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\mac\Packages\LocalAPI\Sources\LocalAPI\Resources\document-schemas.json"
+                      Link="Resources\document-schemas.json"
+                      LogicalName="MxU.Slides.LocalApi.document-schemas.json" />
+  </ItemGroup>
+
+</Project>

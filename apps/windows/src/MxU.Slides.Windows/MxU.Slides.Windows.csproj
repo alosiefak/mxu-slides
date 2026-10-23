@@ -14,6 +14,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
+    <ProjectReference Include="..\MxU.Slides.LocalApi\MxU.Slides.LocalApi.csproj" />
+    <ProjectReference Include="..\MxU.Slides.PptxImport\MxU.Slides.PptxImport.csproj" />
+    <ProjectReference Include="..\MxU.Slides.ProImport\MxU.Slides.ProImport.csproj" />
   </ItemGroup>
 
   <ItemGroup>

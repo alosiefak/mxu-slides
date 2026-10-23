@@ -86,6 +86,7 @@ public partial class App : Application
             var library = new LibraryStore(settings.LibraryPath);
             library.Load();
             if (library.IsNew || library.Count<Core.Model.Theme>() == 0) LibrarySeeder.Seed(library);
+            else LibrarySeeder.RefreshStarterPacks(library);
             if (library.IsNew) StarterBackgrounds.AddTo(library);
             foreach (var problem in library.LoadProblems) Log.Warn($"Library: {problem}");
             try

@@ -262,21 +262,55 @@ public static class SlideSceneBuilder
         SceneSize canvas, bool showThemeDecor = true, Func<SlideObject, SlideObject>? resolveTemplateObject = null)
     {
         var placeholders = PlaceholderAssignments(objects, template);
-        foreach (var entry in ComposedStack(objects, template))
+        var stack = ComposedStack(objects, template);
+        var wiring = MaskWiring(stack.Select(e => e.Object).ToList());
+        foreach (var entry in stack)
         {
+            var masked = wiring.MaskedBy.GetValueOrDefault(entry.Object.Id);
+            var matte = wiring.Mattes.Contains(entry.Object.Id) ? entry.Object.Id : null;
             if (entry.FromTheme)
             {
                 if (!showThemeDecor) continue;
                 var templateObject = resolveTemplateObject?.Invoke(entry.Object) ?? entry.Object;
-                foreach (var item in RenderItems(templateObject, theme, null, canvas, entry.Id))
+                foreach (var item in RenderItems(templateObject, theme, null, canvas, entry.Id, masked, matte))
                     scene.AddItem(item, LayerKind.Slide);
             }
             else
             {
-                foreach (var item in RenderItems(entry.Object, theme, placeholders.GetValueOrDefault(entry.Object.Id), canvas))
+                foreach (var item in RenderItems(entry.Object, theme, placeholders.GetValueOrDefault(entry.Object.Id), canvas, null, masked, matte))
                     scene.AddItem(item, LayerKind.Slide);
             }
         }
+    }
+
+    /// <summary>Adds free-standing objects (an overlay, a stage layout) to a layer, with masks wired up.</summary>
+    public static void AddObjects(RenderScene scene, IReadOnlyList<SlideObject> objects, LayerKind layer, SceneSize canvas, string idPrefix)
+    {
+        var wiring = MaskWiring(objects);
+        foreach (var o in objects)
+        {
+            var masked = wiring.MaskedBy.GetValueOrDefault(o.Id);
+            var matte = wiring.Mattes.Contains(o.Id) ? o.Id : null;
+            foreach (var item in RenderItems(o, null, null, canvas, $"{idPrefix}{o.Id}", masked, matte))
+                scene.AddItem(item, layer);
+        }
+    }
+
+    public readonly record struct Mask(string Matte, bool Out);
+
+    /// <summary>Which objects are clipped by which matte, and which objects are mattes. Port of maskWiring(for:).</summary>
+    public static (Dictionary<string, Mask> MaskedBy, HashSet<string> Mattes) MaskWiring(IReadOnlyList<SlideObject> objects)
+    {
+        var ids = objects.Select(o => o.Id).ToHashSet();
+        var maskedBy = new Dictionary<string, Mask>();
+        var mattes = new HashSet<string>();
+        foreach (var o in objects)
+        {
+            if (string.IsNullOrEmpty(o.MaskObjectId) || o.MaskObjectId == o.Id || !ids.Contains(o.MaskObjectId)) continue;
+            maskedBy[o.Id] = new Mask(o.MaskObjectId, o.MaskMode == MaskMode.Out);
+            mattes.Add(o.MaskObjectId);
+        }
+        return (maskedBy, mattes);
     }
 
     public static RenderItem MediaItem(string id, CueMedia media, SceneSize canvas) => new()
@@ -335,13 +369,14 @@ public static class SlideSceneBuilder
         };
     }
 
-    public static List<RenderItem> RenderItems(SlideObject source, Theme? theme, SlideObject? placeholder = null, SceneSize? canvas = null, string? baseId = null)
+    public static List<RenderItem> RenderItems(SlideObject source, Theme? theme, SlideObject? placeholder = null, SceneSize? canvas = null,
+        string? baseId = null, Mask? maskedBy = null, string? matteGroup = null)
     {
         if (source.Hidden == true) return [];
         var o = SlideObjectNormalization.Normalized(source);
         var primary = RenderItemFor(o, theme, placeholder, canvas);
         var id = baseId ?? o.Id;
-        primary = primary with { Id = id };
+        primary = primary with { Id = id, MaskedBy = maskedBy?.Matte, MaskOut = maskedBy?.Out ?? false, MatteGroup = matteGroup };
         if (o.ObjectKind != SlideObjectKind.Shape || string.IsNullOrWhiteSpace(o.Text)) return [primary];
 
         // Text inside a shape renders as a second item over it.

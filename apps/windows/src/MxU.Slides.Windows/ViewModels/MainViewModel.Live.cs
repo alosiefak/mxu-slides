@@ -57,6 +57,9 @@ public sealed partial class MainViewModel
         Fire(CurrentPresentation, SelectedArrangement?.Id, tile.Index, CurrentContextItemId);
     }
 
+    /// <summary>Set while a "skip builds" advance fires, so the slide arrives with its automatic builds already played.</summary>
+    private bool fireSettled;
+
     private void Fire(Presentation presentation, string? arrangementId, int occurrence, string? itemId)
     {
         var arranged = SlideSceneBuilder.ArrangedSlides(presentation, arrangementId);
@@ -64,7 +67,7 @@ public sealed partial class MainViewModel
         var slide = arranged[occurrence];
         var theme = Library.Get<Theme>(presentation.ThemeId);
         var wasLive = Show.Live is not null;
-        Show.Fire(slide, presentation, theme, arrangementId);
+        Show.Fire(slide, presentation, theme, arrangementId, arrivesSettled: fireSettled);
         Live = new LiveContext(itemId, presentation.Id, arrangementId, occurrence);
         RenderOutputs(TransitionFor(slide, presentation, wasLive));
         UpdateLiveLabels(presentation, slide, occurrence, arranged.Count);
@@ -79,7 +82,8 @@ public sealed partial class MainViewModel
     {
         var group = GroupNames.For(slide, presentation);
         LiveTitle = presentation.Name;
-        LiveDetail = $"{(group is null ? "Slide" : group)} · {occurrence + 1} of {count}";
+        LiveDetail = $"{(group is null ? "Slide" : group)} · {occurrence + 1} of {count}"
+            + (Show.SlideAnimationStep is { } build ? $" · build {build.Consumed} of {build.Total}" : "");
         MarkLiveTiles();
     }
 
@@ -94,21 +98,45 @@ public sealed partial class MainViewModel
                 || row.Item.ItemKind == ServiceItemKind.Media && Show.LiveMedia.Values.Any(m => m.MediaId == row.Item.RefId);
         foreach (var tile in MediaItems)
             tile.IsLive = Show.LiveMedia.Values.Any(m => m.MediaId == tile.Item.Id);
+        MarkLiveOverlays();
     }
 
     [RelayCommand]
     private void Next() => Step(+1);
 
+    /// <summary>Alt+→ (Option+→ on the Mac): straight to the next slide, skipping the live slide's remaining builds.</summary>
+    [RelayCommand]
+    private void NextSkippingBuilds() => Step(+1, settled: true);
+
     [RelayCommand]
     private void Previous() => Step(-1);
 
     /// <summary>
-    /// Moves through the whole service like the Mac app: past the last slide of
-    /// one item into the next item (media items fire their media). Outside a
-    /// service it moves within the live presentation.
+    /// Moves through the whole service like the Mac app. A slide with builds
+    /// takes a press per click group (and one for its exit) before moving on;
+    /// Previous takes them back. Past the last slide of one item it goes into
+    /// the next item (media items fire their media). Outside a service it moves
+    /// within the live presentation. False when there was nowhere to go.
     /// </summary>
-    private void Step(int direction)
+    private bool Step(int direction, bool settled = false)
     {
+        if (settled && direction > 0)
+        {
+            fireSettled = true;
+            try { return Advance(direction, skipBuilds: true); }
+            finally { fireSettled = false; }
+        }
+        return Advance(direction, skipBuilds: false);
+    }
+
+    private bool Advance(int direction, bool skipBuilds)
+    {
+        if (!skipBuilds && (direction > 0 ? Show.AdvanceStep() : Show.UnadvanceStep()))
+        {
+            RenderOutputs(SceneTransition.Cut, refreshOnly: true);
+            UpdateBuildLabel();
+            return true;
+        }
         if (Live is null || Show.Live is null && Live.ItemId is null)
         {
             // Nothing live yet: start the open presentation (or the selected slide).
@@ -116,31 +144,45 @@ public sealed partial class MainViewModel
             {
                 var start = direction > 0 ? SelectedSlide?.Index ?? 0 : Slides.Count - 1;
                 Fire(open, SelectedArrangement?.Id, start, CurrentContextItemId);
+                return true;
             }
-            return;
+            return false;
         }
 
         if (Live.ItemId is { } itemId && SelectedService is { } service && service.Items.Any(i => i.Id == itemId))
         {
             var positions = Positions(service);
             var index = positions.FindIndex(p => p.Item.Id == itemId && (p.Media is not null || p.Occurrence == Live.Occurrence));
-            if (index < 0) return;
+            if (index < 0) return false;
             var next = index + direction;
             if (next < 0 || next >= positions.Count)
             {
                 Notice = direction > 0 ? "That's the end of the service." : "That's the start of the service.";
-                return;
+                return false;
             }
             FirePosition(positions[next]);
-            return;
+            return true;
         }
 
         if (Library.Get<Presentation>(Live.PresentationId) is { } presentation)
         {
             var count = SlideSceneBuilder.ArrangedSlides(presentation, Live.ArrangementId).Count;
             var target = Live.Occurrence + direction;
-            if (target >= 0 && target < count) Fire(presentation, Live.ArrangementId, target, null);
+            if (target >= 0 && target < count)
+            {
+                Fire(presentation, Live.ArrangementId, target, null);
+                return true;
+            }
         }
+        return false;
+    }
+
+    /// <summary>"Build 2 of 3" beside the live slide while it has presses left.</summary>
+    private void UpdateBuildLabel()
+    {
+        if (Show.Live is not { } live || live.Presentation is not { } presentation || Live is null) return;
+        var count = SlideSceneBuilder.ArrangedSlides(presentation, Live.ArrangementId).Count;
+        UpdateLiveLabels(presentation, live.Slide, Live.Occurrence, count);
     }
 
     private List<Position> Positions(Service service)
@@ -196,14 +238,15 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private void ClearAll() => Clear(() => Show.ClearAll());
 
+    // Slides and overlays with Out animations play them on the way off (Clear All always cuts).
     [RelayCommand]
-    private void ClearSlide() => Clear(() => Show.Clear(ShowFunction.Slides));
+    private void ClearSlide() => Clear(() => Show.Clear(ShowFunction.Slides, ShowState.HostClock()));
 
     [RelayCommand]
     private void ClearMedia() => Clear(() => Show.Clear(ShowFunction.Media));
 
     [RelayCommand]
-    private void ClearOverlays() => Clear(() => Show.Clear(ShowFunction.Overlays));
+    private void ClearOverlays() => Clear(() => Show.Clear(ShowFunction.Overlays, ShowState.HostClock()));
 
     [RelayCommand]
     private void ClearAudio() => Clear(() => Show.Clear(ShowFunction.Audio));
@@ -253,7 +296,7 @@ public sealed partial class MainViewModel
     {
         try
         {
-            var audience = Show.Scene(resolveLinkedText: ResolveLinkedText);
+            var audience = Show.AnimatedScene(resolveLinkedText: ResolveLinkedText);
             if (refreshOnly)
             {
                 Outputs?.Update(OutputRole.Audience, audience);
@@ -286,6 +329,13 @@ public sealed partial class MainViewModel
         {
             var second = DateTimeOffset.Now.ToUnixTimeSeconds();
             TickTimers();
+            // A slide or overlay playing its Outs leaves once they finish.
+            if (Show.HasPendingExits && Show.SweepFinishedExits())
+            {
+                if (Show.Live is null) Clear(() => { });
+                else RenderOutputs(SceneTransition.Cut, refreshOnly: true);
+                MarkLiveOverlays();
+            }
             if (second == lastSecond) return;
             lastSecond = second;
             if (!NeedsTicking()) return;

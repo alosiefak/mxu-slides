@@ -86,10 +86,11 @@
                         <TextBlock Text="New Presentation" />
                     </StackPanel>
                 </Button>
-                <Button DockPanel.Dock="Left" Click="ImportLyrics_Click" ToolTip="Import lyrics files: SongSelect, ChordPro or plain text (Ctrl+I)" Margin="0,0,6,0">
+                <Button DockPanel.Dock="Left" Click="Import_Click" IsEnabled="{Binding IsImporting, Converter={StaticResource Not}}"
+                        ToolTip="Import PowerPoint decks and lyrics files: SongSelect, ChordPro or plain text (Ctrl+I)" Margin="0,0,6,0">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8B5;" Margin="0,0,6,0" VerticalAlignment="Center" />
-                        <TextBlock Text="Import Lyrics" />
+                        <TextBlock Text="Import" />
                     </StackPanel>
                 </Button>
 
@@ -297,7 +298,7 @@
                     </Border>
 
                     <!-- Slide inspector (Edit mode) -->
-                    <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="14,10" MaxHeight="330">
+                    <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="14,10" Height="320">
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -329,14 +330,44 @@
                                 <TextBlock Text="Design" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <ComboBox ItemsSource="{Binding Designs}" SelectedItem="{Binding SelectedDesign}" MinWidth="170" Margin="0,0,6,0" />
                                 <Button Command="{Binding ApplyDesignToAllSlidesCommand}" Content="Use for all" Margin="0,0,6,0" />
-                                <Button Command="{Binding ClearSlideBackgroundCommand}" Content="Clear background"
+                                <Button Command="{Binding ClearSlideBackgroundCommand}" Content="Clear background" Margin="0,0,6,0"
                                         Visibility="{Binding SlideHasBackground, Converter={StaticResource Visible}}" />
+                                <TextBlock Text="Colour" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="6,0,6,0" />
+                                <v:ColorPicker Hex="{Binding SlideBackgroundColor}" ToolTip="Slide background colour" />
                             </StackPanel>
+                            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <TextBlock Text="ADD" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <Button Command="{Binding AddTextBoxCommand}" Content="Text" Margin="0,0,4,0" />
+                                <Button Command="{Binding AddBoxCommand}" Content="Box" Margin="0,0,4,0" />
+                                <Button Command="{Binding AddCircleCommand}" Content="Circle" Margin="0,0,4,0" />
+                                <Button Command="{Binding AddMediaObjectCommand}" Content="Media" Margin="0,0,14,0" ToolTip="Place the image or video selected in the Media bin" />
+                                <TextBlock Text="ARRANGE" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <Button Command="{Binding BringToFrontCommand}" Content="Front" Margin="0,0,4,0" />
+                                <Button Command="{Binding SendToBackCommand}" Content="Back" Margin="0,0,4,0" />
+                                <Button Command="{Binding AlignCommand}" CommandParameter="Left" ToolTip="Align left (to the slide when one is selected)" Margin="0,0,2,0">
+                                    <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8E4;" />
+                                </Button>
+                                <Button Command="{Binding AlignCommand}" CommandParameter="CenterX" ToolTip="Centre horizontally" Margin="0,0,2,0">
+                                    <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8E3;" />
+                                </Button>
+                                <Button Command="{Binding AlignCommand}" CommandParameter="Right" ToolTip="Align right" Margin="0,0,2,0">
+                                    <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8E2;" />
+                                </Button>
+                                <Button Command="{Binding AlignCommand}" CommandParameter="Top" Content="Top" Margin="0,0,2,0" />
+                                <Button Command="{Binding AlignCommand}" CommandParameter="CenterY" Content="Middle" Margin="0,0,2,0" />
+                                <Button Command="{Binding AlignCommand}" CommandParameter="Bottom" Content="Bottom" Margin="0,0,14,0" />
+                                <Button Command="{Binding ResetToThemeCommand}" Content="Reset to theme" Margin="0,0,4,0"
+                                        ToolTip="Give the selected text (or all text) its theme position and style back" />
+                                <Button Command="{Binding DuplicateSelectedObjectsCommand}" Content="Duplicate" Margin="0,0,4,0" />
+                                <Button Command="{Binding DeleteSelectedObjectsCommand}" Content="Delete" />
+                            </WrapPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="1.3*" />
                                     <ColumnDefinition Width="12" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="1.6*" />
                                 </Grid.ColumnDefinitions>
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <ItemsControl ItemsSource="{Binding SlideTextFields}">
@@ -355,12 +386,147 @@
                                     <TextBlock Text="Notes (shown to you, never to the room)" Style="{StaticResource Muted}" FontSize="11" Margin="0,0,0,3" />
                                     <TextBox Text="{Binding SlideNotes, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
                                 </StackPanel>
+                                <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto">
+                                    <Grid>
+                                        <TextBlock Text="Click something on the slide to change its font, colour, size and position."
+                                                   Style="{StaticResource Muted}" TextWrapping="Wrap"
+                                                   Visibility="{Binding Inspector, Converter={StaticResource VisibleWhenSet}, ConverterParameter=invert}" />
+                                        <ContentControl Content="{Binding Inspector}">
+                                            <ContentControl.ContentTemplate>
+                                                <DataTemplate DataType="{x:Type vm:ObjectInspectorViewModel}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Margin="0,0,0,6" TextTrimming="CharacterEllipsis" />
+                                                        <WrapPanel Margin="0,0,0,6">
+                                                            <TextBlock Text="X" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                            <TextBox Text="{Binding X, UpdateSourceTrigger=LostFocus}" Width="58" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
+                                                            <TextBlock Text="Y" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                            <TextBox Text="{Binding Y, UpdateSourceTrigger=LostFocus}" Width="58" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
+                                                            <TextBlock Text="W" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                            <TextBox Text="{Binding W, UpdateSourceTrigger=LostFocus}" Width="58" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
+                                                            <TextBlock Text="H" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                            <TextBox Text="{Binding H, UpdateSourceTrigger=LostFocus}" Width="58" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
+                                                            <TextBlock Text="↻" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" ToolTip="Rotation (degrees)" />
+                                                            <TextBox Text="{Binding Rotation, UpdateSourceTrigger=LostFocus}" Width="48" KeyDown="NumberBox_KeyDown" />
+                                                        </WrapPanel>
+                                                        <DockPanel Margin="0,0,0,6">
+                                                            <TextBlock Text="Opacity" Style="{StaticResource Muted}" Width="56" VerticalAlignment="Center" />
+                                                            <Slider Minimum="0" Maximum="100" Value="{Binding Opacity}" VerticalAlignment="Center" />
+                                                        </DockPanel>
+                                                        <!-- Text -->
+                                                        <StackPanel Visibility="{Binding IsText, Converter={StaticResource Visible}}">
+                                                            <TextBox x:Name="InspectorText" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True"
+                                                                     TextWrapping="Wrap" MinHeight="48" Margin="0,0,0,6" />
+                                                            <WrapPanel Margin="0,0,0,6">
+                                                                <ComboBox ItemsSource="{Binding FontFamilies}" Text="{Binding FontFamily, UpdateSourceTrigger=LostFocus}"
+                                                                          IsEditable="True" Width="160" Margin="0,0,6,0" ToolTip="Font" />
+                                                                <TextBox Text="{Binding FontSize, UpdateSourceTrigger=LostFocus}" Width="48" Margin="0,0,6,0" ToolTip="Size"
+                                                                         KeyDown="NumberBox_KeyDown" />
+                                                                <ToggleButton IsChecked="{Binding Bold}" Content="B" FontWeight="Bold" Width="30" Margin="0,0,2,0" />
+                                                                <ToggleButton IsChecked="{Binding Italic}" Content="I" FontStyle="Italic" Width="30" Margin="0,0,6,0" />
+                                                                <v:ColorPicker Hex="{Binding TextColor}" ToolTip="Text colour" />
+                                                            </WrapPanel>
+                                                            <WrapPanel Margin="0,0,0,6">
+                                                                <ComboBox SelectedIndex="{Binding Alignment}" Width="90" Margin="0,0,6,0" ToolTip="Horizontal alignment">
+                                                                    <ComboBoxItem Content="Left" />
+                                                                    <ComboBoxItem Content="Centre" />
+                                                                    <ComboBoxItem Content="Right" />
+                                                                </ComboBox>
+                                                                <ComboBox SelectedIndex="{Binding VerticalAlignment}" Width="90" Margin="0,0,6,0" ToolTip="Vertical alignment">
+                                                                    <ComboBoxItem Content="Top" />
+                                                                    <ComboBoxItem Content="Middle" />
+                                                                    <ComboBoxItem Content="Bottom" />
+                                                                </ComboBox>
+                                                                <TextBlock Text="Line" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                                <TextBox Text="{Binding LineHeight, UpdateSourceTrigger=LostFocus}" Width="42" Margin="0,0,6,0" ToolTip="Line height"
+                                                                         KeyDown="NumberBox_KeyDown" />
+                                                                <TextBlock Text="Spacing" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                                <TextBox Text="{Binding Tracking, UpdateSourceTrigger=LostFocus}" Width="42" ToolTip="Letter spacing"
+                                                                         KeyDown="NumberBox_KeyDown" />
+                                                            </WrapPanel>
+                                                            <WrapPanel>
+                                                                <CheckBox Content="CAPS" IsChecked="{Binding Uppercase}" Margin="0,0,10,0" />
+                                                                <CheckBox Content="Shrink to fit" IsChecked="{Binding AutoShrink}" Margin="0,0,10,0" />
+                                                                <CheckBox Content="Shadow" IsChecked="{Binding Shadow}" Margin="0,0,10,0" />
+                                                                <TextBlock Text="Outline" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                                <v:ColorPicker Hex="{Binding OutlineColor}" />
+                                                            </WrapPanel>
+                                                            <TextBlock Text="This text takes its look from the theme until you change something here."
+                                                                       Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                                       Visibility="{Binding InheritsTheme, Converter={StaticResource Visible}}" />
+                                                        </StackPanel>
+                                                        <!-- Shape -->
+                                                        <WrapPanel Visibility="{Binding IsShape, Converter={StaticResource Visible}}">
+                                                            <TextBlock Text="Fill" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                            <v:ColorPicker Hex="{Binding FillColor}" Margin="0,0,8,0" />
+                                                            <TextBlock Text="Corners" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                            <TextBox Text="{Binding CornerRadius, UpdateSourceTrigger=LostFocus}" Width="42" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
+                                                            <CheckBox Content="Circle" IsChecked="{Binding IsEllipse}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                                            <TextBlock Text="Outline" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,4,4,0" />
+                                                            <v:ColorPicker Hex="{Binding StrokeColor}" Margin="0,4,4,0" />
+                                                            <TextBox Text="{Binding StrokeWidth, UpdateSourceTrigger=LostFocus}" Width="42" Margin="0,4,0,0" ToolTip="Outline width"
+                                                                     KeyDown="NumberBox_KeyDown" />
+                                                        </WrapPanel>
+                                                        <!-- Media -->
+                                                        <DockPanel Visibility="{Binding IsMedia, Converter={StaticResource Visible}}">
+                                                            <TextBlock Text="Fit" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                                            <ComboBox SelectedIndex="{Binding ScaleMode}" Width="140" HorizontalAlignment="Left">
+                                                                <ComboBoxItem Content="Fill (crop)" />
+                                                                <ComboBoxItem Content="Fit (whole picture)" />
+                                                                <ComboBoxItem Content="Stretch" />
+                                                            </ComboBox>
+                                                        </DockPanel>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ContentControl.ContentTemplate>
+                                        </ContentControl>
+                                    </Grid>
+                                </ScrollViewer>
                             </Grid>
                         </DockPanel>
                     </Border>
 
+                    <!-- Filmstrip (Edit mode) -->
+                    <Border DockPanel.Dock="Top" Padding="10,8,10,0" Visibility="{Binding IsEditing, Converter={StaticResource Visible}}">
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding Slides}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:SlideTileViewModel}">
+                                        <Border x:Name="Frame" Width="128" Margin="0,0,6,6" CornerRadius="4" BorderThickness="2" BorderBrush="Transparent"
+                                                Background="#141414" Cursor="Hand" MouseLeftButtonUp="SlideTile_Click" MouseRightButtonUp="SlideTile_RightClick">
+                                            <StackPanel>
+                                                <r:SceneView StaticScene="{Binding Scene}" Height="72" />
+                                                <Grid Background="{Binding GroupBrush}" Height="16">
+                                                    <TextBlock Margin="4,0" VerticalAlignment="Center" FontSize="10" Foreground="White" TextTrimming="CharacterEllipsis">
+                                                        <Run Text="{Binding Number, Mode=OneWay}" />
+                                                        <Run Text="{Binding Label, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsLive}" Value="True">
+                                                <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Live}" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+
                     <Grid>
-                        <ScrollViewer x:Name="SlideScroller" VerticalScrollBarVisibility="Auto" Padding="14,12,4,0">
+                        <v:SlideCanvasEditor x:Name="CanvasEditor" Margin="10"
+                                             Visibility="{Binding IsEditing, Converter={StaticResource Visible}}" />
+                        <ScrollViewer x:Name="SlideScroller" VerticalScrollBarVisibility="Auto" Padding="14,12,4,0"
+                                      Visibility="{Binding IsEditing, Converter={StaticResource Visible}, ConverterParameter=invert}">
                             <ItemsControl x:Name="SlideGrid" ItemsSource="{Binding Slides}" ItemTemplate="{StaticResource SlideTile}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
@@ -392,6 +558,10 @@
                                     <TextBlock Text="AUDIENCE" FontSize="10" FontWeight="Bold" Foreground="White" />
                                 </Border>
                                 <TextBlock Text="{Binding LiveDetail}" Style="{StaticResource Muted}" DockPanel.Dock="Right" VerticalAlignment="Center" />
+                                <Border DockPanel.Dock="Right" Background="{StaticResource Accent}" CornerRadius="3" Padding="6,1" Margin="0,0,8,0" VerticalAlignment="Center"
+                                        Visibility="{Binding GoToBuffer, Converter={StaticResource VisibleWhenSet}}" ToolTip="Press Enter to go to this slide, Esc to cancel">
+                                    <TextBlock Text="{Binding GoToBuffer, StringFormat=Go to {0} ⏎}" FontSize="11" FontWeight="SemiBold" Foreground="White" />
+                                </Border>
                                 <TextBlock Text="{Binding LiveTitle}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                             </DockPanel>
                             <Border CornerRadius="4" ClipToBounds="True" Background="Black">
@@ -529,17 +699,82 @@
 
         <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" />
 
-        <!-- Media bin -->
+        <!-- Bottom bin: media or overlays -->
         <Border Grid.Row="4" Style="{StaticResource Panel}" Margin="8,0,8,8" AllowDrop="True" Drop="MediaBin_Drop" DragOver="MediaBin_DragOver">
             <DockPanel>
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                    <TextBlock Text="MEDIA" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" Margin="0,0,12,0" />
-                    <Button DockPanel.Dock="Right" Command="{Binding ImportMediaCommand}" Content="+ Import images &amp; videos" />
-                    <TextBlock DockPanel.Dock="Right" Text="Click to show · right-click for options · drop files here" Style="{StaticResource Muted}"
-                               VerticalAlignment="Center" Margin="0,0,12,0" FontSize="11" />
-                    <TextBox Text="{Binding MediaSearch, UpdateSourceTrigger=PropertyChanged}" Width="180" HorizontalAlignment="Left" Tag="Search media…" />
+                    <ToggleButton Content="Media" Padding="12,3" IsChecked="{Binding ShowingOverlays, Converter={StaticResource Not}}" />
+                    <ToggleButton Content="Overlays" Padding="12,3" Margin="4,0,12,0" IsChecked="{Binding ShowingOverlays}"
+                                  ToolTip="Lower thirds, tickers and bars that sit on top of the slide (F4 clears them)" />
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}, ConverterParameter=invert}">
+                        <TextBlock Text="Click to show · right-click for options · drop files here" Style="{StaticResource Muted}"
+                                   VerticalAlignment="Center" Margin="0,0,12,0" FontSize="11" />
+                        <Button Command="{Binding ImportMediaCommand}" Content="+ Import images &amp; videos" />
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}}">
+                        <TextBlock Text="Click to put up or take down · F4 clears all" Style="{StaticResource Muted}"
+                                   VerticalAlignment="Center" Margin="0,0,12,0" FontSize="11" />
+                        <Button Command="{Binding DuplicateOverlayCommand}" Content="Duplicate" ToolTip="Make your own copy of the selected overlay" />
+                    </StackPanel>
+                    <TextBox Text="{Binding MediaSearch, UpdateSourceTrigger=PropertyChanged}" Width="180" HorizontalAlignment="Left" Tag="Search media…"
+                             Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}, ConverterParameter=invert}" />
+                    <ComboBox ItemsSource="{Binding OverlayPacks}" SelectedItem="{Binding SelectedOverlayPack}" Width="180" HorizontalAlignment="Left"
+                              Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}}" />
                 </DockPanel>
-                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <!-- Overlays -->
+                <Grid Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Overlays}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:OverlayTileViewModel}">
+                                    <Border x:Name="Frame" Width="170" Margin="0,0,8,0" CornerRadius="5" BorderThickness="2" BorderBrush="Transparent"
+                                            Background="#141414" Cursor="Hand" MouseLeftButtonUp="OverlayTile_Click" ToolTip="{Binding Category}">
+                                        <Grid>
+                                            <r:SceneView StaticScene="{Binding Preview}" PlaysVideo="False" Height="92" />
+                                            <Border VerticalAlignment="Bottom" Background="#B0000000" Padding="5,2">
+                                                <TextBlock Text="{Binding Name}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsLive}" Value="True">
+                                            <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Live}" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <ScrollViewer Grid.Column="1" Width="360" Margin="10,0,0,0" VerticalScrollBarVisibility="Auto"
+                                  Visibility="{Binding SelectedOverlay, Converter={StaticResource VisibleWhenSet}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding SelectedOverlay.Name}" FontWeight="SemiBold" Margin="0,0,0,4" />
+                            <ItemsControl ItemsSource="{Binding OverlayTextFields}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:SlideTextFieldViewModel}">
+                                        <DockPanel Margin="0,0,0,4">
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource Muted}" FontSize="11" Width="90" VerticalAlignment="Center" />
+                                            <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="60" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+                <!-- Media -->
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                              Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}, ConverterParameter=invert}">
                     <ItemsControl ItemsSource="{Binding MediaItems}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>

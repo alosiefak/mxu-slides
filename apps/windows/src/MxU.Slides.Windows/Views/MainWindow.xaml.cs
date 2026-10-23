@@ -37,6 +37,8 @@ public partial class MainWindow : Window
         model.StagePreview = StagePreview;
         AudiencePreview.Media = model.Media;
         StagePreview.Media = model.Media;
+        model.Canvas = CanvasEditor;
+        CanvasEditor.TextEditRequested += _ => Dispatcher.BeginInvoke(FocusInspectorText, DispatcherPriority.Loaded);
         RestorePlacement();
         Loaded += OnLoaded;
         Closing += OnClosing;
@@ -47,6 +49,7 @@ public partial class MainWindow : Window
     {
         outputs = new OutputManager(model.Settings, this, model.Media);
         model.Outputs = outputs;
+        model.AskYesNo = question => MessageBox.Show(this, question, "MxU Slides", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
         outputs.StatusChanged += UpdateOutputStatus;
         if (model.Settings.OutputsOnAtLaunch) outputs.Apply();
         model.RenderOutputs(SceneTransition.Cut);
@@ -78,6 +81,7 @@ public partial class MainWindow : Window
         model.FlushPendingSave();
         SavePlacement();
         model.Settings.Save();
+        model.StopApi();
         outputs?.CloseAll();
     }
 
@@ -146,28 +150,53 @@ public partial class MainWindow : Window
             {
                 case Key.N when shift: model.NewPresentationCommand.Execute(null); e.Handled = true; return;
                 case Key.N: NewSong_Click(this, e); e.Handled = true; return;
-                case Key.I: ImportLyrics_Click(this, e); e.Handled = true; return;
+                case Key.I: Import_Click(this, e); e.Handled = true; return;
                 case Key.E: model.IsEditing = !model.IsEditing; e.Handled = true; return;
                 case Key.F: LibrarySearchBox.Focus(); LibrarySearchBox.SelectAll(); e.Handled = true; return;
             }
         }
 
-        if (typing)
+        // While typing, or while the canvas has focus (arrows nudge, Delete removes), keys belong there.
+        if (typing || Keyboard.FocusedElement is SlideCanvasEditor)
         {
-            if (key == Key.Escape) Keyboard.ClearFocus();
+            if (key == Key.Escape && typing) Keyboard.ClearFocus();
             return;
         }
 
         switch (key)
         {
+            case Key.Enter when model.CommitGoTo():
+                e.Handled = true;
+                return;
+            case Key.Escape when model.GoToBuffer.Length > 0:
+                model.CancelGoTo();
+                e.Handled = true;
+                return;
+            case Key.Right when Keyboard.Modifiers == ModifierKeys.Alt:
+                model.NextSkippingBuildsCommand.Execute(null);
+                e.Handled = true;
+                return;
             case Key.Right or Key.Space or Key.Enter or Key.PageDown or Key.Down:
                 model.NextCommand.Execute(null);
                 e.Handled = true;
-                break;
+                return;
             case Key.Left or Key.PageUp or Key.Up:
                 model.PreviousCommand.Execute(null);
                 e.Handled = true;
-                break;
+                return;
+        }
+
+        // Digits build a slide number (Enter takes it live); letters are group hot keys (C = Chorus…).
+        if (Keyboard.Modifiers != ModifierKeys.None) return;
+        if (key is >= Key.D0 and <= Key.D9 or >= Key.NumPad0 and <= Key.NumPad9)
+        {
+            var digit = (char)('0' + (key >= Key.NumPad0 ? key - Key.NumPad0 : key - Key.D0));
+            model.AppendGoToDigit(digit);
+            e.Handled = true;
+        }
+        else if (key is >= Key.A and <= Key.Z && model.FireHotKey(((char)('a' + (key - Key.A))).ToString()))
+        {
+            e.Handled = true;
         }
     }
 
@@ -237,15 +266,28 @@ public partial class MainWindow : Window
         if (editor.ShowDialog() == true && editor.Result is { } song) model.SaveSong(song, isNew: existing is null);
     }
 
-    private void ImportLyrics_Click(object sender, RoutedEventArgs e)
+    private const string LyricsPatterns = "*.txt;*.cho;*.chopro;*.chordpro;*.crd;*.pro";
+    private const string ProPresenterPatterns = "*.pro;*.probundle;*.proPlaylist;*.protheme";
+
+    private async void Import_Click(object sender, RoutedEventArgs e)
     {
+        if (model.IsImporting) return;
         var dialog = new OpenFileDialog
         {
-            Title = "Import lyrics",
+            Title = "Import",
             Multiselect = true,
-            Filter = "Lyrics files|*.txt;*.cho;*.chopro;*.chordpro;*.crd;*.pro|All files|*.*",
+            Filter = $"Everything MxU Slides can import|*.pptx;{ProPresenterPatterns};{LyricsPatterns}|ProPresenter 7|{ProPresenterPatterns}"
+                + $"|PowerPoint decks|*.pptx|Lyrics files|{LyricsPatterns}|All files|*.*",
         };
-        if (dialog.ShowDialog(this) == true) model.ImportLyricsFiles(dialog.FileNames);
+        if (dialog.ShowDialog(this) != true) return;
+        var decks = dialog.FileNames.Where(IsPowerPoint).ToList();
+        var pro = dialog.FileNames.Where(f => !IsPowerPoint(f) && MainViewModel.IsProPresenterFile(f)).ToList();
+        var lyrics = dialog.FileNames.Except(decks).Except(pro).ToList();
+        if (lyrics.Count > 0) model.ImportLyricsFiles(lyrics);
+        if (decks.Count > 0) await model.ImportPowerPointAsync(decks);
+        if (pro.Count > 0) await model.ImportProPresenterAsync(pro);
+
+        static bool IsPowerPoint(string path) => string.Equals(Path.GetExtension(path), ".pptx", StringComparison.OrdinalIgnoreCase);
     }
 
     private void LibraryList_DoubleClick(object sender, MouseButtonEventArgs e)
@@ -380,6 +422,42 @@ public partial class MainWindow : Window
                 model.DeleteServiceCommand.Execute(null);
         }, service is not null));
         menu.IsOpen = true;
+    }
+
+    // MARK: Canvas editing
+
+    /// <summary>Enter in a number box applies it straight away.</summary>
+    private void NumberBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || sender is not TextBox box) return;
+        box.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+        e.Handled = true;
+    }
+
+    private void FocusInspectorText()
+    {
+        var box = FindDescendant<TextBox>(this, t => t.Name == "InspectorText" && t.IsVisible);
+        if (box is null) return;
+        box.Focus();
+        box.SelectAll();
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root, Func<T, bool> match) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T t && match(t)) return t;
+            if (FindDescendant(child, match) is { } found) return found;
+        }
+        return null;
+    }
+
+    // MARK: Overlays
+
+    private void OverlayTile_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (ContextOf<OverlayTileViewModel>(sender) is { } tile) model.ToggleOverlayCommand.Execute(tile);
     }
 
     // MARK: Media

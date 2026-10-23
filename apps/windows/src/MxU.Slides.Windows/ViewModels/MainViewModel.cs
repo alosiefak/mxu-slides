@@ -23,7 +23,7 @@ public sealed partial class MainViewModel : ObservableObject
         Library = library;
         Settings = settings;
         Session = session;
-        Media = new MediaHub(ResolveMedia) { VideoVolume = settings.VideoVolume };
+        Media = new MediaHub(ResolveMedia) { VideoVolume = settings.VideoVolume, PosterCache = Path.Combine(AppPaths.LocalRoot, "Posters") };
         SceneView.DefaultMedia = Media;
         Library.Changed += OnLibraryChanged;
 
@@ -31,6 +31,7 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshLibrary();
         RefreshServices();
         RefreshMedia();
+        RefreshOverlays();
         InitializeStage();
 
         if (App.RecoveredFromCrash)
@@ -43,6 +44,8 @@ public sealed partial class MainViewModel : ObservableObject
         else if (Library.Get<Presentation>(session.PresentationId) is { } presentation)
             Open(presentation, null, null);
         CanRestoreLive = App.RecoveredFromCrash && Library.Get<Presentation>(session.LivePresentationId) is not null;
+        ApplyMidiSettings();
+        ApplyApiSettings();
     }
 
     public LibraryStore Library { get; }
@@ -76,11 +79,18 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void OnLibraryChanged(Type type, string id)
     {
+        // Imports save from a background thread; the lists on screen belong to the UI thread.
+        if (System.Windows.Application.Current?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
+        {
+            dispatcher.BeginInvoke(() => OnLibraryChanged(type, id));
+            return;
+        }
         if (type == typeof(Presentation)) RefreshLibrary();
         else if (type == typeof(Service)) RefreshServices(keepSelection: true);
         else if (type == typeof(MediaItem)) RefreshMedia();
         else if (type == typeof(Theme)) RefreshThemes();
         else if (type == typeof(ConfidenceLayout)) RefreshStageLayouts();
+        else if (type == typeof(Overlay) && !suppressOverlayRefresh) RefreshOverlays();
     }
 
     // MARK: Library

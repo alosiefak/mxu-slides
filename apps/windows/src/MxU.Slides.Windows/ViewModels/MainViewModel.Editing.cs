@@ -28,6 +28,9 @@ public sealed partial class SlideTextFieldViewModel(SlideObject target, Action c
             changed();
         }
     }
+
+    /// <summary>Re-reads the text after something else (the canvas inspector) changed it.</summary>
+    public void Refresh() => OnPropertyChanged(nameof(Text));
 }
 
 public sealed partial class MainViewModel
@@ -61,6 +64,7 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(SelectedDesign));
         OnPropertyChanged(nameof(SlideNotes));
         OnPropertyChanged(nameof(SlideHasBackground));
+        OnPropertyChanged(nameof(SlideBackgroundColor));
     }
 
     public DesignChoice? SelectedDesign
@@ -134,6 +138,7 @@ public sealed partial class MainViewModel
 
     public void FlushPendingSave()
     {
+        FlushOverlaySave();
         saveTimer?.Stop();
         if (pendingSave is not { } p) return;
         pendingSave = null;

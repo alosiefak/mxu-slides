@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- PowerPoint (.pptx) import, ported from the Mac's PPTXImport package.
+       Windows-only because TextureBaker draws and encodes PNGs with WPF imaging
+       and font checks read WPF's installed font list. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>MxU.Slides.PptxImport</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- UseWPF drops System.IO from the implicit usings. -->
+    <Using Include="System.IO" />
+    <InternalsVisibleTo Include="MxU.Slides.PptxImport.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
+  </ItemGroup>
+</Project>

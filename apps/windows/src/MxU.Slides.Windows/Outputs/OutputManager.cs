@@ -101,7 +101,11 @@ public sealed class OutputManager
 
     public void Present(OutputRole role, RenderScene? scene, SceneTransition transition) => windows[role].View.Present(scene, transition);
 
+    public void Present(OutputRole role, Core.Animation.AnimatedScene? scene, SceneTransition transition) => windows[role].View.Present(scene, transition);
+
     public void Update(OutputRole role, RenderScene scene) => windows[role].View.Update(scene);
+
+    public void Update(OutputRole role, Core.Animation.AnimatedScene scene) => windows[role].View.Update(scene);
 
     public void CloseAll()
     {

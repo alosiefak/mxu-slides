@@ -130,6 +130,126 @@ public sealed class MediaHub
         return transform is null ? source : new TransformedBitmap(source, transform);
     }
 
+    // MARK: Poster frames
+
+    private readonly Dictionary<string, BitmapSource> posters = new(StringComparer.Ordinal);
+    private readonly HashSet<string> posterFailed = new(StringComparer.Ordinal);
+    private readonly Queue<string> posterQueue = new();
+    private bool posterBusy;
+
+    /// <summary>Folder where poster frames are cached between launches.</summary>
+    public string? PosterCache { get; set; }
+
+    /// <summary>A still from a video for thumbnails, or null while it is made (MediaReady follows).</summary>
+    public BitmapSource? Poster(string mediaId)
+    {
+        if (posters.TryGetValue(mediaId, out var poster)) return poster;
+        if (posterFailed.Contains(mediaId) || posterQueue.Contains(mediaId)) return null;
+        if (resolve(mediaId) is not { Kind: MediaKind.Video } media) return null;
+        var cached = CachedPosterPath(media);
+        if (cached is not null && File.Exists(cached))
+        {
+            try
+            {
+                var image = new BitmapImage();
+                image.BeginInit();
+                image.UriSource = new Uri(cached);
+                image.CacheOption = BitmapCacheOption.OnLoad;
+                image.EndInit();
+                image.Freeze();
+                posters[mediaId] = image;
+                return image;
+            }
+            catch
+            {
+                File.Delete(cached);
+            }
+        }
+        posterQueue.Enqueue(mediaId);
+        PumpPosters();
+        return null;
+    }
+
+    private string? CachedPosterPath(Resolved media) =>
+        PosterCache is null ? null : Path.Combine(PosterCache, Path.GetFileNameWithoutExtension(media.Path) + ".png");
+
+    /// <summary>Grabs posters one at a time: open muted, seek a second in, draw the frame.</summary>
+    private void PumpPosters()
+    {
+        if (posterBusy || posterQueue.Count == 0) return;
+        var mediaId = posterQueue.Dequeue();
+        if (resolve(mediaId) is not { Kind: MediaKind.Video } media)
+        {
+            PumpPosters();
+            return;
+        }
+        posterBusy = true;
+        var player = new MediaPlayer { IsMuted = true, Volume = 0, ScrubbingEnabled = true };
+        var timeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+        void Finish(BitmapSource? frame)
+        {
+            timeout.Stop();
+            player.Close();
+            if (frame is null) posterFailed.Add(mediaId);
+            else posters[mediaId] = frame;
+            posterBusy = false;
+            MediaReady?.Invoke(mediaId);
+            PumpPosters();
+        }
+        timeout.Tick += (_, _) => Finish(null);
+        player.MediaFailed += (_, _) => Finish(null);
+        player.MediaOpened += (_, _) =>
+        {
+            var length = player.NaturalDuration.HasTimeSpan ? player.NaturalDuration.TimeSpan : TimeSpan.Zero;
+            player.Position = length > TimeSpan.FromSeconds(3) ? TimeSpan.FromSeconds(1) : TimeSpan.FromTicks(length.Ticks / 3);
+            var settle = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            settle.Tick += (_, _) =>
+            {
+                settle.Stop();
+                try
+                {
+                    var w = Math.Max(1, player.NaturalVideoWidth);
+                    var h = Math.Max(1, player.NaturalVideoHeight);
+                    var scale = Math.Min(1, 480.0 / w);
+                    var visual = new DrawingVisual();
+                    using (var dc = visual.RenderOpen())
+                        dc.DrawVideo(player, new Rect(0, 0, w * scale, h * scale));
+                    var bitmap = new RenderTargetBitmap((int)(w * scale), (int)(h * scale), 96, 96, PixelFormats.Pbgra32);
+                    bitmap.Render(visual);
+                    bitmap.Freeze();
+                    SavePoster(media, bitmap);
+                    Finish(bitmap);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn($"No poster for {media.Name}: {ex.Message}");
+                    Finish(null);
+                }
+            };
+            settle.Start();
+        };
+        timeout.Start();
+        player.Open(new Uri(media.Path));
+        player.Pause();
+    }
+
+    private void SavePoster(Resolved media, BitmapSource bitmap)
+    {
+        if (CachedPosterPath(media) is not { } path) return;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var file = File.Create(path);
+            encoder.Save(file);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Couldn't cache poster: {ex.Message}");
+        }
+    }
+
     // MARK: Video
 
     /// <summary>
@@ -248,6 +368,15 @@ public sealed class MediaHub
         p.MediaPlayer.Position = TimeSpan.Zero;
         p.MediaPlayer.Play();
         p.Playing = true;
+    }
+
+    /// <summary>Jumps to a position, clamped to the video's length; playing or paused stays as it was.</summary>
+    public void Seek(string playbackKey, TimeSpan position)
+    {
+        if (!players.TryGetValue(playbackKey, out var p)) return;
+        var mp = p.MediaPlayer;
+        if (mp.NaturalDuration.HasTimeSpan && position > mp.NaturalDuration.TimeSpan) position = mp.NaturalDuration.TimeSpan;
+        mp.Position = position < TimeSpan.Zero ? TimeSpan.Zero : position;
     }
 
     public void ApplyVolume()

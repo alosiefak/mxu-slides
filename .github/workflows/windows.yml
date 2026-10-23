@@ -16,13 +16,13 @@ jobs:
       run:
         working-directory: apps/windows
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: apps/windows/global.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -41,7 +41,7 @@ jobs:
 
       - name: Upload self-test pictures
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: self-test
           path: ${{ runner.temp }}/self-test
@@ -52,7 +52,7 @@ jobs:
         run: ./scripts/publish.ps1
 
       - name: Upload app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MxU-Slides-Windows
           path: apps/windows/artifacts/MxU-Slides-Windows-win-x64.zip

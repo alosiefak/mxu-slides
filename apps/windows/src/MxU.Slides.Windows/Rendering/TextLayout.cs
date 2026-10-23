@@ -22,7 +22,11 @@ public sealed class TextLayout
     /// letter tracking: each character cluster is then drawn at its own x.
     /// </summary>
     public sealed record Line(FormattedText Text, double X, double Y, double Width, double Height, double BoxTop, double BoxHeight, int Paragraph,
-        IReadOnlyList<(FormattedText Text, double X)>? Glyphs = null);
+        IReadOnlyList<(FormattedText Text, double X)>? Glyphs = null, int Start = 0, IReadOnlyList<int>? GlyphStarts = null)
+    {
+        /// <summary>The paragraph (source line) this line was wrapped from, for mapping character ranges.</summary>
+        public string Source { get; init; } = "";
+    }
 
     public sealed record Chord(FormattedText Text, double X, double Y);
 
@@ -111,19 +115,24 @@ public sealed class TextLayout
         }
 
         /// <summary>Each character cluster of a tracked line with its x offset from the line start.</summary>
-        private List<(FormattedText Text, double X)> Glyphs(Wrapped line, double scale)
+        private (List<(FormattedText Text, double X)> Glyphs, List<int> Starts) Glyphs(Wrapped line, double scale)
         {
             var glyphs = new List<(FormattedText, double)>();
+            var starts = new List<int>();
             var x = 0.0;
             var elements = StringInfo.GetTextElementEnumerator(line.Text);
             while (elements.MoveNext())
             {
                 var cluster = (string)elements.Current;
                 var formatted = Format(line.Paragraph, line.Start + elements.ElementIndex, cluster, scale);
-                if (!string.IsNullOrWhiteSpace(cluster)) glyphs.Add((formatted, x));
+                if (!string.IsNullOrWhiteSpace(cluster))
+                {
+                    glyphs.Add((formatted, x));
+                    starts.Add(elements.ElementIndex);
+                }
                 x += formatted.WidthIncludingTrailingWhitespace + text.Tracking * scale;
             }
-            return glyphs;
+            return (glyphs, starts);
         }
 
         private double LineBoxHeight(Wrapped line) => line.Formatted.Height * text.LineHeightMultiple + line.ChordRow;
@@ -168,8 +177,9 @@ public sealed class TextLayout
                 };
                 // Extra line height goes above the glyphs, as in Core Text.
                 var textTop = y + box - w.Formatted.Height;
+                var glyphs = tracked && w.Text.Length > 0 ? Glyphs(w, scale) : default;
                 lines.Add(new Line(w.Formatted, x, textTop, width, w.Formatted.Height, y, box, w.Paragraph,
-                    tracked && w.Text.Length > 0 ? Glyphs(w, scale) : null));
+                    glyphs.Glyphs, w.Start, glyphs.Starts) { Source = paragraphs[w.Paragraph] });
                 if (w.ChordRow > 0) chords.AddRange(ChordsFor(w, x, y, scale));
                 minX = Math.Min(minX, x);
                 maxX = Math.Max(maxX, x + width);

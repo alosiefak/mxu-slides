@@ -1,4 +1,7 @@
 using System.Windows;
+using System.Diagnostics;
+using MxU.Slides.Core.Control;
+using MxU.Slides.LocalApi;
 using MxU.Slides.Windows.Infrastructure;
 using MxU.Slides.Windows.Outputs;
 using MxU.Slides.Windows.ViewModels;
@@ -17,8 +20,28 @@ public partial class SettingsWindow : Window
         public override string ToString() => Label;
     }
 
+    private sealed class MidiRow(MidiCommand command, int note) : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+    {
+        private int note = note;
+
+        public MidiCommand Command { get; } = command;
+        public string Name => Command.DisplayName() + (Command.UsesVelocityIndex() ? "  (velocity = number)" : "");
+
+        public int Note
+        {
+            get => note;
+            set
+            {
+                if (SetProperty(ref note, Math.Clamp(value, 0, 127))) OnPropertyChanged(nameof(NoteName));
+            }
+        }
+
+        public string NoteName => MidiCommandMap.NoteName(note);
+    }
+
     private readonly MainViewModel model;
     private readonly OutputManager outputs;
+    private readonly List<MidiRow> midiRows;
 
     public SettingsWindow(MainViewModel model, OutputManager outputs)
     {
@@ -45,6 +68,20 @@ public partial class SettingsWindow : Window
         LinesCombo.ItemsSource = new[] { 1, 2, 3, 4, 5, 6, 8 };
         LinesCombo.SelectedItem = s.LinesPerSlide;
         Volume.Value = s.VideoVolume;
+        MidiEnabled.IsChecked = s.MidiInputEnabled;
+        MidiChannel.ItemsSource = new[] { "All channels" }.Concat(Enumerable.Range(1, 16).Select(c => $"Channel {c}")).ToList();
+        MidiChannel.SelectedIndex = s.MidiMap.Channel ?? 0;
+        MidiDevices.Text = $"Connected: {model.MidiStatus}";
+        midiRows = MidiCommands.All.Select(c => new MidiRow(c, s.MidiMap.NoteFor(c))).ToList();
+        MidiMapRows.ItemsSource = midiRows;
+        ApiEnabled.IsChecked = s.LocalApiEnabled;
+        ApiPort.Text = s.LocalApiPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        ApiConnect.Text = s.LocalApiEnabled
+            ? $"{model.ApiStatus}. Remotes on the same Wi-Fi connect here with a key."
+            : $"When on, remotes connect at {model.ApiAddress} with a key. Windows may ask to let MxU Slides through the firewall: allow Private networks.";
+        NewKeyScope.ItemsSource = ApiScopes.All;
+        NewKeyScope.SelectedItem = ApiScope.Control;
+        LoadKeys();
         LibraryPath.Text = $"Your songs, services and media live in {s.LibraryPath}. Every day the first launch copies the documents into Backups (the last 14 days are kept).";
     }
 
@@ -93,7 +130,27 @@ public partial class SettingsWindow : Window
         if (ThemeCombo.SelectedItem is Core.Model.Theme theme) s.DefaultThemeId = theme.Id;
         if (LinesCombo.SelectedItem is int lines) s.LinesPerSlide = lines;
         s.VideoVolume = Volume.Value;
+        if (midiRows.GroupBy(r => r.Note).FirstOrDefault(g => g.Count() > 1) is { } clash)
+        {
+            MessageBox.Show(this, $"MIDI note {clash.Key} ({MidiCommandMap.NoteName(clash.Key)}) is used by more than one command: "
+                + string.Join(", ", clash.Select(r => r.Command.DisplayName())) + ".", "MxU Slides", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (!int.TryParse(ApiPort.Text.Trim(), out var port) || port is < 1024 or > 65535)
+        {
+            MessageBox.Show(this, "The API port must be a number from 1024 to 65535.", "MxU Slides", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        s.LocalApiEnabled = ApiEnabled.IsChecked == true;
+        s.LocalApiPort = port;
+        s.MidiInputEnabled = MidiEnabled.IsChecked == true;
+        s.MidiMap.Channel = MidiChannel.SelectedIndex <= 0 ? null : MidiChannel.SelectedIndex;
+        foreach (var row in midiRows) s.MidiMap.SetNote(row.Note, row.Command);
         s.Save();
+        model.ApplyMidiSettings();
+        model.ApplyApiSettings();
+        if (s.LocalApiEnabled && model.ApiStatus.StartsWith("Couldn't", StringComparison.Ordinal))
+            MessageBox.Show(this, $"The Local API {model.ApiStatus.ToLowerInvariant()}", "MxU Slides", MessageBoxButton.OK, MessageBoxImage.Warning);
 
         // Outputs that now have a display move there; ones set to preview stay where they are.
         foreach (var role in Enum.GetValues<OutputRole>())
@@ -103,6 +160,85 @@ public partial class SettingsWindow : Window
         }
         outputs.Apply();
         DialogResult = true;
+    }
+
+    // MARK: Local API keys
+
+    private void LoadKeys() => ApiKeyRows.ItemsSource = model.ApiTokens.All;
+
+    private void CopyDefaultKey_Click(object sender, RoutedEventArgs e)
+    {
+        var secret = model.ApiTokens.EnsureDefaultKey(evenIfPopulated: true);
+        LoadKeys();
+        if (secret is null) return;
+        Clipboard.SetText(secret);
+        MessageBox.Show(this, "The default key (Control: runs the show) is on the clipboard.", "MxU Slides", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void OpenApiDocs_Click(object sender, RoutedEventArgs e)
+    {
+        if (!model.Settings.LocalApiEnabled)
+        {
+            MessageBox.Show(this, "Turn the API on and press Save first.", "MxU Slides", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        try
+        {
+            Process.Start(new ProcessStartInfo($"{model.ApiAddress}/docs") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Could not open the API docs: {ex.Message}");
+        }
+    }
+
+    private void NewKey_Click(object sender, RoutedEventArgs e)
+    {
+        var name = NewKeyName.Text.Trim();
+        if (name.Length == 0)
+        {
+            NewKeyName.Focus();
+            return;
+        }
+        var (_, secret) = model.ApiTokens.Create(name, NewKeyScope.SelectedItem as ApiScope? ?? ApiScope.Control);
+        NewKeyName.Text = "";
+        LoadKeys();
+        Clipboard.SetText(secret);
+        MessageBox.Show(this, $"Key for \"{name}\" is on the clipboard:\n\n{secret}\n\nIt is shown only once. Keep it somewhere safe.",
+            "MxU Slides", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void RevokeKey_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string id || model.ApiTokens.All.FirstOrDefault(t => t.Id == id) is not { } token) return;
+        if (MessageBox.Show(this, $"Revoke \"{token.Name}\"? Anything using it stops working straight away.", "MxU Slides",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        model.ApiTokens.Revoke(id);
+        LoadKeys();
+    }
+
+    private async void ImportProPresenterLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        var folder = ProImport.ProPresenterImporter.ProPresenterShowDirectory();
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Choose your ProPresenter folder (the one holding Libraries and Playlists)",
+            InitialDirectory = folder ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        var scan = new ProImport.ProWorkspaceImporter(model.Library).Scan(dialog.FolderName);
+        if (scan.Presentations + scan.Themes + scan.Playlists + scan.Media == 0)
+        {
+            MessageBox.Show(this, "That folder doesn't look like a ProPresenter library: no presentations, themes, playlists or media were found.",
+                "MxU Slides", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (MessageBox.Show(this, $"Found {scan.Presentations} presentations, {scan.Playlists} playlists, {scan.Themes} themes, {scan.Media} media files, "
+                + $"{scan.Props} props, {scan.Messages} messages and {scan.StageLayouts} stage layouts. Import them?",
+                "MxU Slides", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+        DialogResult = false;
+        await model.ImportProPresenterLibraryAsync(dialog.FolderName);
     }
 
     private void OpenLibrary_Click(object sender, RoutedEventArgs e) => MainWindow.OpenFolder(model.Settings.LibraryPath);

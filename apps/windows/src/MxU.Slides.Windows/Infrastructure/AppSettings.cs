@@ -35,6 +35,16 @@ public sealed class AppSettings
 
     public double ThumbnailSize { get; set; } = 200;
 
+    /// <summary>Lets MIDI note-ons run commands. Off by default so a keyboard on the same PC can't clear the screen.</summary>
+    public bool MidiInputEnabled { get; set; }
+
+    public MxU.Slides.Core.Control.MidiCommandMap MidiMap { get; set; } = new();
+
+    /// <summary>Lets phones, tablets and other apps on the network control the show (the Local API). Off by default.</summary>
+    public bool LocalApiEnabled { get; set; }
+
+    public int LocalApiPort { get; set; } = MxU.Slides.LocalApi.LocalApiServer.DefaultPort;
+
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,

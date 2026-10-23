@@ -33,7 +33,7 @@ Re-run both after pulling changes to update. Your library is stored separately a
 ## Test it
 
 ```powershell
-dotnet test --solution apps\windows\MxUSlides.slnx      # 200+ unit tests: lyrics, timers, stage text, songs
+dotnet test --solution apps\windows\MxUSlides.slnx      # 650+ unit tests: lyrics, animation, timers, the API, both importers
 pwsh apps\windows\scripts\self-test.ps1                 # drives the real app through a service, saves pictures, checks the output
 ```
 
@@ -46,15 +46,22 @@ GitHub Actions (`.github/workflows/windows.yml`) runs all of this on every push,
 | To… | Do this |
 |---|---|
 | Put a slide on screen | Click it (Show mode) |
-| Next / previous slide | → Space Enter / ← (carries on into the next service item) |
+| Next / previous slide | → Space Enter / ← (carries on into the next service item). A slide with builds takes a press per build first, as on the Mac; **Alt+→** skips them |
 | Clear | F1 everything · F2 slide · F3 media · F4 overlays · F6 message |
 | Add a song | **New Song**, paste or type lyrics with section names (Verse 1, Chorus…) |
-| Import lyric files | **Import Lyrics**: SongSelect `.txt`, ChordPro (`.cho`, `.chopro`, `.pro`) or plain text |
+| Import | **Import** (Ctrl+I): PowerPoint `.pptx`, ProPresenter 7 (`.pro`, `.probundle`, `.proPlaylist`, `.protheme`), SongSelect `.txt`, ChordPro (`.cho`, `.chopro`, `.pro`) or plain text. Imports go into a "PowerPoint Import" or "ProPresenter Import" folder |
+| Move from ProPresenter | **Screens & Settings › Import ProPresenter library…**: presentations, media, themes, props, messages, stage layouts and playlists. Run it again to pick up changes; your edits here are kept |
 | Change a song's order | **Edit lyrics** › *Play order*, e.g. `V1, C, V2, C, B, C x2` |
-| Edit a slide's words | **Edit** mode (Ctrl+E), click the slide, type below the grid |
+| Jump to a section of the live song | Group keys like ProPresenter: **A S D F** = Verse 1–4, **C** = Chorus (**X** Chorus 2), **B** Bridge, **P** Pre-Chorus, **T** Tag, **I** Intro, **E** Ending, **O** Outro. Press again for the next repeat |
+| Jump to slide *n* | Type the number, press Enter (Esc cancels) |
+| Edit a slide's words | **Edit** mode (Ctrl+E), click the slide, type below the canvas |
+| Design a slide | **Edit** mode: drag objects on the canvas (snaps to the centre, edges and other objects; hold Alt to stop snapping), drag handles to resize, arrows nudge (Shift ×10), Ctrl+D duplicates, Delete removes. **Add** text, boxes, circles and media; the inspector sets font, size, colour, alignment, spacing, outline, shadow, fill and corners. **Reset to theme** undoes overrides |
+| Lower thirds and tickers | Bottom bin › **Overlays**: pick a pack, click an overlay to put it up or take it down (F4 clears all). They animate in and out. Type the name, title or verse into its fields; it updates live |
 | Backgrounds | Click media in the bin to show it behind the slides; right-click for "use as background for the open song" |
 | Message to the stage/room | Type in **Message**, tick Stage/Audience, press Enter |
 | Timers | ▶/❚❚ and ↺ in **Timers**; double-click a name to set `Sermon, 35` or `Service starts, 10:30` |
+| Phone, tablet or Companion remote | **Screens & Settings › Network & API**: turn it on, press **Copy default key**, then connect to the address shown (e.g. `http://192.168.1.20:6980`). **Open API docs** lists every command. Allow MxU Slides through the Windows firewall on Private networks when asked |
+| MIDI control | **Screens & Settings** › MIDI: turn it on, pick a channel. The note map matches ProPresenter's (Next Slide = C-1 / note 12, Clear All = C-2 / note 0, Trigger Slide = G-1 with velocity = slide number…) |
 | Choose screens | **Screens & Settings**: pick the projector for Audience and the confidence monitor for Stage |
 
 **On a laptop with one screen**, click **Audience** or **Stage** in the toolbar to open that output as a normal window. It shows exactly what the projector would. When you plug in a projector, choose it under **Screens & Settings**. The output then goes full screen there, stays on top, hides the mouse and never steals the keyboard.
@@ -74,7 +81,7 @@ GitHub Actions (`.github/workflows/windows.yml`) runs all of this on every push,
 
 ## What's here, and what's next
 
-Phase 1 (this) covers:
+Phase 1 covers:
 
 - the library, songs and decks;
 - lyric import with SongSelect, ChordPro and chords;
@@ -86,10 +93,19 @@ Phase 1 (this) covers:
 - timers, clock and messages;
 - multi-display output and the single-screen preview.
 
+Phase 2 adds:
+
+- slide, theme and overlay animations and builds (Next plays them, as on the Mac);
+- drag-to-edit objects on the canvas, with snapping and an inspector;
+- overlays (lower thirds, scripture, tickers) with masks;
+- PowerPoint and ProPresenter 7 import, including a whole ProPresenter library;
+- the Local API for phone, tablet and Companion remotes;
+- MIDI control and ProPresenter-style group hot keys.
+
 Still to come:
 
-- **Phase 2:** slide animations and builds, drag-to-edit objects on the canvas, overlays and props, ProPresenter and PowerPoint import, the Local API and remote, MIDI.
 - **Phase 3:** NDI, DeckLink, recording and streaming, multitrack audio.
+- **Gaps:** theme-override looks, text paging, per-item transitions, GPU-only effects (keystone, burn, glitch, tint) and an overlay editor. See [docs/PORTING.md](docs/PORTING.md).
 
 See [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) to learn the code, and [docs/PORTING.md](docs/PORTING.md) for which Swift file each C# file comes from.
 

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ProPresenter 7 import: .pro documents, bundles, playlists, themes and whole
+       show directories, mapped onto MxU documents and written into a LibraryStore.
+       Port of apps/mac/Packages/ProImport. Proto/ holds ProPresenter's vendored
+       protobuf definitions (see Proto/README.md). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MxU.Slides.ProImport</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MxU.Slides.ProImport.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.36.2" />
+    <PackageReference Include="Grpc.Tools" Version="2.84.0" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Proto\*.proto" ProtoRoot="Proto" GrpcServices="None" Access="Public" />
+  </ItemGroup>
+</Project>

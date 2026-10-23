@@ -285,9 +285,8 @@ public sealed partial class MainViewModel
         var info = BuildConfidenceInfo();
         var now = DateTimeOffset.Now;
         var resolved = LinkedText.ResolvedObjects(layout.Objects, info, now);
-        foreach (var o in resolved.Where(o => VisibilityRules.IsShown(o, resolved, info, now)))
-            foreach (var item in SlideSceneBuilder.RenderItems(o, null, null, canvas, $"stage-{layout.Id}-{o.Id}"))
-                scene.AddItem(item, LayerKind.Slide);
+        SlideSceneBuilder.AddObjects(scene, resolved.Where(o => VisibilityRules.IsShown(o, resolved, info, now)).ToList(),
+            LayerKind.Slide, canvas, $"stage-{layout.Id}-");
         if (info.Alert is { ShowsOnConfidence: true } alert && !layout.HasStageMessageObject())
             foreach (var item in AlertBanner.Items(LinkedText.ResolvedAlertMessage(alert.Message, info, now), canvas, "stage"))
                 scene.AddItem(item, LayerKind.Alerts);

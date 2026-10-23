@@ -1,8 +1,9 @@
 <Window x:Class="MxU.Slides.Windows.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Screens &amp; Settings" Width="640" SizeToContent="Height" ResizeMode="NoResize"
+        Title="Screens &amp; Settings" Width="660" SizeToContent="Height" MaxHeight="900" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="20">
         <TextBlock Text="SCREENS" Style="{StaticResource SectionLabel}" />
         <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10">
@@ -72,6 +73,62 @@
         </Grid>
         <TextBlock Style="{StaticResource Muted}" Margin="90,4,0,0" FontSize="11" Text="Background loops are always silent; foreground videos play their sound." />
 
+        <TextBlock Text="MIDI CONTROL" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
+        <DockPanel>
+            <ComboBox x:Name="MidiChannel" DockPanel.Dock="Right" Width="110" ToolTip="Listen on one MIDI channel, or all of them" />
+            <CheckBox x:Name="MidiEnabled" Content="Let MIDI notes run the show (same notes as ProPresenter)" VerticalAlignment="Center" />
+        </DockPanel>
+        <TextBlock x:Name="MidiDevices" Style="{StaticResource Muted}" FontSize="11" Margin="0,4,0,4" TextWrapping="Wrap" />
+        <Expander Header="Note for each command" Foreground="{StaticResource Text}" Margin="0,0,0,0">
+            <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0">
+                <ItemsControl x:Name="MidiMapRows">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,0,0,3">
+                                <TextBox DockPanel.Dock="Right" Text="{Binding Note, UpdateSourceTrigger=PropertyChanged}" Width="48" />
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding NoteName}" Style="{StaticResource Muted}" Width="44" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                            </DockPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Expander>
+
+        <TextBlock Text="NETWORK &amp; API" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
+        <DockPanel>
+            <TextBox x:Name="ApiPort" DockPanel.Dock="Right" Width="64" ToolTip="Port (6980 unless something else uses it)" />
+            <TextBlock DockPanel.Dock="Right" Text="Port" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <CheckBox x:Name="ApiEnabled" Content="Let phones, tablets and other apps on this network control the show" VerticalAlignment="Center" />
+        </DockPanel>
+        <TextBlock x:Name="ApiConnect" Style="{StaticResource Muted}" FontSize="11" Margin="0,4,0,4" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+            <Button Content="Copy default key" Click="CopyDefaultKey_Click" Margin="0,0,8,0" ToolTip="Paste it into the remote app or a script's Authorization header" />
+            <Button Content="Open API docs" Click="OpenApiDocs_Click" />
+        </StackPanel>
+        <Expander Header="Manage keys" Foreground="{StaticResource Text}">
+            <StackPanel Margin="0,6,0,0">
+                <ItemsControl x:Name="ApiKeyRows">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,0,0,3">
+                                <Button DockPanel.Dock="Right" Content="Revoke" Tag="{Binding Id}" Click="RevokeKey_Click" Padding="8,2" />
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Prefix, StringFormat={}{0}…}" Style="{StaticResource Muted}" Width="90" VerticalAlignment="Center" />
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Scope}" Style="{StaticResource Muted}" Width="60" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                            </DockPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <DockPanel Margin="0,6,0,0">
+                    <Button DockPanel.Dock="Right" Content="New key" Click="NewKey_Click" />
+                    <ComboBox x:Name="NewKeyScope" DockPanel.Dock="Right" Width="90" Margin="6,0"
+                              ToolTip="View: read only · Control: run the show · Edit: also change the library" />
+                    <TextBox x:Name="NewKeyName" Tag="Name, e.g. Worship leader's iPad" />
+                </DockPanel>
+            </StackPanel>
+        </Expander>
+
         <TextBlock Text="LIBRARY" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
         <TextBlock x:Name="LibraryPath" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,6" />
         <StackPanel Orientation="Horizontal">
@@ -79,10 +136,16 @@
             <Button Content="Open backups" Click="OpenBackups_Click" Margin="0,0,8,0" />
             <Button Content="Open logs" Click="OpenLogs_Click" />
         </StackPanel>
+        <DockPanel Margin="0,10,0,0">
+            <Button DockPanel.Dock="Right" Content="Import ProPresenter library…" Click="ImportProPresenterLibrary_Click" />
+            <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,10,0"
+                       Text="Moving from ProPresenter 7? Bring in its presentations, media, themes, props, messages, stage layouts and playlists. Run it again later to pick up changes; anything you've edited here is kept." />
+        </DockPanel>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
             <Button Content="Cancel" IsCancel="True" Margin="0,0,8,0" MinWidth="90" />
             <Button Content="Save" IsDefault="True" Style="{StaticResource AccentButton}" MinWidth="90" Click="Save_Click" />
         </StackPanel>
     </StackPanel>
+    </ScrollViewer>
 </Window>

@@ -1,0 +1,1 @@
+ProPresenter 7 protobuf definitions from https://github.com/greyshirtguy/ProPresenter7-Proto (MIT, see LICENSE), `autogen-proto/` at commit 1b63dda196eb7e079721a8a4a7e7773520cb5ad2 — the same pin and file list as `apps/mac/scripts/generate-propresenter-proto.sh`.
