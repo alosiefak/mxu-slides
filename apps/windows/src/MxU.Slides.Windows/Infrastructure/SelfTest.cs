@@ -556,8 +556,10 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
         model.Library.Save(video);
         model.FireMedia(video);
         var key = $"live:live-media-videos:{video.Id}";
-        for (var i = 0; i < 40 && model.Media.Transport(key) is null; i++) await Delay(100);
-        Check("the video opens and plays", model.Media.Transport(key) is { Duration.TotalSeconds: > 2, Playing: true });
+        // Slow machines (CI) decode in software; give the video up to 15 seconds to open.
+        for (var i = 0; i < 150 && model.Media.Transport(key) is null && !model.Media.IsVideoFailed(key); i++) await Delay(100);
+        Check("the video opens and plays" + (model.Media.VideoFailureReason(key) is { } why ? $" (failed: {why})" : ""),
+            model.Media.Transport(key) is { Duration.TotalSeconds: > 2, Playing: true });
         Check("the video's size is known", model.Media.NaturalSize(video.Id) is { Width: > 0 });
         await Step("04-video", () => { }, settle: 800);
         Check("the video is drawn on the audience preview", model.Show.LiveMedia.ContainsKey(LayerKind.Videos));

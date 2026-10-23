@@ -25,6 +25,8 @@ public sealed class MediaHub
         public int References;
         public bool Opened;
         public bool Failed;
+        public string? FailureReason;
+        public bool RetriedSilently;
         public bool Loops;
         public bool Playing;
         public DispatcherTimer? CloseTimer;
@@ -274,8 +276,22 @@ public sealed class MediaHub
         };
         mp.MediaFailed += (_, e) =>
         {
+            // A PC with no working sound output (speakers unplugged, a server) can't open a video
+            // with sound; show it silently rather than not at all.
+            if (!mp.IsMuted && !player.RetriedSilently)
+            {
+                player.RetriedSilently = true;
+                Log.Warn($"Video couldn't play with sound ({media.Name}): {e.ErrorException?.Message}. Trying again without sound.");
+                mp.Close();
+                mp.IsMuted = true;
+                mp.Volume = 0;
+                mp.Open(new Uri(media.Path));
+                if (player.Playing) mp.Play();
+                return;
+            }
             player.Failed = true;
-            Log.Warn($"Video failed to play ({media.Name}): {e.ErrorException?.Message}");
+            player.FailureReason = e.ErrorException?.Message ?? "unknown error";
+            Log.Warn($"Video failed to play ({media.Name}): {player.FailureReason}");
             MediaReady?.Invoke(mediaId);
         };
         mp.MediaEnded += (_, _) =>
@@ -305,6 +321,9 @@ public sealed class MediaHub
     public Size? NaturalSize(string mediaId) => naturalSizes.TryGetValue(mediaId, out var size) && size.Width > 0 ? size : null;
 
     public bool IsVideoFailed(string playbackKey) => players.TryGetValue(playbackKey, out var p) && p.Failed;
+
+    /// <summary>Why the video for a key couldn't play, for diagnostics; null while it plays or is opening.</summary>
+    public string? VideoFailureReason(string playbackKey) => players.TryGetValue(playbackKey, out var p) ? p.FailureReason : null;
 
     public void Retain(string playbackKey)
     {
