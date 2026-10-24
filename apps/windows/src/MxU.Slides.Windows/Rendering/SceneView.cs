@@ -919,6 +919,16 @@ public sealed class SceneView : FrameworkElement
         if (string.IsNullOrEmpty(text.String)) return;
         var layout = TextLayout.Build(text, frame, ppd);
         if (layout.Lines.Count == 0) return;
+        // Words that don't fit are cut off at the box's edge, as the Mac draws them (and as the
+        // slide grid's warning says), rather than spilling over what's around the box.
+        var clipped = layout.Overflows;
+        if (clipped) dc.PushClip(new RectangleGeometry(new Rect(frame.X, frame.Y, Math.Max(0, frame.Width), Math.Max(0, frame.Height))));
+        DrawLaidOutText(dc, text, frame, layout, hidden);
+        if (clipped) dc.Pop();
+    }
+
+    private static void DrawLaidOutText(DrawingContext dc, StyledText text, SceneRect frame, TextLayout layout, IReadOnlyList<HiddenTextRun> hidden)
+    {
 
         if (text.LineFill is { } lineFill && Painting.FillBrush(lineFill.Fill, Bounds(layout)) is { } fillBrush)
         {
