@@ -89,7 +89,13 @@ Tests ported: `RecordingLibraryTests.swift` → `RecordingLibraryTests.cs`; `Med
 
 ## Integration to-dos
 
-- If the render agent changes how `RenderOutputs` or `RenderStage` hand scenes to the outputs (per-item transitions, looks), keep the two `ScreenFeeds?.Show(...)` lines next to them. If the outputs' per-screen scene logic in `OutputManager.SceneFor` changes (for example slide-theme looks), mirror it in `ScreenFeeds.SceneFor`, or give `OutputManager` a public `SceneFor(Guid)` and have `ScreenFeeds` call it.
+- If the render agent changes how `RenderOutputs` or `RenderStage` hand scenes to the outputs (per-item transitions, looks), keep the two `ScreenFeeds?.Show(...)` lines next to them (right *after* the `Outputs?.Present/Update` calls, so OutputManager's own scenes are current).
+- The integration branch's `OutputManager` has `Picture(Guid)` (`=> SceneFor(screenId)`). After merging, make the screen branch of `ScreenFeeds.SceneFor` use it, so a screen feed always shows exactly what the screen's outputs show, looks included:
+  ```csharp
+  if (target == CaptureSources.ProgramTarget) return audience;
+  return SwiftUuid.Parse(target) is { } id ? outputs.Picture(id) : null;
+  ```
+  (`RoleOf` can stay as it is.) My branch duplicates the logic from `OutputManager.Config` because that method didn't exist here.
 - `UpdateProgramAudio()` (called from `MainViewModel.cs`) is now empty and could be removed with its call.
 - `Themes/Dark.xaml`'s ComboBox template has no `PART_EditableTextBox`, so an editable ComboBox shows no text. The font box in `MainWindow.xaml` (`IsEditable="True"`) is affected. The Stream & Record window avoids editable boxes ("New folder…" asks for a name instead).
 - `AudioLevelTests.MixFeedSumsMembersOnItsOwnClock` (not changed by me) failed once in a full run while other agents loaded the PC, and passed three reruns. It waits 150 ms on the real clock, so it can be flaky under load.

@@ -89,11 +89,13 @@ public sealed class BroadcastController : IDisposable
         Recording.RecoverInterrupted();
         if (adoptions is { } queue && Recording.LibraryAdoption is { } adoption)
         {
-            var spool = adoption.SpoolFolder;
-            queue.Async(() =>
-            {
-                foreach (var item in RecordingLibrary.AdoptLeftovers(library, spool)) RecordingFiled?.Invoke(item);
-            });
+            // Listed now, before anything new is recorded; filing them (slow) happens on the filing thread.
+            var leftovers = RecordingLibrary.Leftovers(adoption.SpoolFolder);
+            if (leftovers.Count > 0)
+                queue.Async(() =>
+                {
+                    foreach (var item in RecordingLibrary.AdoptLeftovers(library, leftovers)) RecordingFiled?.Invoke(item);
+                });
         }
         return dropped;
     }

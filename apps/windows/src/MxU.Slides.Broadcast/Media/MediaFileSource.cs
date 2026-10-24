@@ -102,21 +102,27 @@ public sealed class MediaFileSource
             }
             var format = ReadVideoFormat(reader);
             Seek(reader);
-            // Both readers are ready before the clock starts, so sound and pictures share one zero.
             var audioReader = OpenAudio(out var audioRate, out var audioChannels);
+            if (audioReader is not null) Seek(audioReader);
+            // Decoders start on their first read, which can take a while on a busy PC. The first
+            // picture and sound are decoded before the clock starts, so nothing is late at the start
+            // and sound and pictures share one zero.
+            var firstPicture = Read(reader, MF.MF_SOURCE_READER_FIRST_VIDEO_STREAM);
+            var firstSound = audioReader is null ? null : Read(audioReader, MF.MF_SOURCE_READER_FIRST_AUDIO_STREAM);
             if (!running)
             {
-                MediaFoundation.Release(audioReader);
+                firstPicture.Release();
+                firstSound?.Release();
+                if (audioReader is not null) Marshal.FinalReleaseComObject(audioReader);
                 return;
             }
             var anchor = ShowState.HostClock();
             if (audioReader is not null)
             {
-                Seek(audioReader);
-                new Thread(() => PumpAudio(audioReader, anchor, audioRate, audioChannels))
+                new Thread(() => PumpAudio(audioReader, firstSound, anchor, audioRate, audioChannels))
                 { IsBackground = true, Name = "MxU replay audio", Priority = ThreadPriority.AboveNormal }.Start();
             }
-            PumpVideo(reader, format, anchor);
+            PumpVideo(reader, firstPicture, format, anchor);
         }
         catch (Exception e)
         {
@@ -201,12 +207,28 @@ public sealed class MediaFileSource
         reader.SetCurrentPosition(Guid.Empty, position);
     }
 
-    private void PumpVideo(IMFSourceReader reader, VideoFormat format, double anchor)
+    /// <summary>One read from a source reader: its result, flags, time (100 ns units) and sample (null at a gap or the end).</summary>
+    private sealed record SampleRead(int Hr, uint Flags, long Time, IMFSample? Sample)
+    {
+        public void Release()
+        {
+            if (Sample is not null) Marshal.ReleaseComObject(Sample);
+        }
+    }
+
+    private static SampleRead Read(IMFSourceReader reader, uint stream)
+    {
+        var hr = reader.ReadSample(stream, 0, out _, out var flags, out var time, out var sample);
+        return new SampleRead(hr, flags, time, sample);
+    }
+
+    private void PumpVideo(IMFSourceReader reader, SampleRead? first, VideoFormat format, double anchor)
     {
         var pixels = Array.Empty<byte>();
         while (running)
         {
-            var hr = reader.ReadSample(MF.MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, out _, out var flags, out var time, out var sample);
+            var (hr, flags, time, sample) = first ?? Read(reader, MF.MF_SOURCE_READER_FIRST_VIDEO_STREAM);
+            first = null;
             if (hr < 0)
             {
                 End($"decode stopped: {Describe(hr)}");
@@ -255,6 +277,7 @@ public sealed class MediaFileSource
                 if (sample is not null) Marshal.ReleaseComObject(sample);
             }
         }
+        first?.Release();
     }
 
     /// <summary>Copies the decoded picture into <paramref name="pixels"/> top row first, fully opaque. False if the buffer is unusable.</summary>
@@ -381,14 +404,15 @@ public sealed class MediaFileSource
         }
     }
 
-    private void PumpAudio(IMFSourceReader reader, double anchor, int rate, int channels)
+    private void PumpAudio(IMFSourceReader reader, SampleRead? first, double anchor, int rate, int channels)
     {
         var samples = Array.Empty<float>();
         try
         {
             while (running)
             {
-                var hr = reader.ReadSample(MF.MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, out _, out var flags, out var time, out var sample);
+                var (hr, flags, time, sample) = first ?? Read(reader, MF.MF_SOURCE_READER_FIRST_AUDIO_STREAM);
+                first = null;
                 if (hr < 0 || (flags & MF.MF_SOURCE_READERF_ERROR) != 0) return; // The pictures decide when replay ends.
                 if (sample is not null)
                 {
@@ -402,8 +426,8 @@ public sealed class MediaFileSource
                         var keep = outPoint is { } end ? (int)Math.Clamp(Math.Round((end - pts) * rate), 0, frames) : frames;
                         if (keep > skip)
                         {
-                            var first = pts + skip / (double)rate;
-                            var target = anchor + Math.Max(0, first - Start0);
+                            var from = pts + skip / (double)rate;
+                            var target = anchor + Math.Max(0, from - Start0);
                             if (!WaitUntil(target - AudioLeadSeconds)) return;
                             audioSink(new AudioBuffer(rate, channels, samples.AsMemory(skip * channels, (keep - skip) * channels), target));
                         }
@@ -423,6 +447,7 @@ public sealed class MediaFileSource
         }
         finally
         {
+            first?.Release();
             Marshal.FinalReleaseComObject(reader);
         }
     }

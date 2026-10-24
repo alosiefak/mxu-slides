@@ -97,15 +97,26 @@ public static class RecordingLibrary
     /// interrupted ones once <see cref="Recorder.RecoverInterrupted"/> has named them). They go
     /// into the default folder, dated by when the file was made.
     /// </summary>
-    public static IReadOnlyList<MediaItem> AdoptLeftovers(LibraryStore library, string spool)
+    public static IReadOnlyList<MediaItem> AdoptLeftovers(LibraryStore library, string spool) => AdoptLeftovers(library, Leftovers(spool));
+
+    /// <summary>The finished recordings in the spool right now (not the ones still being written).</summary>
+    public static IReadOnlyList<string> Leftovers(string spool) =>
+        Directory.Exists(spool)
+            ? [.. Directory.EnumerateFiles(spool, "*.mp4").Where(f => !f.EndsWith(Recorder.PartialSuffix, StringComparison.OrdinalIgnoreCase))]
+            : [];
+
+    /// <summary>
+    /// Files these leftovers (listed with <see cref="Leftovers"/> at launch, before anything new is
+    /// recorded, so a recording that finishes meanwhile is filed with its own preset's folder).
+    /// </summary>
+    public static IReadOnlyList<MediaItem> AdoptLeftovers(LibraryStore library, IReadOnlyList<string> files)
     {
         var adopted = new List<MediaItem>();
-        if (!Directory.Exists(spool)) return adopted;
-        foreach (var file in Directory.EnumerateFiles(spool, "*.mp4").Where(f => !f.EndsWith(Recorder.PartialSuffix, StringComparison.OrdinalIgnoreCase)).ToList())
+        foreach (var file in files)
         {
             try
             {
-                if (new FileInfo(file).Length == 0) continue;
+                if (!File.Exists(file) || new FileInfo(file).Length == 0) continue;
                 adopted.Add(Adopt(library, file, DefaultFolder, File.GetCreationTime(file), presetId: null));
                 BroadcastLog.Warning("recording.adopt", $"filed a leftover recording into the library: {Path.GetFileName(file)}");
             }

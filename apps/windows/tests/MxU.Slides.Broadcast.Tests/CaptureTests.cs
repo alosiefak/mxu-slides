@@ -351,6 +351,29 @@ public sealed class CaptureTests : IDisposable
         Assert.Empty(Directory.GetFiles(spool));
     }
 
+    /// <summary>
+    /// Only what was in the spool at launch counts as left over: a recording that finishes while
+    /// the leftovers are still being filed goes to its own preset's folder, not "Recordings".
+    /// </summary>
+    [Fact]
+    public async Task OnlyFilesInTheSpoolAtLaunchAreLeftovers()
+    {
+        var store = new LibraryStore(Path.Combine(scratch, "Library"));
+        store.Load();
+        var spool = RecordingLibrary.SpoolDirectory(store.Root);
+        var movie = await TestMovies.WriteAsync(Path.Combine(scratch, "movie.mp4"), frames: 4);
+        File.Copy(movie, Path.Combine(spool, "Left over.mp4"));
+        using var controller = new BroadcastController(store, new StreamKeyVault(Path.Combine(scratch, "Keys")), new FakeProgram(), null, Quiet);
+        controller.FileRecordingsIntoLibrary();
+        controller.Prepare();
+        // As if a recording finished right after launch, while the leftovers were being filed.
+        var fresh = Path.Combine(spool, "Just finished.mp4");
+        File.WriteAllBytes(fresh, [.. File.ReadAllBytes(movie), 0]);
+        Assert.True(controller.WaitForFiling(TimeSpan.FromSeconds(10)));
+        Assert.True(File.Exists(fresh), "a file that wasn't there at launch is left for its own recording to file");
+        Assert.Equal("Left over", Assert.Single(store.All<MediaItem>()).Name);
+    }
+
     [Fact]
     public void TheControllerStreamsWhatThePresetsSourceSays()
     {
