@@ -83,6 +83,11 @@ public partial class MainWindow : Window
     private void TimelineMenu_Click(object sender, RoutedEventArgs e)
     {
         var menu = new ContextMenu { PlacementTarget = (UIElement)sender, Placement = System.Windows.Controls.Primitives.PlacementMode.Top };
+        // The editor: the song's lanes, its music and stems, its transition and section map.
+        var edit = new MenuItem { Header = "Edit timeline…", IsEnabled = model.CurrentPresentation is not null };
+        edit.Click += (_, _) => TimelineEditorWindow.Open(this, model);
+        menu.Items.Add(edit);
+        menu.Items.Add(new Separator());
         var music = new MenuItem { Header = "Play this music with the timeline" };
         var songs = model.AudioTiles.Where(t => t.Item is not null).Select(t => t.Item!).ToList();
         foreach (var item in songs)

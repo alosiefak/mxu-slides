@@ -149,6 +149,9 @@ public sealed partial class MainViewModel : ITimelineHost, ITimecodeHost, ITimec
         var player = timeline;
         var current = player is not null && player.IsCurrent(target.ItemId) && player.PresentationId == target.Presentation.Id;
         var playing = current && player!.Playing;
+        // A song whose timeline has music: open the sound device now (in the background), so
+        // when it plays, the first clip starts on cue instead of holding up the slides after it.
+        if (!playing && saved?.Cues.Any(c => c.Kind() == TimelineLane.Audio) == true) Audio.Warm();
         var recording = current && player!.Recording;
         HasTimeline = saved is not null;
         ShowsTimelineBar = TimelineBarOpen || saved is not null || playing || recording;

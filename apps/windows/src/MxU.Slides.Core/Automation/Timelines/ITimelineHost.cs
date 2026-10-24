@@ -87,6 +87,9 @@ public interface ITimelineMusic
 
     void Play(TimelineMusicClip clip);
 
+    /// <summary>Gets ready to play soon (opens the sound device ahead of time); a timeline with music asks before it plays.</summary>
+    void Prepare() { }
+
     /// <summary>Stops an item's player, at once or with a fade.</summary>
     void Stop(string audioItemId, double? fadeSeconds = null, AudioFadeCurve curve = AudioFadeCurve.Linear);
 }

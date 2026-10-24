@@ -62,6 +62,16 @@ public sealed partial class TimelineEditorViewModel
         if (Transition is { } transition) SetTransition(new SongTransition { Kind = transition.Kind, Seconds = seconds });
     }
 
+    /// <summary>The handover armed while this song plays ("Crossfade into Way Maker in 0:12"), if any.</summary>
+    public TimelinePlayer.PendingGo? PendingTransition => IsCurrent && Player.Pending is { } go && go.ItemId == ItemId ? go : null;
+
+    /// <summary>Cancel Transition: this song plays to its end and stops; nothing starts by itself.</summary>
+    public void CancelTransition()
+    {
+        Player.CancelGo();
+        StateChanged?.Invoke();
+    }
+
     /// <summary>The row the transition curves are drawn on with their handle: the tracks when they show, else the music lane.</summary>
     public TimelineRow? TransitionRow =>
         Layout.Rows.FirstOrDefault(r => r.Kind == TimelineRowKind.Tracks)
@@ -367,6 +377,18 @@ public sealed partial class TimelineEditorViewModel
                 ImportFinished?.Invoke();
             });
         });
+    }
+
+    /// <summary>The library's track sets (a song's stems from one download), for "Add a Track Set".</summary>
+    public IReadOnlyList<TrackSet> TrackSetChoices() => main.Library.All<TrackSet>();
+
+    /// <summary>A track set at the playhead: every stem lands on its track (the Mac's drop of a set from the library).</summary>
+    public void AddTrackSet(TrackSet set)
+    {
+        if (!CanEdit) return;
+        var stems = set.Stems.Select(stem => new TimelineStemImport(
+            stem.Name, stem.AudioId, main.Library.Get<AudioItem>(stem.AudioId)?.DurationSeconds, ChannelId: stem.ChannelId)).ToList();
+        PlaceStems(stems, InsertionTime, set: set.Id);
     }
 
     /// <summary>Plans where each stem goes; asks about files that match no track, then lands them. Port of placeStems.</summary>
