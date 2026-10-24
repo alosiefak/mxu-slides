@@ -23,7 +23,8 @@ internal static class TestThreads
 
 /// <summary>
 /// The test tones live in a folder for this run, removed afterwards; anything an earlier
-/// run couldn't remove (a file still open when it ended) is swept up at the start.
+/// run couldn't remove (a file still open when it ended) is swept up at the start, but never
+/// the folder of a run that is still going (two test runs at once would delete each other's tones).
 /// </summary>
 public sealed class TestFiles : IDisposable
 {
@@ -36,6 +37,8 @@ public sealed class TestFiles : IDisposable
         if (!Directory.Exists(Folder)) return;
         foreach (var leftover in Directory.EnumerateFileSystemEntries(Folder))
         {
+            // Another test run going on at the same time (CI, a second checkout) keeps its folder.
+            if (IsLiveRun(leftover)) continue;
             try
             {
                 if (Directory.Exists(leftover)) Directory.Delete(leftover, recursive: true);
@@ -43,8 +46,29 @@ public sealed class TestFiles : IDisposable
             }
             catch
             {
-                // Still in use (another run, or a file held open): next time.
+                // Still in use (a file held open): next time.
             }
+        }
+    }
+
+    /// <summary>A "run-1234" folder whose process is still running (and isn't this one's earlier namesake).</summary>
+    private static bool IsLiveRun(string path)
+    {
+        var name = Path.GetFileName(path);
+        if (!name.StartsWith("run-", StringComparison.Ordinal) || !int.TryParse(name[4..], out var pid)) return false;
+        if (pid == Environment.ProcessId) return false;
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false; // No such process: a leftover.
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
         }
     }
 
