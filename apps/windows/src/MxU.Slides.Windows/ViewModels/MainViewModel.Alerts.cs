@@ -69,10 +69,9 @@ public sealed partial class MainViewModel
     {
         var trimmed = message.Trim();
         if (trimmed.Length == 0) return;
+        // The theme only dresses what the audience sees; the stage always shows the plain band.
         var theme = target != AlertTarget.Confidence && !string.IsNullOrEmpty(themeId) ? Library.Get<Theme>(themeId) : null;
-        // A confidence-only alert has no layer: it never reaches the audience's layers.
-        Show.FireAlert(new CueAlert(trimmed, behavior, target) { Id = id, Theme = theme, Layer = target == AlertTarget.Confidence ? null : layer },
-            ShowState.HostClock());
+        Show.FireAlert(new CueAlert(trimmed, behavior, target) { Id = id, Theme = theme, Layer = layer }, ShowState.HostClock());
         liveAlertPresetId = Library.Get<AlertPreset>(id) is not null ? id : null;
         RenderOutputs(DefaultTransition());
         SyncFlashClock();

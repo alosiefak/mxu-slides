@@ -25,16 +25,22 @@ public sealed partial class MainViewModel
     public event Action? OutputsChanged;
 
     private OutputManager? operatorWiredTo;
+    private string? shownScreens;
 
     /// <summary>Once the outputs exist: keep the panels in step with the screen setup and the outputs' state.</summary>
     private void WireOperatorOutputs()
     {
         if (Outputs is not { } outputs || ReferenceEquals(operatorWiredTo, outputs)) return;
         operatorWiredTo = outputs;
+        shownScreens = ScreensSignature(outputs.Config);
         outputs.StatusChanged += () => OutputsChanged?.Invoke();
         outputs.Config.ConfigurationChanged += () => Application.Current?.Dispatcher.BeginInvoke(() =>
         {
-            // A screen added, removed or given the stage job: the Stage panel and the stage outputs follow.
+            // Only a screen added, removed, renamed, re-jobbed or moved to another device matters here
+            // (not a brightness slider being dragged in the Screens window).
+            var now = ScreensSignature(outputs.Config);
+            if (now == shownScreens) return;
+            shownScreens = now;
             OutputsChanged?.Invoke();
             StageLayoutsChanged?.Invoke();
             RenderStage(SceneTransition.Cut, refreshOnly: false);
@@ -44,6 +50,9 @@ public sealed partial class MainViewModel
         StageLayoutsChanged?.Invoke();
         OutputsChanged?.Invoke();
     }
+
+    private static string ScreensSignature(OutputConfiguration config) =>
+        string.Join(";", config.Screens.Select(s => $"{s.Id}|{s.Name}|{config.Role(s.Id)}|{string.Join(",", config.Slices(s.Id).Select(slice => config.Device(slice.Id)))}"));
 
     // MARK: Output presets (the chip and the Screens panel's menu)
 

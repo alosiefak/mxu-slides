@@ -24,6 +24,7 @@ public sealed class LiveToolbar : UserControl
     private readonly Button media;
     private readonly Button slides;
     private MainViewModel? model;
+    private bool watchingWindow;
 
     public LiveToolbar()
     {
@@ -58,6 +59,13 @@ public sealed class LiveToolbar : UserControl
         var bottom = new StackPanel { Orientation = Orientation.Horizontal, Children = { media, slides } };
         Content = new StackPanel { Children = { top, bottom } };
         DataContextChanged += (_, _) => Attach(OperatorKit.Model(this));
+        // Settings › Transitions changes the same room defaults: read them again when the window comes back to the front.
+        Loaded += (_, _) =>
+        {
+            if (watchingWindow || Window.GetWindow(this) is not { } window) return;
+            watchingWindow = true;
+            window.Activated += (_, _) => Refresh();
+        };
     }
 
     private void Attach(MainViewModel? next)
@@ -66,12 +74,14 @@ public sealed class LiveToolbar : UserControl
         {
             model.OutputsChanged -= Refresh;
             model.TransitionsChanged -= Refresh;
+            model.StageLayoutsChanged -= Refresh;
         }
         model = next;
         if (model is not null)
         {
             model.OutputsChanged += Refresh;
             model.TransitionsChanged += Refresh;
+            model.StageLayoutsChanged += Refresh;
         }
         Refresh();
     }

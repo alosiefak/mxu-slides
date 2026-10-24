@@ -210,11 +210,13 @@ public sealed class TimersPanel : UserControl
         }
         tickers.Add(now =>
         {
-            var (text, tint) = TimerPanel.FolderReadout(model.Timers.Snapshots(folder.TimerIds), now);
+            var current = model.Timers.Snapshots(folder.TimerIds);
+            var (text, tint) = TimerPanel.FolderReadout(current, now);
+            var live = current.Any(t => t.IsLive);
             readout.Text = text ?? "";
-            readout.Foreground = MainViewModel.TimerBrush(tint);
-            name.Foreground = members.Any(t => t.IsLive) ? EditorKit.Res<Brush>("Text") : EditorKit.Res<Brush>("MutedText");
-            card.Background = new SolidColorBrush(model.Timers.Snapshots(folder.TimerIds).Any(t => t.IsLive) ? OperatorKit.GreenWash : Color.FromArgb(0x0A, 0xFF, 0xFF, 0xFF));
+            Set(readout, TextBlock.ForegroundProperty, MainViewModel.TimerBrush(tint));
+            Set(name, TextBlock.ForegroundProperty, live ? EditorKit.Res<Brush>("Text") : EditorKit.Res<Brush>("MutedText"));
+            Set(card, Border.BackgroundProperty, live ? LiveWash : QuietWash);
         });
         list.Children.Add(card);
         if (folder.Collapsed) return;
@@ -324,13 +326,13 @@ public sealed class TimersPanel : UserControl
             var tint = TimerPanel.RowTint(live, now);
             var brush = MainViewModel.TimerBrush(tint);
             readout.Text = TimerPanel.RowText(live, now);
-            readout.Foreground = brush;
+            Set(readout, TextBlock.ForegroundProperty, brush);
             if (live.Progress(now) is { } progress)
             {
                 bar.Visibility = Visibility.Visible;
                 done.Width = new GridLength(progress, GridUnitType.Star);
                 left.Width = new GridLength(1 - progress, GridUnitType.Star);
-                fill.Background = brush;
+                Set(fill, Border.BackgroundProperty, brush);
                 fill.Opacity = live.IsLive ? 0.9 : 0.45;
             }
             else
@@ -340,10 +342,10 @@ public sealed class TimersPanel : UserControl
             if (play is not null)
             {
                 ((TextBlock)play.Content).Text = live.IsRunning ? "" : "";
-                play.Foreground = live.IsRunning ? OperatorKit.Green : EditorKit.Res<Brush>("MutedText");
+                Set(play, Control.ForegroundProperty, live.IsRunning ? OperatorKit.Green : EditorKit.Res<Brush>("MutedText"));
                 play.ToolTip = live.IsRunning ? "Pause" : "Start";
             }
-            card.Background = new SolidColorBrush(live.IsLive && !(locked && live.IsIdle) ? OperatorKit.GreenWash : Color.FromArgb(0x0A, 0xFF, 0xFF, 0xFF));
+            Set(card, Border.BackgroundProperty, live.IsLive && !(locked && live.IsIdle) ? LiveWash : QuietWash);
         });
     }
 
@@ -499,6 +501,23 @@ public sealed class TimersPanel : UserControl
     }
 
     // MARK: Pieces
+
+    // A running timer's row is washed green; the brushes are shared and frozen, and only set when
+    // they change, so four ticks a second don't redraw rows that look the same.
+    private static readonly Brush LiveWash = Frozen(OperatorKit.GreenWash);
+    private static readonly Brush QuietWash = Frozen(Color.FromArgb(0x0A, 0xFF, 0xFF, 0xFF));
+
+    private static Brush Frozen(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    private static void Set(DependencyObject target, DependencyProperty property, Brush brush)
+    {
+        if (!ReferenceEquals(target.GetValue(property), brush)) target.SetValue(property, brush);
+    }
 
     private static TextBlock Readout(double size)
     {
