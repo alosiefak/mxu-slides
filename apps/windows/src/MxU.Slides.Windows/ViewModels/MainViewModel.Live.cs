@@ -389,6 +389,8 @@ public sealed partial class MainViewModel
             Outputs?.Present(OutputRole.Audience, audience, push, lookScenes);
             AudiencePreview?.Present(audience, push);
             Program?.Present(audience, push);
+            // Recordings and streams of one screen: after the outputs, which they copy (looks included).
+            ScreenFeeds?.Show(OutputRole.Audience, audience, refreshOnly ? null : push);
             RenderStage(refreshOnly ? SceneTransition.Cut : transition, refreshOnly);
             EnsureTicking();
         }

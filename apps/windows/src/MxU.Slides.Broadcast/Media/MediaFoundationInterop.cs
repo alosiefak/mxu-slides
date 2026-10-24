@@ -5,7 +5,9 @@ using System.Runtime.InteropServices;
 // mfidl.h, mfobjects.h, mftransform.h, mfreadwrite.h, codecapi.h, strmif.h). Method order in
 // each interface must match the header exactly: COM calls methods by their position in the
 // vtable, not by name. Methods we never call are still declared (as placeholders) so the
-// ones after them land in the right slot.
+// ones after them land in the right slot. A byte[] in a COM interface is sent as a SAFEARRAY
+// unless it says otherwise, so every blob array is marked LPArray (a plain pointer, which is
+// what Media Foundation expects).
 #pragma warning disable IDE1006 // COM names keep their Windows spelling.
 namespace MxU.Slides.Broadcast.Media.Interop;
 
@@ -89,7 +91,7 @@ internal interface IMFAttributes
     [PreserveSig] int GetString(in Guid guidKey, nint pwszValue, uint cchBufSize, out uint pcchLength);
     [PreserveSig] int GetAllocatedString(in Guid guidKey, out nint ppwszValue, out uint pcchLength);
     [PreserveSig] int GetBlobSize(in Guid guidKey, out uint pcbBlobSize);
-    [PreserveSig] int GetBlob(in Guid guidKey, [Out] byte[] pBuf, uint cbBufSize, out uint pcbBlobSize);
+    [PreserveSig] int GetBlob(in Guid guidKey, [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] byte[] pBuf, uint cbBufSize, out uint pcbBlobSize);
     [PreserveSig] int GetAllocatedBlob(in Guid guidKey, out nint ppBuf, out uint pcbSize);
     [PreserveSig] int GetUnknown(in Guid guidKey, in Guid riid, out nint ppv);
     [PreserveSig] int SetItem(in Guid guidKey, in PropVariant value);
@@ -100,7 +102,7 @@ internal interface IMFAttributes
     [PreserveSig] int SetDouble(in Guid guidKey, double fValue);
     [PreserveSig] int SetGUID(in Guid guidKey, in Guid guidValue);
     [PreserveSig] int SetString(in Guid guidKey, [MarshalAs(UnmanagedType.LPWStr)] string wszValue);
-    [PreserveSig] int SetBlob(in Guid guidKey, [In] byte[] pBuf, uint cbBufSize);
+    [PreserveSig] int SetBlob(in Guid guidKey, [In, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] byte[] pBuf, uint cbBufSize);
     [PreserveSig] int SetUnknown(in Guid guidKey, [MarshalAs(UnmanagedType.IUnknown)] object? pUnknown);
     [PreserveSig] int LockStore();
     [PreserveSig] int UnlockStore();
@@ -125,7 +127,7 @@ internal interface IMFMediaType
     [PreserveSig] int GetString(in Guid guidKey, nint pwszValue, uint cchBufSize, out uint pcchLength);
     [PreserveSig] int GetAllocatedString(in Guid guidKey, out nint ppwszValue, out uint pcchLength);
     [PreserveSig] int GetBlobSize(in Guid guidKey, out uint pcbBlobSize);
-    [PreserveSig] int GetBlob(in Guid guidKey, [Out] byte[] pBuf, uint cbBufSize, out uint pcbBlobSize);
+    [PreserveSig] int GetBlob(in Guid guidKey, [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] byte[] pBuf, uint cbBufSize, out uint pcbBlobSize);
     [PreserveSig] int GetAllocatedBlob(in Guid guidKey, out nint ppBuf, out uint pcbSize);
     [PreserveSig] int GetUnknown(in Guid guidKey, in Guid riid, out nint ppv);
     [PreserveSig] int SetItem(in Guid guidKey, in PropVariant value);
@@ -136,7 +138,7 @@ internal interface IMFMediaType
     [PreserveSig] int SetDouble(in Guid guidKey, double fValue);
     [PreserveSig] int SetGUID(in Guid guidKey, in Guid guidValue);
     [PreserveSig] int SetString(in Guid guidKey, [MarshalAs(UnmanagedType.LPWStr)] string wszValue);
-    [PreserveSig] int SetBlob(in Guid guidKey, [In] byte[] pBuf, uint cbBufSize);
+    [PreserveSig] int SetBlob(in Guid guidKey, [In, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] byte[] pBuf, uint cbBufSize);
     [PreserveSig] int SetUnknown(in Guid guidKey, [MarshalAs(UnmanagedType.IUnknown)] object? pUnknown);
     [PreserveSig] int LockStore();
     [PreserveSig] int UnlockStore();
@@ -162,6 +164,19 @@ internal interface IMFMediaBuffer
     [PreserveSig] int GetMaxLength(out uint pcbMaxLength);
 }
 
+/// <summary>A picture buffer that knows its rows: where the top row starts and how far apart rows are (negative = stored bottom-up).</summary>
+[ComImport, Guid("7DC9D5F9-9ED9-44ec-9BBF-0600BB589FBB"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IMF2DBuffer
+{
+    [PreserveSig] int Lock2D(out nint pbScanline0, out int plPitch);
+    [PreserveSig] int Unlock2D();
+    [PreserveSig] int GetScanline0AndPitch(out nint pbScanline0, out int plPitch);
+    [PreserveSig] int IsContiguousFormat(out int pfIsContiguous);
+    [PreserveSig] int GetContiguousLength(out uint pcbLength);
+    [PreserveSig] int ContiguousCopyTo(nint pbDestBuffer, uint cbDestBuffer);
+    [PreserveSig] int ContiguousCopyFrom(nint pbSrcBuffer, uint cbSrcBuffer);
+}
+
 [ComImport, Guid("c40a00f2-b93a-4d80-ae8c-5a1c634f58e4"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 internal interface IMFSample
 {
@@ -178,7 +193,7 @@ internal interface IMFSample
     [PreserveSig] int GetString(in Guid guidKey, nint pwszValue, uint cchBufSize, out uint pcchLength);
     [PreserveSig] int GetAllocatedString(in Guid guidKey, out nint ppwszValue, out uint pcchLength);
     [PreserveSig] int GetBlobSize(in Guid guidKey, out uint pcbBlobSize);
-    [PreserveSig] int GetBlob(in Guid guidKey, [Out] byte[] pBuf, uint cbBufSize, out uint pcbBlobSize);
+    [PreserveSig] int GetBlob(in Guid guidKey, [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] byte[] pBuf, uint cbBufSize, out uint pcbBlobSize);
     [PreserveSig] int GetAllocatedBlob(in Guid guidKey, out nint ppBuf, out uint pcbSize);
     [PreserveSig] int GetUnknown(in Guid guidKey, in Guid riid, out nint ppv);
     [PreserveSig] int SetItem(in Guid guidKey, in PropVariant value);
@@ -189,7 +204,7 @@ internal interface IMFSample
     [PreserveSig] int SetDouble(in Guid guidKey, double fValue);
     [PreserveSig] int SetGUID(in Guid guidKey, in Guid guidValue);
     [PreserveSig] int SetString(in Guid guidKey, [MarshalAs(UnmanagedType.LPWStr)] string wszValue);
-    [PreserveSig] int SetBlob(in Guid guidKey, [In] byte[] pBuf, uint cbBufSize);
+    [PreserveSig] int SetBlob(in Guid guidKey, [In, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] byte[] pBuf, uint cbBufSize);
     [PreserveSig] int SetUnknown(in Guid guidKey, [MarshalAs(UnmanagedType.IUnknown)] object? pUnknown);
     [PreserveSig] int LockStore();
     [PreserveSig] int UnlockStore();
@@ -230,7 +245,7 @@ internal interface IMFActivate
     [PreserveSig] int GetString(in Guid guidKey, nint pwszValue, uint cchBufSize, out uint pcchLength);
     [PreserveSig] int GetAllocatedString(in Guid guidKey, out nint ppwszValue, out uint pcchLength);
     [PreserveSig] int GetBlobSize(in Guid guidKey, out uint pcbBlobSize);
-    [PreserveSig] int GetBlob(in Guid guidKey, [Out] byte[] pBuf, uint cbBufSize, out uint pcbBlobSize);
+    [PreserveSig] int GetBlob(in Guid guidKey, [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] byte[] pBuf, uint cbBufSize, out uint pcbBlobSize);
     [PreserveSig] int GetAllocatedBlob(in Guid guidKey, out nint ppBuf, out uint pcbSize);
     [PreserveSig] int GetUnknown(in Guid guidKey, in Guid riid, out nint ppv);
     [PreserveSig] int SetItem(in Guid guidKey, in PropVariant value);
@@ -241,7 +256,7 @@ internal interface IMFActivate
     [PreserveSig] int SetDouble(in Guid guidKey, double fValue);
     [PreserveSig] int SetGUID(in Guid guidKey, in Guid guidValue);
     [PreserveSig] int SetString(in Guid guidKey, [MarshalAs(UnmanagedType.LPWStr)] string wszValue);
-    [PreserveSig] int SetBlob(in Guid guidKey, [In] byte[] pBuf, uint cbBufSize);
+    [PreserveSig] int SetBlob(in Guid guidKey, [In, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] byte[] pBuf, uint cbBufSize);
     [PreserveSig] int SetUnknown(in Guid guidKey, [MarshalAs(UnmanagedType.IUnknown)] object? pUnknown);
     [PreserveSig] int LockStore();
     [PreserveSig] int UnlockStore();
@@ -271,7 +286,7 @@ internal interface IMFMediaEvent
     [PreserveSig] int GetString(in Guid guidKey, nint pwszValue, uint cchBufSize, out uint pcchLength);
     [PreserveSig] int GetAllocatedString(in Guid guidKey, out nint ppwszValue, out uint pcchLength);
     [PreserveSig] int GetBlobSize(in Guid guidKey, out uint pcbBlobSize);
-    [PreserveSig] int GetBlob(in Guid guidKey, [Out] byte[] pBuf, uint cbBufSize, out uint pcbBlobSize);
+    [PreserveSig] int GetBlob(in Guid guidKey, [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] byte[] pBuf, uint cbBufSize, out uint pcbBlobSize);
     [PreserveSig] int GetAllocatedBlob(in Guid guidKey, out nint ppBuf, out uint pcbSize);
     [PreserveSig] int GetUnknown(in Guid guidKey, in Guid riid, out nint ppv);
     [PreserveSig] int SetItem(in Guid guidKey, in PropVariant value);
@@ -282,7 +297,7 @@ internal interface IMFMediaEvent
     [PreserveSig] int SetDouble(in Guid guidKey, double fValue);
     [PreserveSig] int SetGUID(in Guid guidKey, in Guid guidValue);
     [PreserveSig] int SetString(in Guid guidKey, [MarshalAs(UnmanagedType.LPWStr)] string wszValue);
-    [PreserveSig] int SetBlob(in Guid guidKey, [In] byte[] pBuf, uint cbBufSize);
+    [PreserveSig] int SetBlob(in Guid guidKey, [In, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] byte[] pBuf, uint cbBufSize);
     [PreserveSig] int SetUnknown(in Guid guidKey, [MarshalAs(UnmanagedType.IUnknown)] object? pUnknown);
     [PreserveSig] int LockStore();
     [PreserveSig] int UnlockStore();
@@ -425,7 +440,11 @@ internal static class MF
     public const uint MF_SOURCE_READER_FIRST_VIDEO_STREAM = 0xFFFFFFFC;
     public const uint MF_SOURCE_READER_FIRST_AUDIO_STREAM = 0xFFFFFFFD;
     public const uint MF_SOURCE_READER_MEDIASOURCE = 0xFFFFFFFF;
+    public const uint MF_SOURCE_READER_ALL_STREAMS = 0xFFFFFFFE;
+    public const uint MF_SOURCE_READERF_ERROR = 0x00000001;
     public const uint MF_SOURCE_READERF_ENDOFSTREAM = 0x00000002;
+    public const uint MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED = 0x00000020;
+    public const uint MF_SOURCE_READERF_STREAMTICK = 0x00000100;
 
     public const uint MFVideoInterlace_Progressive = 2;
     public const uint eAVEncH264VProfile_Base = 66;
@@ -484,6 +503,8 @@ internal static class MF
     public static readonly Guid MFTranscodeContainerType_MPEG4 = new("dc6cd05d-b9d0-40ef-bd35-fa622c1ab28a");
     public static readonly Guid MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS = new("a634a91c-822b-41b9-a494-4de4643612b0");
     public static readonly Guid MF_SINK_WRITER_DISABLE_THROTTLING = new("08b845d8-2b74-4afe-9d53-be16d2d5ae4f");
+    public static readonly Guid MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING = new("fb394f3d-ccf1-42ee-bbb3-f9b845d5681d");
+    public static readonly Guid MF_MT_MINIMUM_DISPLAY_APERTURE = new("d7388766-18fe-48c6-a177-ee894867c8c4");
 
     public static readonly Guid MFT_CATEGORY_VIDEO_ENCODER = new("f79eac7d-e545-4387-bdee-d647d7bde42a");
     public static readonly Guid MFT_CATEGORY_AUDIO_ENCODER = new("91c64bd0-f91e-4d8c-9276-db248279d975");

@@ -1,5 +1,4 @@
 using System.Globalization;
-using MxU.Slides.Broadcast.Library;
 using MxU.Slides.Broadcast.Recording;
 using MxU.Slides.Core.Threading;
 
@@ -8,7 +7,7 @@ namespace MxU.Slides.Broadcast.Control;
 /// <summary>One recording the controller is running (or has just stopped).</summary>
 public sealed class RecordingSession
 {
-    internal RecordingSession(string targetId, string targetName, string? presetId, Recorder recorder, IDisposable attachment,
+    internal RecordingSession(string targetId, string targetName, string? presetId, Recorder recorder, IDisposable attachment, IDisposable sound,
         string? libraryFolder, string? exportFolder)
     {
         TargetId = targetId;
@@ -16,13 +15,14 @@ public sealed class RecordingSession
         PresetId = presetId;
         Recorder = recorder;
         Attachment = attachment;
+        Sound = sound;
         LibraryFolder = libraryFolder;
         ExportFolder = exportFolder;
     }
 
     public Guid Id { get; } = Guid.NewGuid();
 
-    /// <summary>The screen being recorded (on Windows, always the program).</summary>
+    /// <summary>The screen being recorded: "program" (the audience program) or a screen's id.</summary>
     public string TargetId { get; }
 
     public string TargetName { get; }
@@ -31,7 +31,18 @@ public sealed class RecordingSession
 
     public Recorder Recorder { get; }
 
+    /// <summary>The recording's hold on its screen's pictures.</summary>
     internal IDisposable Attachment { get; }
+
+    /// <summary>The recording's sound feed.</summary>
+    internal IDisposable Sound { get; }
+
+    /// <summary>Lets go of the pictures and the sound (safe to call more than once).</summary>
+    internal void Detach()
+    {
+        Attachment.Dispose();
+        Sound.Dispose();
+    }
 
     public DateTimeOffset StartedAt { get; } = DateTimeOffset.Now;
 
@@ -49,10 +60,12 @@ public sealed class RecordingSession
 }
 
 /// <summary>
-/// Starts and stops recordings of the program. Each recording listens to the program source
-/// at its own frame rate and writes an MP4 into the recordings folder (Videos\MxU Slides) or,
-/// when the app files recordings into its library, a spool folder handed to
-/// <see cref="LibraryAdoption"/> once the file is finished.
+/// Starts and stops recordings. Each recording takes the pictures of one screen (the audience
+/// program unless a preset names another, such as the stage display) at its own frame rate and
+/// size, and the sound its preset asks for (program audio, a mix or a sound input, maybe
+/// delayed), and writes an MP4 into the recordings folder (Videos\MxU Slides) or, when the app
+/// files recordings into its library, a spool folder handed to <see cref="LibraryAdoption"/>
+/// once the file is finished.
 ///
 /// Threading: like the Mac's @MainActor controller, call it from the UI thread.
 /// <see cref="SessionsChanged"/> and <see cref="StatusChanged"/> are raised on the thread (and
@@ -60,15 +73,20 @@ public sealed class RecordingSession
 /// </summary>
 public sealed class RecordingController : IDisposable
 {
-    private readonly IProgramSource program;
+    private readonly CaptureSources sources;
     private readonly SynchronizationContext? context;
     private readonly List<RecordingSession> sessions = [];
     private readonly HashSet<Guid> adoptedSessions = [];
     private readonly ITimer heartbeat;
 
     public RecordingController(IProgramSource program, string? recordingsFolder = null)
+        : this(new CaptureSources(program), recordingsFolder)
     {
-        this.program = program;
+    }
+
+    public RecordingController(CaptureSources sources, string? recordingsFolder = null)
+    {
+        this.sources = sources;
         context = SynchronizationContext.Current;
         RecordingsFolder = recordingsFolder ?? DefaultRecordingsFolder;
         heartbeat = ShowTimeProvider.Shared.CreateTimer(_ => Post(Heartbeat), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
@@ -120,8 +138,9 @@ public sealed class RecordingController : IDisposable
     }
 
     /// <summary>
-    /// Starts recording the program. Throws <see cref="IOException"/> when the file can't be
-    /// started (no space, no encoder, folder not writable).
+    /// Starts recording <paramref name="targetId"/> ("program" or a screen id). Throws
+    /// <see cref="IOException"/> when the file can't be started (no space, no encoder, folder
+    /// not writable). <paramref name="libraryFolder"/> null keeps the file out of the library.
     /// </summary>
     public RecordingSession Start(
         string targetId,
@@ -132,9 +151,7 @@ public sealed class RecordingController : IDisposable
         int frameRate,
         int? bitrateKbps = null,
         string? folder = null,
-        StreamAudioSource? audioSource = null,
-        bool audioIncludesProgram = false,
-        int audioDelayMs = 0,
+        SessionAudioRequest? audio = null,
         string? presetId = null,
         string? libraryFolder = null,
         string? exportFolder = null)
@@ -150,10 +167,20 @@ public sealed class RecordingController : IDisposable
             IncludesAudio: true)
         { Encoder = Encoder };
         var recorder = new Recorder(path, configuration);
-        if (audioSource is { Kind: not StreamAudioSourceKind.Program } || audioDelayMs != 0)
-            BroadcastLog.Info("recording", $"{targetName}: audio mixes, inputs and delay aren't available on Windows yet — recording program audio");
-        var attachment = program.Attach(new FramePacer(recorder, frameRate));
-        var session = new RecordingSession(targetId, targetName, presetId, recorder, attachment,
+        var sound = audio ?? SessionAudioRequest.Program;
+        IDisposable attachment;
+        try
+        {
+            attachment = sources.AttachPictures(targetId, width, height, frameRate, new FramePacer(recorder, frameRate));
+        }
+        catch (Exception e) when (e is not IOException)
+        {
+            // Nothing to record from: finish the (empty) file so its thread stops, and say why.
+            _ = recorder.FinishAsync();
+            throw new IOException($"couldn't picture {targetId}: {e.Message}", e);
+        }
+        var soundFeed = sources.OpenAudio(sound, recorder);
+        var session = new RecordingSession(targetId, targetName, presetId, recorder, attachment, soundFeed,
             adopting ? libraryFolder : null, adopting ? exportFolder : null);
         recorder.StateChanged += (_, _) => Post(() =>
         {
@@ -161,7 +188,7 @@ public sealed class RecordingController : IDisposable
             StatusChanged?.Invoke(session);
         });
         sessions.Add(session);
-        BroadcastLog.Info("recording.start", $"{targetName} codec={codec.Raw()} {width}x{height}@{frameRate} audio=program");
+        BroadcastLog.Info("recording.start", $"{targetName} target={targetId} codec={codec.Raw()} {width}x{height}@{frameRate} audio={sound}");
         SessionsChanged?.Invoke();
         return session;
     }
@@ -183,7 +210,7 @@ public sealed class RecordingController : IDisposable
 
     public async Task StopAsync(RecordingSession session)
     {
-        session.Attachment.Dispose();
+        session.Detach();
         await session.Recorder.FinishAsync();
         FinalizeIfNeeded(session);
         if (sessions.Remove(session)) SessionsChanged?.Invoke();
@@ -192,15 +219,15 @@ public sealed class RecordingController : IDisposable
     /// <summary>Removes a recording that stopped by itself (disk full, failure) from the list.</summary>
     public void Dismiss(RecordingSession session)
     {
-        session.Attachment.Dispose();
+        session.Detach();
         FinalizeIfNeeded(session);
         if (sessions.Remove(session)) SessionsChanged?.Invoke();
     }
 
-    /// <summary>Detaches recordings that have already stopped from the program feed.</summary>
+    /// <summary>Detaches recordings that have already stopped from their pictures and sound.</summary>
     public void ReapFinished()
     {
-        foreach (var session in sessions.Where(s => !s.IsRecording)) session.Attachment.Dispose();
+        foreach (var session in sessions.Where(s => !s.IsRecording)) session.Detach();
     }
 
     private void FinalizeIfNeeded(RecordingSession session)

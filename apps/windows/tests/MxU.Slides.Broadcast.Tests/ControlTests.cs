@@ -120,8 +120,11 @@ public sealed class StreamingControllerTests : IDisposable
         streaming.StartCapture(Preset(), [Destination("A"), Destination("B", maxHeight: 720)]);
         var live = Assert.IsType<LiveStream>(streaming.Live);
         Assert.Equal(2, live.Sessions.Count);
-        Assert.Equal(2, program.Sinks.Count);
-        Assert.All(program.Sinks, s => Assert.IsType<FramePacer>(s));
+        // Each destination takes the program's pictures; the stream takes its sound once, for all of them.
+        var pictures = program.Sinks.OfType<CaptureSources.VideoOnly>().ToList();
+        Assert.Equal(2, pictures.Count);
+        Assert.All(pictures, s => Assert.IsType<FramePacer>(s.Inner));
+        Assert.Single(program.Sinks.OfType<CaptureSources.AudioOnly>());
         Assert.Equal(720, live.Sessions[1].Video.Height);
         Assert.True(streaming.IsLive);
         Assert.NotEqual(StreamHealthRollup.Tint.None, streaming.WorstTint);
@@ -147,7 +150,8 @@ public sealed class StreamingControllerTests : IDisposable
         var session = Assert.Single(recording.Sessions);
         Assert.True(recording.AnyRecording);
         Assert.Equal("rec", session.PresetId);
-        Assert.Single(program.Sinks);
+        Assert.Equal("program", session.TargetId);
+        Assert.Equal(2, program.Sinks.Count); // its pictures, and its sound
         for (var frame = 0; frame < 15; frame++)
         {
             program.Play(Synthetic.VideoFrame(640, 360, frame, 100 + frame / 30.0));

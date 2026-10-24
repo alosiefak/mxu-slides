@@ -87,12 +87,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     private ProgramFeed? program;
 
-    // A destination just started listening: give the feed what's live now, and its sound.
-    private void OnProgramActiveChanged()
-    {
-        RenderOutputs(SceneTransition.Cut);
-        UpdateProgramAudio();
-    }
+    // A destination just started listening: give the feed what's live now. (Each recording and
+    // stream opens its own sound: see OpenSessionAudio in MainViewModel.Broadcast.cs.)
+    private void OnProgramActiveChanged() => RenderOutputs(SceneTransition.Cut);
     public SceneView? StagePreview { get; set; }
 
     [ObservableProperty]

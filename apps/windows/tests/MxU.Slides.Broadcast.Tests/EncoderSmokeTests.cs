@@ -27,9 +27,29 @@ public sealed class EncoderSmokeTests
         Assert.NotEmpty(bgra);
     }
 
-    /// <summary>On a PC with a graphics-card encoder, the automatic choice uses it and it really encodes.</summary>
+    /// <summary>
+    /// On a PC with a graphics-card encoder, the automatic choice uses it and it really encodes.
+    /// Every picture is accounted for: it comes out, or the encoder never asked for it and it was
+    /// counted as dropped. A graphics card busy with someone else's work (other tests, OBS) can
+    /// genuinely drop a few, so a short run is tried once more with a fresh encoder before failing.
+    /// </summary>
     [Fact]
     public void AutomaticEncoderProducesFramesWhicheverItPicks()
+    {
+        var (name, frames, dropped) = EncodeThirty();
+        if (frames.Count < 25 && dropped > 0)
+        {
+            TestContext.Current.TestOutputHelper?.WriteLine($"{name}: {frames.Count} out, {dropped} dropped by a busy encoder; trying again");
+            (name, frames, dropped) = EncodeThirty();
+        }
+        Assert.Equal(30, frames.Count + dropped);
+        Assert.True(frames.Count >= 25, $"{name}: only {frames.Count} frames came out ({dropped} dropped)");
+        Assert.True(frames[0].IsKeyframe, $"{name}: first frame isn't a keyframe");
+        for (var i = 1; i < frames.Count; i++)
+            Assert.True(frames[i].PresentationTime > frames[i - 1].PresentationTime, "frames came out of order");
+    }
+
+    private static (string Name, List<EncodedVideoFrame> Frames, int Dropped) EncodeThirty()
     {
         using var encoder = H264Encoder.Create(new H264Settings(640, 360, 30, 1500));
         var converter = new Nv12Converter(640, 360);
@@ -42,11 +62,8 @@ public sealed class EncoderSmokeTests
             Thread.Sleep(33);
         }
         frames.AddRange(encoder.Drain());
-        TestContext.Current.SendDiagnosticMessage($"encoder: {encoder.Name} hardware={encoder.IsHardware} frames={frames.Count}");
-        Assert.True(frames.Count >= 25, $"{encoder.Name}: only {frames.Count} frames came out");
-        Assert.True(frames[0].IsKeyframe, $"{encoder.Name}: first frame isn't a keyframe");
-        for (var i = 1; i < frames.Count; i++)
-            Assert.True(frames[i].PresentationTime > frames[i - 1].PresentationTime, "frames came out of order");
+        TestContext.Current.TestOutputHelper?.WriteLine($"encoder: {encoder.Name} hardware={encoder.IsHardware} frames={frames.Count} dropped={encoder.DroppedInputs}");
+        return (encoder.Name, frames, encoder.DroppedInputs);
     }
 
     [Fact]

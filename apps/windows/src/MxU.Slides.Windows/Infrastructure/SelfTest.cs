@@ -244,6 +244,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await EditorsCheck();
             await TimelineEditorCheck();
             await OverlayEditorChecks();
+            await BroadcastExtrasCheck();
         }
         catch (Exception ex)
         {
@@ -724,7 +725,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             var session = model.Broadcast.Recording.Sessions.LastOrDefault(r => r.PresetId == preset.Id);
             for (var i = 0; i < 100 && session?.Status.State.Kind is Broadcast.Recording.RecorderStateKind.Recording or Broadcast.Recording.RecorderStateKind.Finishing; i++)
                 await Delay(100);
-            var file = session?.FilePath;
+            var file = await RecordedFileAsync(session);
             var size = file is not null && File.Exists(file) ? new FileInfo(file).Length : 0;
             report.AppendLine($"      recording: {file} ({size} bytes, {session?.Status.State.Kind}, {session?.Status.DroppedFrames} dropped)");
             Check("stopping leaves a finished MP4 with pictures in it", session?.Status.State.Kind == Broadcast.Recording.RecorderStateKind.Finished
