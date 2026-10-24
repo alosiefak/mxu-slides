@@ -49,6 +49,8 @@ As on the Mac, a finished recording is filed into the media library, so it appea
 
 **Something learnt the hard way:** in a COM interface, .NET sends a `byte[]` as a SAFEARRAY unless told otherwise. Media Foundation expects a plain pointer. So reading a blob overwrote memory and crashed the app, and the MP4 writer had been giving Windows a garbage H.264 header; recordings only played because the decoder found the real one inside the video. Every blob in `MediaFoundationInterop.cs` is now marked `LPArray`, and `MediaFoundationBlobTests` checks a blob round-trips byte for byte.
 
+**And another:** a graphics-card encoder (Intel Quick Sync, NVIDIA, AMD) works *asynchronously*. It says "need input" when it wants a picture, and "have output" when one is encoded. `MftEncoder` used to hand a waiting picture over only after the *next* event arrived. If the encoder had already asked while no picture was waiting, it then waited for a picture that never came: each picture stalled a quarter of a second and was dropped. Quick Sync does exactly that (it asks for two pictures at the start, and for the next one as soon as it hands one back), and a busy graphics card (OBS, a second stream) makes it much worse. Now a "need input" is kept like an IOU and spent on the next picture straight away. `MftEncoderTests` checks this with a fake encoder that behaves like Quick Sync (the old code dropped 27 of 30 pictures), and runs two real encoders at once.
+
 ### Section 26 ("Keeping it running"): add to the self-test sentence
 
 …both importers, the program feed, screens, NDI, music, live inputs, actions, timelines, recording, recording the stage screen, recording the Music tab's sound, 60 fps, recordings filed into the Media tab, and replaying the newest recording.
@@ -81,10 +83,14 @@ Tests ported: `RecordingLibraryTests.swift` → `RecordingLibraryTests.cs`; `Med
 - `src/MxU.Slides.Windows/ViewModels/MainViewModel.Live.cs`: one line in `RenderOutputs`, after the outputs get their scene: `ScreenFeeds?.Show(OutputRole.Audience, audience, refreshOnly ? null : transition);`
 - `src/MxU.Slides.Windows/ViewModels/MainViewModel.Stage.cs`: one line at the end of `RenderStage`: `ScreenFeeds?.Show(OutputRole.Stage, scene, refreshOnly ? null : SceneTransition.Cut);`
 - `src/MxU.Slides.Windows/Infrastructure/SelfTest.cs`: `partial`; `await BroadcastExtrasCheck();` after `await ProPresenterCheck();`; in `RecordingCheck`, `var file = await RecordedFileAsync(session);` (the file now moves into the library when it's finished).
+- `src/MxU.Slides.Windows/App.xaml.cs`: the one-copy-per-data-folder mutex (`InstanceName()`), copied word for word from the integration branch so it merges cleanly.
 - `OutputManager.cs`: **not changed**. `ScreenFeeds` uses only `OutputManager.Config`.
+- In my own projects, two fixes to code from before Phase 4: blob marshalling in `Media/MediaFoundationInterop.cs` (all `GetBlob`/`SetBlob`), and the async encoder driver in `Media/MftEncoder.cs`.
 
 ## Integration to-dos
 
 - If the render agent changes how `RenderOutputs` or `RenderStage` hand scenes to the outputs (per-item transitions, looks), keep the two `ScreenFeeds?.Show(...)` lines next to them. If the outputs' per-screen scene logic in `OutputManager.SceneFor` changes (for example slide-theme looks), mirror it in `ScreenFeeds.SceneFor`, or give `OutputManager` a public `SceneFor(Guid)` and have `ScreenFeeds` call it.
 - `UpdateProgramAudio()` (called from `MainViewModel.cs`) is now empty and could be removed with its call.
+- `Themes/Dark.xaml`'s ComboBox template has no `PART_EditableTextBox`, so an editable ComboBox shows no text. The font box in `MainWindow.xaml` (`IsEditable="True"`) is affected. The Stream & Record window avoids editable boxes ("New folder…" asks for a name instead).
+- `AudioLevelTests.MixFeedSumsMembersOnItsOwnClock` (not changed by me) failed once in a full run while other agents loaded the PC, and passed three reruns. It waits 150 ms on the real clock, so it can be flaky under load.
 - Recordings now go into the library by default (as on the Mac), not Videos\MxU Slides. A preset's **Also copy to** has a one-click "Videos\MxU Slides" button. Mention this in the README's recording paragraph.

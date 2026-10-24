@@ -488,22 +488,31 @@ public sealed class BroadcastWindow : Window
             if (preset.RecordWhileStreaming != true) return;
         }
 
+        // Pick one of the library's media folders, or name a new one.
+        const string newFolder = "\u0001new";
         var currentFolder = preset.RecordLibraryFolder ?? RecordingLibrary.DefaultFolder;
-        var folders = model.MediaFolders().ToList();
-        if (!folders.Contains(currentFolder)) folders.Add(currentFolder);
-        // Pick from the library's folders, or type a new one.
-        var folder = new ComboBox { ItemsSource = folders, IsEditable = true, Width = 220, SelectedItem = currentFolder };
-        void SaveFolder()
-        {
-            var typed = folder.Text.Trim().Replace('\\', '/').Trim('/');
-            preset.RecordLibraryFolder = typed.Length == 0 || typed == RecordingLibrary.DefaultFolder ? null : typed;
-            Save(preset);
-        }
-        folder.LostFocus += (_, _) => SaveFolder();
+        var names = model.MediaFolders().ToList();
+        if (!names.Contains(currentFolder)) names.Add(currentFolder);
+        var folders = names.Select(f => new Choice<string>(f, f == RecordingLibrary.DefaultFolder ? $"{f} (default)" : f)).ToList();
+        folders.Add(new Choice<string>(newFolder, "New folder…"));
+        var folder = new ComboBox { ItemsSource = folders, Width = 220, SelectedItem = folders.First(f => f.Value == currentFolder) };
         folder.SelectionChanged += (_, _) =>
         {
-            if (folder.SelectedItem is string picked) folder.Text = picked;
-            SaveFolder();
+            if (folder.SelectedItem is not Choice<string> picked) return;
+            var name = picked.Value;
+            if (name == newFolder)
+            {
+                name = InputDialog.Ask(this, "Recordings folder", "Name the media folder recordings go into (use / for a folder inside another):", "Recordings/")
+                    ?.Trim().Replace('\\', '/').Trim('/') ?? "";
+                if (name.Length == 0)
+                {
+                    BuildEditor();
+                    return;
+                }
+            }
+            preset.RecordLibraryFolder = name == RecordingLibrary.DefaultFolder ? null : name;
+            Save(preset);
+            BuildEditor();
         };
         editor.Children.Add(Row("Save to", new StackPanel
         {
