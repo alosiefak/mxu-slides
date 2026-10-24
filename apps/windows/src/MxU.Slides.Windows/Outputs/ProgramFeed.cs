@@ -35,6 +35,9 @@ public sealed class ProgramFeed(MediaHub media, int width = 1920, int height = 1
     /// <summary>Why the feed can't run, or null.</summary>
     public string? Problem => capture?.Problem;
 
+    /// <summary>True when this PC can't use Windows' fast capture and frames come from the slower software copy.</summary>
+    public bool UsesSoftwareCopy => capture?.UsesSoftwareCopy == true;
+
     /// <summary>Raised on the UI thread when the feed starts or stops (the app sends it the live scene then).</summary>
     public event Action? ActiveChanged;
 

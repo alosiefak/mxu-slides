@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Windows.Infrastructure;
@@ -22,13 +24,26 @@ namespace MxU.Slides.Windows.Outputs;
 /// </list>
 /// If the destinations fall behind, frames are skipped and counted rather than slowing the
 /// operator's screen.
+/// <para>
+/// Some PCs can't use Windows' capture at all (virtual machines, some remote sessions): it
+/// starts but never delivers a picture. Two seconds without one, this switches to a slower
+/// software copy (<see cref="UsesSoftwareCopy"/>): WPF draws the content into a bitmap on the
+/// UI thread, as often as it can without taking more than about a third of that thread's time.
+/// Recording and streaming then still work, at a lower frame rate.
+/// </para>
 /// </summary>
 public sealed class HiddenCapture : IDisposable
 {
     private readonly Func<IProgramSink[]> sinks;
     private readonly Lock frameGate = new();
     private readonly Window window;
-    private readonly WindowCapture? capture;
+    private readonly FrameworkElement content;
+    private readonly string title;
+    private readonly DispatcherTimer watchdog;
+    private WindowCapture? capture;
+    private DispatcherTimer? softwareCopy;
+    private RenderTargetBitmap? copyTarget;
+    private byte[] copyPixels = [];
     private readonly Thread pacer;
     private volatile bool running = true;
     private byte[] latest = [];
@@ -40,6 +55,8 @@ public sealed class HiddenCapture : IDisposable
     public HiddenCapture(FrameworkElement content, int width, int height, int frameRate, Func<IProgramSink[]> sinks, string title)
     {
         this.sinks = sinks;
+        this.content = content;
+        this.title = title;
         Width = width;
         Height = height;
         FrameRate = frameRate;
@@ -70,25 +87,92 @@ public sealed class HiddenCapture : IDisposable
             NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_BOTTOM, 0, 0, width, height, NativeMethods.SWP_NOACTIVATE);
         };
         window.Show();
+        watchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        watchdog.Tick += (_, _) =>
+        {
+            watchdog.Stop();
+            if (running && FramesCaptured == 0) StartSoftwareCopy("Windows' capture delivered no picture");
+        };
         try
         {
+            // MXU_SLIDES_CAPTURE=software forces the slower copy (to test it, or on a PC whose capture misbehaves).
+            if (string.Equals(Environment.GetEnvironmentVariable("MXU_SLIDES_CAPTURE"), "software", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("MXU_SLIDES_CAPTURE is set to software");
+            // Once Windows' capture has failed on this PC, later captures (the next recording) start on the copy straight away.
+            if (FastCaptureFailed) throw new InvalidOperationException("it delivered nothing earlier");
             capture = new WindowCapture(new WindowInteropHelper(window).Handle, OnCaptured);
+            watchdog.Start();
         }
         catch (Exception ex)
         {
-            Problem = $"This PC can't capture the picture for recording, streaming or NDI ({ex.Message}).";
             Log.Error($"Starting the capture for {title} failed", ex);
+            StartSoftwareCopy(ex.Message);
         }
         pacer = new Thread(Pace) { IsBackground = true, Name = title, Priority = ThreadPriority.AboveNormal };
         pacer.Start();
+    }
+
+    /// <summary>
+    /// Windows' capture failed on this PC (this run of the app), so captures use the slower copy.
+    /// It can't draw the graphics-card effects and output corrections (WPF's software drawing
+    /// skips pixel shader 3.0), so recordings and streams from such a PC show the slides without them.
+    /// </summary>
+    public static bool FastCaptureFailed { get; private set; }
+
+    /// <summary>The slower fallback: WPF draws the content into a bitmap on the UI thread.</summary>
+    private void StartSoftwareCopy(string reason)
+    {
+        if (softwareCopy is not null) return;
+        FastCaptureFailed = true;
+        capture?.Dispose();
+        capture = null;
+        Problem = $"This PC can't use Windows' fast capture ({reason}), so recording, streaming and NDI use a slower copy.";
+        Log.Warn($"{title}: {Problem}");
+        copyTarget = new RenderTargetBitmap(Width, Height, 96, 96, PixelFormats.Pbgra32);
+        copyPixels = new byte[Width * Height * 4];
+        softwareCopy = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1.0 / Math.Min(FrameRate, 15)) };
+        softwareCopy.Tick += (_, _) => CopyInSoftware();
+        softwareCopy.Start();
+    }
+
+    private void CopyInSoftware()
+    {
+        if (!running || copyTarget is null || softwareCopy is null) return;
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            // Draw the content stretched to exactly Width × Height pixels, whatever the screen's DPI.
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                var area = new Rect(0, 0, Width, Height);
+                dc.DrawRectangle(Brushes.Black, null, area);
+                dc.DrawRectangle(new VisualBrush(content) { Stretch = Stretch.Fill }, null, area);
+            }
+            copyTarget.Clear();
+            copyTarget.Render(visual);
+            copyTarget.CopyPixels(copyPixels, Width * 4, 0);
+            OnCaptured(copyPixels, Width, Height);
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"{title}: the software copy failed", ex);
+        }
+        // Keep the operator's screen responsive: at most about a third of the UI thread's time.
+        var spent = TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - started) / (double)Stopwatch.Frequency);
+        var fastest = TimeSpan.FromSeconds(1.0 / Math.Min(FrameRate, 15));
+        softwareCopy.Interval = spent * 3 > fastest ? spent * 3 : fastest;
     }
 
     public int Width { get; }
     public int Height { get; }
     public int FrameRate { get; }
 
-    /// <summary>Why frames can't be captured, or null.</summary>
-    public string? Problem { get; }
+    /// <summary>Why frames can't be captured the fast way, or null.</summary>
+    public string? Problem { get; private set; }
+
+    /// <summary>True when frames come from the slower software copy (see the class summary).</summary>
+    public bool UsesSoftwareCopy => softwareCopy is not null;
 
     /// <summary>New pictures read from the window (only when something changed).</summary>
     public long FramesCaptured => Interlocked.Read(ref captured);
@@ -155,6 +239,8 @@ public sealed class HiddenCapture : IDisposable
     public void Dispose()
     {
         running = false;
+        watchdog.Stop();
+        softwareCopy?.Stop();
         pacer.Join(1000);
         capture?.Dispose();
         window.Content = null;
