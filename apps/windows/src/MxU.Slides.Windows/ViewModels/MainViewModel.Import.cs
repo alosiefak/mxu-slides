@@ -276,6 +276,8 @@ public sealed partial class MainViewModel
         try
         {
             var results = await PptxImporter.ImportItemsAsync(paths, Library, progress: progress);
+            // A deck's embedded fonts were saved into the library: load them before it's drawn.
+            if (results.Any(r => r.StoredFonts.Count > 0)) ActivateLibraryFonts();
             foreach (var result in results)
             {
                 if (!result.Succeeded) Log.Warn($"PowerPoint import of {result.SourcePath} failed: {result.FailureReason}");

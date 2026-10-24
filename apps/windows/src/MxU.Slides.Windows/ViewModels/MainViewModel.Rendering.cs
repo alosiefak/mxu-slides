@@ -20,4 +20,17 @@ public sealed partial class MainViewModel
 
     /// <summary>The theme of the slide being edited (the canvas, its inspector and the Design picker use it).</summary>
     private Theme? EditedSlideTheme => EditedSlide is { } slide && CurrentPresentation is { } p ? ThemeFor(slide, p) : CurrentTheme;
+
+    // MARK: Library fonts
+
+    /// <summary>
+    /// Loads fonts newly saved into the library (an import's embedded fonts) and, if any were new,
+    /// redraws what's on screen so text that had a stand-in font gets its real one.
+    /// </summary>
+    public void ActivateLibraryFonts()
+    {
+        if (Rendering.FontMap.ActivateStored(Library.Root) == 0) return;
+        RebuildSlides();
+        if (Show.Live is not null || Show.LiveOverlays.Count > 0) RenderOutputs(Rendering.SceneTransition.Cut, refreshOnly: true);
+    }
 }

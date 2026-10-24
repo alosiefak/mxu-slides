@@ -74,6 +74,12 @@ public static class PathTextRenderer
         }
     }
 
+    /// <summary>Forgets the laid-out strips (fonts were added).</summary>
+    public static void ForgetLayouts()
+    {
+        lock (Strips) Strips.Clear();
+    }
+
     private static FlatPath? PathFor(string pathData, SceneRect frame)
     {
         lock (Paths)

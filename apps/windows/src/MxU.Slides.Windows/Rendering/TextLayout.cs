@@ -102,6 +102,14 @@ public sealed class TextLayout
 
     private static readonly Dictionary<string, bool> OverflowCache = new(StringComparer.Ordinal);
 
+    /// <summary>Forgets every cached layout, page and fit (fonts were added: text may now measure differently).</summary>
+    public static void ForgetMeasurements()
+    {
+        lock (Cache) Cache.Clear();
+        lock (PagesCache) PagesCache.Clear();
+        lock (OverflowCache) OverflowCache.Clear();
+    }
+
     /// <summary>
     /// True when the words don't fit a frame of this size even after shrinking as far as the text
     /// allows, so the output cuts the end off (the slide grid's warning badge). Line breaks inside
