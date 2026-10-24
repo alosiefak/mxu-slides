@@ -4,6 +4,7 @@ using MxU.Slides.Audio;
 using MxU.Slides.Audio.Control;
 using MxU.Slides.Audio.Library;
 using MxU.Slides.Audio.Multitrack;
+using MxU.Slides.Audio.Timeline;
 using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
@@ -39,7 +40,7 @@ public sealed partial class MainViewModel : ITimelineHost, ITimecodeHost, ITimec
     private TimelinePlayer CreateTimeline()
     {
         timelineMusic = new TimelineMusic(Audio);
-        tracks = new LazyTracksPlayer();
+        tracks = new LazyTracksPlayer(TrackRoutingFor);
         var created = new TimelinePlayer(this, this, new LibraryStoreActions(Library, () => SelectedService), tracks, ui: SynchronizationContext.Current);
         created.Noted += (crumb, detail) => Log.Info($"Timeline: {crumb} {detail}");
         created.Changed += UpdateTimelineBar;
@@ -126,6 +127,18 @@ public sealed partial class MainViewModel : ITimelineHost, ITimecodeHost, ITimec
         CurrentPresentation is { } p ? PresentationTimelines.Timeline(SelectedArrangement?.Id, p) : null;
 
     private void UpdateTimelineBar()
+    {
+        try
+        {
+            UpdateTimelineBarState();
+        }
+        finally
+        {
+            TimelineBarUpdated?.Invoke();
+        }
+    }
+
+    private void UpdateTimelineBarState()
     {
         if (TimelineTarget is not { } target)
         {
@@ -277,6 +290,85 @@ public sealed partial class MainViewModel : ITimelineHost, ITimecodeHost, ITimec
             Cues = [],
         };
 
+    // MARK: The timeline editor
+
+    /// <summary>
+    /// Goes up by one each time a song's timelines (or section map) are saved, so the timeline
+    /// editor knows to lay its lanes out again rather than only move its playhead.
+    /// </summary>
+    public int TimelineRevision { get; private set; }
+
+    /// <summary>Raised after the timeline bar is brought up to date: when the song changes, a timeline is saved, and 30 times a second while one plays.</summary>
+    public event Action? TimelineBarUpdated;
+
+    /// <summary>The song the timeline editor shows: the open one, as opened (its service item and arrangement).</summary>
+    public (string ItemId, Presentation Presentation, string? ArrangementId)? TimelineEditorTarget => TimelineTarget;
+
+    /// <summary>The service item behind a timeline's item id (null for a song opened from the library).</summary>
+    public ServiceItem? TimelineServiceItem(string? timelineItemId) =>
+        ServiceItemOf(timelineItemId) is { } id ? SelectedService?.Items.FirstOrDefault(i => i.Id == id) : null;
+
+    /// <summary>Saves a song the timeline editor changed (its timelines and section map) and brings the bar up to date.</summary>
+    public void SaveTimelineSong(Presentation presentation)
+    {
+        Library.Save(presentation);
+        TimelineRevision++;
+        UpdateTimelineBar();
+    }
+
+    // MARK: Tracks (stems) on this computer
+
+    private TrackOutputSettings? trackOutputs;
+
+    /// <summary>This computer's tracks setup: the interface, each family's output, each track's fader, mute and solo.</summary>
+    public TrackOutputSettings TrackOutputs => trackOutputs ??= TrackRouting.Load(Path.Combine(AppPaths.DataRoot, TrackRouting.FileName));
+
+    /// <summary>Saves the tracks setup and sends the new routing to the stems player.</summary>
+    public void SaveTrackOutputs()
+    {
+        try
+        {
+            TrackRouting.Save(TrackOutputs, Path.Combine(AppPaths.DataRoot, TrackRouting.FileName));
+        }
+        catch (Exception error)
+        {
+            Log.Error("Couldn't save the tracks setup", error);
+        }
+        ApplyTrackRouting();
+    }
+
+    /// <summary>The church's tracks (click, guide, keys...), in playback order.</summary>
+    public IReadOnlyList<TrackChannel> TrackChannels => Library.Get<TrackChannelList>(TrackChannelList.WellKnownId)?.Channels ?? [];
+
+    /// <summary>Changes the track list (made the first time it's needed) and sends the new routing to the stems player.</summary>
+    public void UpdateTrackChannels(Action<List<TrackChannel>> change)
+    {
+        var list = Library.Get<TrackChannelList>(TrackChannelList.WellKnownId)
+            ?? new TrackChannelList { Id = TrackChannelList.WellKnownId, Channels = [] };
+        var channels = list.Channels.Select(c => c.Copy()).ToList();
+        change(channels);
+        list.Channels = channels;
+        Library.Save(list);
+        ApplyTrackRouting();
+    }
+
+    /// <summary>Sends the tracks setup to the stems player (if it is running yet; it picks it up when it starts).</summary>
+    public void ApplyTrackRouting() => tracks?.Refresh();
+
+    /// <summary>
+    /// The interface and mixer the stems play through: the device chosen in the tracks setup
+    /// (else the Windows default) and <see cref="TrackRouting.Build"/> for the church's tracks
+    /// plus any channel a song has stems on that is no longer in the list.
+    /// </summary>
+    private (AudioOutputDevice? Device, MultitrackRouting Routing) TrackRoutingFor(IEnumerable<string> songChannels)
+    {
+        var settings = TrackOutputs;
+        var devices = AudioDeviceList.OutputDevices();
+        var device = settings.DeviceUid is { } uid ? devices.FirstOrDefault(d => d.Uid == uid) : null;
+        var channels = device?.ChannelCount ?? AudioDeviceList.DefaultOutputDevice()?.ChannelCount ?? 2;
+        return (device, TrackRouting.Build(TrackChannels, settings, channels, songChannels));
+    }
+
     // MARK: ITimelineHost
 
     Presentation? ITimelineHost.Presentation(string id) => Library.Get<Presentation>(id);
@@ -287,6 +379,7 @@ public sealed partial class MainViewModel : ITimelineHost, ITimecodeHost, ITimec
         if (undoLabel is not null && undoTo is not null) lastTake = (presentationId, undoTo);
         presentation.Timelines = timelines;
         Library.Save(presentation);
+        TimelineRevision++;
         UpdateTimelineBar();
     }
 
@@ -433,9 +526,13 @@ public sealed partial class MainViewModel : ITimelineHost, ITimecodeHost, ITimec
     /// The multitrack (stems) player, made the first time a timeline has stems to play, so
     /// songs without stems never open a second sound stream.
     /// </summary>
-    private sealed class LazyTracksPlayer : ITracksPlayer, IDisposable
+    /// <param name="routing">The interface and mixer for the stems, given the channels of the songs about to play.</param>
+    private sealed class LazyTracksPlayer(Func<IEnumerable<string>, (AudioOutputDevice? Device, MultitrackRouting Routing)> routing) : ITracksPlayer, IDisposable
     {
         private LocalTracksPlayer? player;
+
+        // The channels of the songs it has been asked to play (so a track taken out of the list still sounds).
+        private readonly HashSet<string> songChannels = new(StringComparer.Ordinal);
 
         private LocalTracksPlayer Player
         {
@@ -443,9 +540,34 @@ public sealed partial class MainViewModel : ITimelineHost, ITimecodeHost, ITimec
             {
                 if (player is not null) return player;
                 player = new LocalTracksPlayer(new MultitrackEngine());
-                player.Attach(null);
+                Apply();
                 return player;
             }
+        }
+
+        /// <summary>Sends the current interface and mixer again (the tracks setup or the track list changed).</summary>
+        public void Refresh()
+        {
+            if (player is not null) Apply();
+        }
+
+        private void Apply()
+        {
+            if (player is null) return;
+            var (device, mixer) = routing(songChannels);
+            player.Attach(device);
+            player.SetRouting(mixer);
+        }
+
+        // Before a song plays, the mixer must know its tracks: a stem on a channel it doesn't know plays silently.
+        private LocalTracksPlayer For(params MultitrackSong?[] songs)
+        {
+            var added = false;
+            foreach (var stem in songs.OfType<MultitrackSong>().SelectMany(s => s.Stems)) added |= songChannels.Add(stem.ChannelId);
+            var existed = player is not null;
+            var ready = Player;
+            if (added && existed) Apply();
+            return ready;
         }
 
         public string? LatestSongId => player?.LatestSongId;
@@ -454,22 +576,22 @@ public sealed partial class MainViewModel : ITimelineHost, ITimecodeHost, ITimec
 
         public double? Position(string songId) => player?.Position(songId);
 
-        public void Play(MultitrackSong song, double from) => Player.Play(song, from);
+        public void Play(MultitrackSong song, double from) => For(song).Play(song, from);
 
         public void Crossfade(MultitrackSong? to, double from, double seconds)
         {
-            if (to is not null || player is not null) Player.Crossfade(to, from, seconds);
+            if (to is not null || player is not null) For(to).Crossfade(to, from, seconds);
         }
 
         public void Stop() => player?.Stop();
 
         public void Seek(double position) => player?.Seek(position);
 
-        public void Chase(MultitrackSong song, double position, double hostTime) => Player.Chase(song, position, hostTime);
+        public void Chase(MultitrackSong song, double position, double hostTime) => For(song).Chase(song, position, hostTime);
 
         public void Transition(MultitrackTransition? transition)
         {
-            if (transition is not null || player is not null) Player.Transition(transition);
+            if (transition is not null || player is not null) For(transition?.Next).Transition(transition);
         }
 
         public void CueAhead(IReadOnlyList<MultitrackSong> songs)

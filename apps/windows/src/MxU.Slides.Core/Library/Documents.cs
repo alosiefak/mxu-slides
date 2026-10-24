@@ -35,3 +35,15 @@ public sealed partial class SchedulerBoard : ILibraryDocument
 
 /// <summary>A streaming destination. Its stream key is a secret, kept out of the JSON (see the Broadcast project).</summary>
 public sealed partial class StreamDestination : ILibraryDocument;
+
+/// <summary>A song's stems from one download (MultiTracks.com and friends), so they can be added to a timeline together.</summary>
+public sealed partial class TrackSet : ILibraryDocument;
+
+/// <summary>The church's list of tracks (click, guide, keys…): one document, id "track-channels", as on the Mac.</summary>
+public sealed partial class TrackChannelList : ILibraryDocument
+{
+    /// <summary>The one list's id (TrackChannelList.wellKnownID on the Mac).</summary>
+    public const string WellKnownId = "track-channels";
+
+    string ILibraryDocument.Name { get => "Track Channels"; set { } }
+}

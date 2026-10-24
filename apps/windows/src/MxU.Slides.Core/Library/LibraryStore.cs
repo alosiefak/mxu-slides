@@ -33,6 +33,8 @@ public sealed class LibraryStore
         [typeof(StreamDestination)] = "StreamDestinations",
         [typeof(ControlBoard)] = "ComboBoard",
         [typeof(SchedulerBoard)] = "SchedulerBoard",
+        [typeof(TrackSet)] = "TrackSets",
+        [typeof(TrackChannelList)] = "TrackChannels",
     };
 
     private readonly object gate = new();
