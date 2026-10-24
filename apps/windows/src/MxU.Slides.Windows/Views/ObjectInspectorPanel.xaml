@@ -17,20 +17,21 @@
                        ToolTip="The name shown in lists, and beside a text field when you type into the overlay" />
             <TextBox Text="{Binding Name, UpdateSourceTrigger=LostFocus}" KeyDown="NumberBox_KeyDown" />
         </DockPanel>
-        <WrapPanel Margin="0,0,0,6">
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
             <TextBlock Text="X" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
-            <TextBox Text="{Binding X, UpdateSourceTrigger=LostFocus}" Width="54" Margin="0,0,6,0" KeyDown="NumberBox_KeyDown" />
+            <TextBox Text="{Binding X, UpdateSourceTrigger=LostFocus}" Width="56" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
             <TextBlock Text="Y" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
-            <TextBox Text="{Binding Y, UpdateSourceTrigger=LostFocus}" Width="54" Margin="0,0,6,0" KeyDown="NumberBox_KeyDown" />
+            <TextBox Text="{Binding Y, UpdateSourceTrigger=LostFocus}" Width="56" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
             <TextBlock Text="W" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
-            <TextBox Text="{Binding W, UpdateSourceTrigger=LostFocus}" Width="54" Margin="0,0,6,0" KeyDown="NumberBox_KeyDown" />
+            <TextBox Text="{Binding W, UpdateSourceTrigger=LostFocus}" Width="56" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
             <TextBlock Text="H" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
-            <TextBox Text="{Binding H, UpdateSourceTrigger=LostFocus}" Width="54" Margin="0,0,6,0" KeyDown="NumberBox_KeyDown" />
-            <TextBlock Text="↻" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,4,4,0" ToolTip="Rotation (degrees)" />
-            <TextBox Text="{Binding Rotation, UpdateSourceTrigger=LostFocus}" Width="48" Margin="0,4,0,0" KeyDown="NumberBox_KeyDown" />
-        </WrapPanel>
+            <TextBox Text="{Binding H, UpdateSourceTrigger=LostFocus}" Width="56" KeyDown="NumberBox_KeyDown" />
+        </StackPanel>
         <DockPanel Margin="0,0,0,6">
-            <TextBlock Text="Opacity" Style="{StaticResource Muted}" Width="56" VerticalAlignment="Center" />
+            <TextBlock DockPanel.Dock="Left" Text="↻" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" ToolTip="Rotation (degrees)" />
+            <TextBox DockPanel.Dock="Left" Text="{Binding Rotation, UpdateSourceTrigger=LostFocus}" Width="48" Margin="0,0,12,0" KeyDown="NumberBox_KeyDown"
+                     ToolTip="Rotation (degrees)" />
+            <TextBlock DockPanel.Dock="Left" Text="Opacity" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
             <Slider Minimum="0" Maximum="100" Value="{Binding Opacity}" VerticalAlignment="Center" />
         </DockPanel>
 
@@ -43,30 +44,31 @@
             </DockPanel>
             <TextBox x:Name="InspectorText" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True"
                      TextWrapping="Wrap" MinHeight="48" Margin="0,0,0,6" Visibility="{Binding IsTyped, Converter={StaticResource Visible}}" />
-            <WrapPanel Margin="0,0,0,6">
-                <ComboBox ItemsSource="{Binding FontFamilies}" Text="{Binding FontFamily, UpdateSourceTrigger=LostFocus}"
-                          IsEditable="True" Width="150" Margin="0,0,6,0" ToolTip="Font" />
-                <TextBox Text="{Binding FontSize, UpdateSourceTrigger=LostFocus}" Width="44" Margin="0,0,6,0" ToolTip="Size" KeyDown="NumberBox_KeyDown" />
-                <ToggleButton IsChecked="{Binding Bold}" Content="B" FontWeight="Bold" Width="30" Margin="0,0,2,0" />
-                <ToggleButton IsChecked="{Binding Italic}" Content="I" FontStyle="Italic" Width="30" Margin="0,0,6,0" />
-                <v:ColorPicker Hex="{Binding TextColor}" ToolTip="Text colour" Margin="0,4,0,0" />
-            </WrapPanel>
-            <WrapPanel Margin="0,0,0,6">
+            <DockPanel Margin="0,0,0,6">
+                <ToggleButton DockPanel.Dock="Right" IsChecked="{Binding Italic}" Content="I" FontStyle="Italic" Width="30" ToolTip="Italic" />
+                <ToggleButton DockPanel.Dock="Right" IsChecked="{Binding Bold}" Content="B" FontWeight="Bold" Width="30" Margin="0,0,2,0" ToolTip="Bold" />
+                <TextBox DockPanel.Dock="Right" Text="{Binding FontSize, UpdateSourceTrigger=LostFocus}" Width="44" Margin="6,0,6,0" ToolTip="Size" KeyDown="NumberBox_KeyDown" />
+                <ComboBox ItemsSource="{Binding FontChoices}" SelectedItem="{Binding FontFamily}" ToolTip="Font" />
+            </DockPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                 <ComboBox SelectedIndex="{Binding Alignment}" Width="84" Margin="0,0,6,0" ToolTip="Horizontal alignment">
                     <ComboBoxItem Content="Left" />
                     <ComboBoxItem Content="Centre" />
                     <ComboBoxItem Content="Right" />
                 </ComboBox>
-                <ComboBox SelectedIndex="{Binding VerticalAlignment}" Width="84" Margin="0,0,6,0" ToolTip="Vertical alignment">
+                <ComboBox SelectedIndex="{Binding VerticalAlignment}" Width="84" Margin="0,0,10,0" ToolTip="Vertical alignment">
                     <ComboBoxItem Content="Top" />
                     <ComboBoxItem Content="Middle" />
                     <ComboBoxItem Content="Bottom" />
                 </ComboBox>
-                <TextBlock Text="Line" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,4,4,0" />
-                <TextBox Text="{Binding LineHeight, UpdateSourceTrigger=LostFocus}" Width="40" Margin="0,4,6,0" ToolTip="Line height" KeyDown="NumberBox_KeyDown" />
-                <TextBlock Text="Spacing" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,4,4,0" />
-                <TextBox Text="{Binding Tracking, UpdateSourceTrigger=LostFocus}" Width="40" Margin="0,4,0,0" ToolTip="Letter spacing" KeyDown="NumberBox_KeyDown" />
-            </WrapPanel>
+                <v:ColorPicker Hex="{Binding TextColor}" ToolTip="Text colour" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                <TextBlock Text="Line height" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBox Text="{Binding LineHeight, UpdateSourceTrigger=LostFocus}" Width="44" Margin="0,0,12,0" ToolTip="Line height" KeyDown="NumberBox_KeyDown" />
+                <TextBlock Text="Letter spacing" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBox Text="{Binding Tracking, UpdateSourceTrigger=LostFocus}" Width="44" ToolTip="Letter spacing" KeyDown="NumberBox_KeyDown" />
+            </StackPanel>
             <WrapPanel>
                 <CheckBox Content="CAPS" IsChecked="{Binding Uppercase}" Margin="0,0,10,4" />
                 <CheckBox Content="Shrink to fit" IsChecked="{Binding AutoShrink}" Margin="0,0,10,4" />

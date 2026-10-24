@@ -198,6 +198,7 @@ public sealed partial class MainViewModel
     {
         foreach (var tile in Overlays.Where(t => t.Overlay.Id == overlay.Id))
             tile.Preview = OverlayTileViewModel.PreviewScene(overlay);
+        OverlayContentChanged?.Invoke(overlay);
         if (IsOverlayLive(overlay.Id))
         {
             Show.OverlayEdited(overlay);
@@ -233,6 +234,9 @@ public sealed partial class MainViewModel
     // MARK: For the overlay editor
 
     public bool IsOverlayLive(string id) => Show.LiveOverlays.Any(o => o.Id == id);
+
+    /// <summary>Raised after an overlay's content changed (typed in the bin, or edited), so an open editor can redraw it.</summary>
+    public event Action<Overlay>? OverlayContentChanged;
 
     /// <summary>Raised when overlays go up or come down, so the editor's Go Live button can follow.</summary>
     public event Action? LiveOverlaysChanged;

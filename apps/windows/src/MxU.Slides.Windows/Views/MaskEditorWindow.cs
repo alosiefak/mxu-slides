@@ -43,7 +43,7 @@ public sealed class MaskEditorWindow : Window
     private readonly SceneView picture = new() { PlaysVideo = false, Letterbox = new SolidColorBrush(Color.FromRgb(0x14, 0x14, 0x14)) };
     private readonly MaskSurface surface;
     private readonly OutputMaskPen pen = new();
-    private readonly ListBox maskList = new() { MinHeight = 120, MaxHeight = 220 };
+    private readonly ListBox maskList = new() { MinHeight = 60, MaxHeight = 220, BorderThickness = new Thickness(0) };
     private readonly StackPanel details = new();
     private readonly TextBlock hint = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
     private readonly ToggleButton drawButton = new() { Content = "+ Draw a mask", Margin = new Thickness(0, 0, 6, 0) };
@@ -125,6 +125,7 @@ public sealed class MaskEditorWindow : Window
             Select((maskList.SelectedItem as MaskRow)?.Id);
         };
         maskList.ItemTemplate = RowTemplate();
+        maskList.Background = (Brush)FindResource("Card");
         var side = new StackPanel { Margin = new Thickness(0, 0, 4, 0) };
         side.Children.Add(Section("MASKS"));
         side.Children.Add(maskList);
@@ -174,13 +175,14 @@ public sealed class MaskEditorWindow : Window
             Style = (Style)FindResource("Muted"),
             Margin = new Thickness(0, 0, 0, 10),
         };
-        var root = new DockPanel { Margin = new Thickness(16) };
+        var root = new DockPanel();
         DockPanel.SetDock(header, Dock.Top);
         DockPanel.SetDock(footer, Dock.Bottom);
         root.Children.Add(header);
         root.Children.Add(footer);
         root.Children.Add(body);
-        Content = root;
+        // Padding (not a margin) so the whole window draws from its top-left corner.
+        Content = new Border { Padding = new Thickness(16), Child = root };
 
         // The picture follows what the screen shows (clocks, slides changing) while the editor is open.
         pictureTimer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) => ShowPicture(force: false), Dispatcher);

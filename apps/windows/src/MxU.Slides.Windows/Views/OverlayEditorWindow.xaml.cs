@@ -29,11 +29,24 @@ public partial class OverlayEditorWindow : Window
             Model.ShowingObjectTab = true;
             InspectorPanel.FocusText();
         }, DispatcherPriority.Loaded);
+        // Picking a step scrolls its settings into view, as the Mac's inspector does.
+        Model.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(OverlayEditorViewModel.StepEditor) && Model.StepEditor is not null)
+                Dispatcher.BeginInvoke(() => StepEditorPanel.BringIntoView(), DispatcherPriority.Loaded);
+        };
         Closed += (_, _) =>
         {
             Model.Dispose();
             if (ReferenceEquals(open, this)) open = null;
         };
+    }
+
+    /// <summary>The steps list grows to fit, so the mouse wheel scrolls the whole Animation tab instead.</summary>
+    private void StepList_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        AnimationScroll.ScrollToVerticalOffset(AnimationScroll.VerticalOffset - e.Delta / 3.0);
+        e.Handled = true;
     }
 
     public OverlayEditorViewModel Model { get; }

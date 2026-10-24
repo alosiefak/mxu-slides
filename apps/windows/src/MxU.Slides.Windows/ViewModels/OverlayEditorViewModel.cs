@@ -82,6 +82,7 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
     {
         this.main = main;
         main.LiveOverlaysChanged += OnLiveChanged;
+        main.OverlayContentChanged += OnChangedElsewhere;
         main.Library.Changed += OnLibraryChanged;
         previewClock = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Render, (_, _) => PreviewTick(), Dispatcher.CurrentDispatcher);
         previewClock.Stop();
@@ -94,6 +95,7 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
     {
         previewClock.Stop();
         main.LiveOverlaysChanged -= OnLiveChanged;
+        main.OverlayContentChanged -= OnChangedElsewhere;
         main.Library.Changed -= OnLibraryChanged;
         Canvas = null;
         main.FlushOverlayEdits();
@@ -122,12 +124,17 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     public partial OverlayTileViewModel? SelectedItem { get; set; }
 
-    partial void OnSelectedItemChanged(OverlayTileViewModel? oldValue, OverlayTileViewModel? newValue)
+    // The overlay on the canvas now. The list can be rebuilt (a rename re-sorts it) without reloading the canvas.
+    private Overlay? loadedOverlay;
+    private bool rebuildingItems;
+
+    partial void OnSelectedItemChanged(OverlayTileViewModel? value)
     {
-        if (ReferenceEquals(oldValue?.Overlay, newValue?.Overlay)) return;
+        if (rebuildingItems || ReferenceEquals(loadedOverlay, value?.Overlay)) return;
         main.FlushOverlayEdits();
         StopPreview();
-        if (newValue?.Overlay is { } overlay) originals.TryAdd(overlay.Id, MxuJson.Clone(overlay));
+        if (value?.Overlay is { } overlay) originals.TryAdd(overlay.Id, MxuJson.Clone(overlay));
+        loadedOverlay = value?.Overlay;
         LoadCurrent();
     }
 
@@ -181,10 +188,15 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
             }
             return;
         }
-        var selectedId = Current?.Id;
-        Items.Clear();
-        foreach (var overlay in overlays)
-            Items.Add(new OverlayTileViewModel(overlay, OverlayTileViewModel.PreviewScene(overlay)) { IsLive = main.IsOverlayLive(overlay.Id) });
+        var selectedId = loadedOverlay?.Id;
+        rebuildingItems = true;
+        try
+        {
+            Items.Clear();
+            foreach (var overlay in overlays)
+                Items.Add(new OverlayTileViewModel(overlay, OverlayTileViewModel.PreviewScene(overlay)) { IsLive = main.IsOverlayLive(overlay.Id) });
+        }
+        finally { rebuildingItems = false; }
         SelectedItem = Items.FirstOrDefault(t => t.Overlay.Id == selectedId) ?? (selectedId is null ? null : Items.FirstOrDefault());
     }
 
@@ -396,6 +408,7 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
         RefreshSteps();
         OnLiveChanged();
         OnPropertyChanged(nameof(PreviewDuration));
+        OnPropertyChanged(nameof(PlayheadText));
     }
 
     /// <summary>What needs re-reading after a change.</summary>
@@ -411,12 +424,27 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
         if (Current is not { } overlay) return;
         if (!ReferenceEquals(Mirror?.Objects, overlay.Objects)) LoadCurrent();
         canvas?.Refresh();
-        main.OverlayChanged(overlay);
+        changing = true;
+        try { main.OverlayChanged(overlay); }
+        finally { changing = false; }
         if (SelectedItem is { } tile) tile.Preview = OverlayTileViewModel.PreviewScene(overlay);
         if (parts.HasFlag(Parts.Objects)) RefreshObjects();
         if (parts.HasFlag(Parts.Fields)) RefreshFields();
         if (parts.HasFlag(Parts.Steps)) RefreshSteps();
         OnPropertyChanged(nameof(PreviewDuration));
+        OnPropertyChanged(nameof(PlayheadText));
+    }
+
+    private bool changing;
+
+    /// <summary>The overlay was changed outside the editor (its fields typed in the bin): show the new words.</summary>
+    private void OnChangedElsewhere(Overlay overlay)
+    {
+        if (changing || !ReferenceEquals(overlay, Current)) return;
+        canvas?.Refresh();
+        Inspector?.Refresh();
+        RefreshFields();
+        RefreshSteps();
     }
 
     // MARK: The canvas
@@ -801,6 +829,10 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
         previewClock.Stop();
         IsPlaying = false;
         canvas?.EndPreview();
+        // Back to the start, without the slider's move starting a scrub.
+        ticking = true;
+        Playhead = 0;
+        ticking = false;
     }
 
     private void PreviewTick()

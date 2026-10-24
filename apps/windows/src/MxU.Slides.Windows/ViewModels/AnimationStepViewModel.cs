@@ -159,15 +159,27 @@ public sealed partial class AnimationStepViewModel : ObservableObject
     /// <summary>Speed: 0 Quick, 1 Normal, 2 Slow, 3 Custom (type the seconds).</summary>
     public int SpeedIndex
     {
-        get => (int)AnimationNames.SpeedOf(Step.DurationSeconds);
+        get => IsCustomSpeed ? (int)AnimationSpeed.Custom : (int)AnimationNames.SpeedOf(Step.DurationSeconds);
         set
         {
-            if (((AnimationSpeed)value).Seconds() is { } seconds) Write(s => s.DurationSeconds = seconds);
-            else OnPropertyChanged(nameof(IsCustomSpeed));
+            if (((AnimationSpeed)value).Seconds() is { } seconds)
+            {
+                customChosen = false;
+                if (Math.Abs(seconds - Step.DurationSeconds) > 1e-9) Write(s => s.DurationSeconds = seconds);
+                else OnPropertyChanged(nameof(IsCustomSpeed));
+            }
+            else
+            {
+                // Custom: show the seconds box, starting from the current length.
+                customChosen = true;
+                OnPropertyChanged(nameof(IsCustomSpeed));
+            }
         }
     }
 
-    public bool IsCustomSpeed => AnimationNames.SpeedOf(Step.DurationSeconds) == AnimationSpeed.Custom;
+    private bool customChosen;
+
+    public bool IsCustomSpeed => customChosen || AnimationNames.SpeedOf(Step.DurationSeconds) == AnimationSpeed.Custom;
 
     public string Duration
     {
@@ -194,7 +206,11 @@ public sealed partial class AnimationStepViewModel : ObservableObject
     public int RampIndex
     {
         get => (int)AnimationEditing.EffectiveRamp(Step);
-        set => Write(s => s.Ramp = (AnimationRamp)Math.Clamp(value, 0, 3));
+        set
+        {
+            var ramp = (AnimationRamp)Math.Clamp(value, 0, 3);
+            if (ramp != AnimationEditing.EffectiveRamp(Step) || Step.Ramp is null) Write(s => s.Ramp = ramp);
+        }
     }
 
     public bool ShowsWithFade => Step.Animation != StepAnimation.Fade && Step.Kind is AnimationKind.In or AnimationKind.Out;
@@ -223,7 +239,11 @@ public sealed partial class AnimationStepViewModel : ObservableObject
     public int MoveFromIndex
     {
         get => Step.Edge is { } edge ? (int)edge : 4;
-        set => Write(s => s.Edge = value is >= 0 and <= 3 ? (AnimationEdge)value : null);
+        set
+        {
+            AnimationEdge? edge = value is >= 0 and <= 3 ? (AnimationEdge)value : null;
+            if (edge != Step.Edge) Write(s => s.Edge = edge);
+        }
     }
 
     public bool UsesOffset => IsMove && Step.Edge is null;
@@ -244,7 +264,11 @@ public sealed partial class AnimationStepViewModel : ObservableObject
     public int WipeFromIndex
     {
         get => (int)(Step.Edge ?? AnimationEdge.Left);
-        set => Write(s => s.Edge = (AnimationEdge)Math.Clamp(value, 0, 3));
+        set
+        {
+            var edge = (AnimationEdge)Math.Clamp(value, 0, 3);
+            if (edge != Step.Edge) Write(s => s.Edge = edge);
+        }
     }
 
     public string SoftEdge

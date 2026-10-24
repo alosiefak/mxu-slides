@@ -103,6 +103,9 @@ public sealed partial class SelfTest
             Check("Play previews the animation on the canvas", editor.CanvasEditor.IsPreviewing);
             await Delay((int)(vm.PreviewDuration * 1000) + 900);
             Check("the preview ends by itself and goes back to editing", !editor.CanvasEditor.IsPreviewing);
+            vm.ShowingOverlayTab = true;
+            await Delay(400);
+            Save(editor, "17-overlay-editor-settings");
             vm.ShowingObjectTab = true;
             vm.SelectObjects([name.Id]);
             await Delay(400);
@@ -201,6 +204,8 @@ public sealed partial class SelfTest
             editor.ClickAt(0.75, 0);
             editor.ClickAt(0.75, 1);
             editor.ClickAt(0.25, 1);
+            await Delay(300);
+            Save(editor, "18-mask-editor-drawing");
             Check("Enter closes the drawn mask", editor.FinishDrawing());
             var masks = config.Masks(screen.Id);
             Check("the drawn mask is in the screen's library", masks.Count == 1 && masks[0] is { Name: "Mask 1", Mode: OutputMaskMode.Out, AlwaysOn: true });

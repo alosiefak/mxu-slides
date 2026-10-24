@@ -111,6 +111,12 @@ public sealed partial class ObjectInspectorViewModel : ObservableObject
 
     public IReadOnlyList<string> FontFamilies { get; } = FontMap.InstalledFamilies();
 
+    /// <summary>
+    /// The fonts to pick from, with the current one in the list even when this PC hasn't got
+    /// it (a Mac font such as Helvetica Neue, drawn here with a stand-in).
+    /// </summary>
+    public IReadOnlyList<string> FontChoices => FontFamilies.Contains(FontFamily) ? FontFamilies : [FontFamily, .. FontFamilies];
+
     /// <summary>The font family part of the font name (e.g. "HelveticaNeue" or "Segoe UI").</summary>
     public string FontFamily
     {
