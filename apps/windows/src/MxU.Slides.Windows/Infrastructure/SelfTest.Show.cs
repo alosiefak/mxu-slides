@@ -127,13 +127,14 @@ public sealed partial class SelfTest
     private async Task AutoAdvanceChecks(MediaItem? video)
     {
         if (FlowRowView("flow-announce") is not { } announce) return;
+        var fired = DateTime.UtcNow;
         model.FireServiceItemCommand.Execute(announce);
         Check("a timed slide goes live with its auto-advance chip", AudienceText().Contains("Announcement 1") && model.AutoAdvanceVisible
             && model.AutoAdvance.Remaining() is > 1 and <= 1.2);
         await Step("70-show-auto-advance", () => { }, settle: 250);
         var took = await WhenShown(() => AudienceText().Contains("Announcement 2"), 4);
         Check("a slide timer advances to the next slide by itself", took is not null);
-        report.AppendLine($"NOTE  the 1.2 s timer moved on {(took is { } t ? $"{t + 0.25:F2} s" : "never")} after the slide went live");
+        report.AppendLine($"NOTE  the 1.2 s timer moved on {(took is not null ? $"{(DateTime.UtcNow - fired).TotalSeconds:F2} s" : "never")} after the slide went live");
 
         await Delay(300);
         model.ToggleAutoAdvanceHoldCommand.Execute(null);
@@ -203,6 +204,15 @@ public sealed partial class SelfTest
         for (var i = 0; i < 40 && model.Live?.ItemId == "flow-video"; i++) await Delay(100);
         Check("a video's 'advance after playback' fires the next service row", model.Live?.ItemId == "flow-song" && AudienceText().Contains("Song line 1"));
         model.SetTransportSkip(30);
+
+        // Fired again a moment after it ended, while its player is still kept (paused at its end),
+        // the video starts over and plays.
+        model.FireMedia(video);
+        await Delay(400);
+        var again = model.Media.ActiveVideos.FirstOrDefault(v => v.MediaId == video.Id && v.Key.StartsWith("live:", StringComparison.Ordinal)).Key;
+        Check("a video fired again just after it ended plays from the start", again is not null
+            && model.Media.Transport(again) is { Playing: true } replay && replay.Position.TotalSeconds < 1.5);
+        model.ClearMediaCommand.Execute(null);
     }
 
     /// <summary>Music rows: the card, Next arriving on a playlist row plays it, Play/Stop on the card.</summary>
@@ -332,7 +342,7 @@ public sealed partial class SelfTest
         // The panel sits below the fold of the live column: scroll it into view for its picture.
         window.TrackingPanel.BringIntoView();
         await Step("77-show-tracking-panel", () => { }, settle: 500);
-        window.LiveControls.BringIntoView();
+        window.AudiencePreview.BringIntoView();
         Check("the tracking panel names the item and what's next", model.TrackingItemName == "Welcome" && model.TrackingNext.StartsWith("Next ·", StringComparison.Ordinal));
         model.ClearServiceTrackingCommand.Execute(null);
         Check("Clear stops the tracking timers", !model.IsTrackingService

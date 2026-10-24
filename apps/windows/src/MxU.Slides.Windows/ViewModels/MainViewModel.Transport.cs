@@ -1,6 +1,7 @@
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
@@ -34,33 +35,46 @@ public sealed partial class MainViewModel
             .Select(v => v.Key).FirstOrDefault();
 
     /// <summary>
-    /// The live video for a media item, read now, in the pass the operator sees (from the item's
-    /// in point to its out point, at its play rate). Null when no live player has it open.
+    /// The live video for a media item, read now, in the pass the operator sees. Null when no live
+    /// player has it open.
     /// <para>
-    /// This relies on MediaHub.Transport reporting the position in the file and the file's
-    /// length, and MediaHub.Seek taking a time in the file; if MediaHub starts reporting the pass
-    /// itself, drop the <see cref="MediaTransportState.Pass"/> step here and the seek's FileTime.
+    /// MediaHub reports the pass itself: position 0 is the item's in point and the length is
+    /// out − in (once the render work that honours trims is in; until then the pass is the whole
+    /// file), and MediaHub.Seek takes a time in the pass. So its values are used as they come;
+    /// only the play rate (how fast the time left runs out) comes from the item.
     /// </para>
     /// </summary>
     private MediaTransportState? LiveTransport(string mediaId, bool? loops = null)
     {
         if (LivePlayerKey(mediaId) is not { } key || Media.Transport(key) is not { Duration: { } duration } transport) return null;
-        var item = Library.Get<MediaItem>(mediaId);
         var position = transport.Position.TotalSeconds;
-        // A player that said it reached the end still reads there (a frame short, or at the out
-        // point): count it as at the end, so "finished" doesn't depend on the last frame's timing.
+        // A player that said its pass ended still reads there (or a frame short): count it as the
+        // end, so "finished" doesn't depend on the last frame's timing.
         if (endedPlayers.TryGetValue(key, out var endedAt))
         {
-            if (!transport.Playing && Math.Abs(position - endedAt) < 0.05)
-                position = item?.OutPoint is { } outPoint && outPoint < duration.TotalSeconds ? outPoint : duration.TotalSeconds;
-            else
-                endedPlayers.Remove(key);
+            if (!transport.Playing && Math.Abs(position - endedAt) < 0.05) position = duration.TotalSeconds;
+            else endedPlayers.Remove(key);
         }
-        return MediaTransportState.Pass(position, duration.TotalSeconds, item?.InPoint, item?.OutPoint,
-            transport.Playing, loops ?? LoopsLive(mediaId), DateTimeOffset.Now, item?.PlayRate);
+        var rate = Library.Get<MediaItem>(mediaId)?.PlayRate is { } r && r > 0 ? r : 1;
+        return new MediaTransportState(duration.TotalSeconds, position, transport.Playing, loops ?? LoopsLive(mediaId), DateTimeOffset.Now, rate);
     }
 
-    // Players that raised VideoEnded, with where they stopped (in the file).
+    /// <summary>
+    /// Puts a video back to the start of its pass, playing, on every player showing it (the Mac's
+    /// restart). A player is kept a moment after its video leaves the screen, so firing the same
+    /// video again could otherwise find it paused at its end. See <see cref="VideoRestarts"/> for when.
+    /// </summary>
+    private void RestartVideo(string mediaId)
+    {
+        foreach (var (key, _) in Media.ActiveVideos.Where(v => v.MediaId == mediaId).ToList())
+        {
+            Media.Seek(key, TimeSpan.Zero);
+            Media.Play(key);
+            endedPlayers.Remove(key);
+        }
+    }
+
+    // Players that raised VideoEnded, with where they stopped.
     private readonly Dictionary<string, double> endedPlayers = new(StringComparer.Ordinal);
 
     private void NoteVideoEnded(string playbackKey)
@@ -216,7 +230,8 @@ public sealed partial class MainViewModel
     {
         if (transportTargetId is not { } id || LivePlayerKey(id) is not { } key || LiveTransport(id) is not { } state) return;
         var pass = Math.Clamp(seconds, 0, state.Duration);
-        Media.Seek(key, TimeSpan.FromSeconds(MediaTransportState.FileTime(pass, Library.Get<MediaItem>(id)?.InPoint)));
+        Media.Seek(key, TimeSpan.FromSeconds(pass));
+        endedPlayers.Remove(key);
         RefreshTransport();
         AutoAdvance.PollNow();
     }

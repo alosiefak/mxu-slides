@@ -74,6 +74,10 @@ public sealed partial class MainViewModel : IAutoAdvanceHost
     /// <summary>A slide landed: its timer (if any) takes over from the last one, and the service clock notes its row.</summary>
     private void ShowFlowSlideLanded(Slide slide, Presentation presentation, string? itemId)
     {
+        // Its own videos start over (a finished one would otherwise sit at its end), before its timer arms.
+        foreach (var mediaId in VideoRestarts.OnSlideLanded(slide, presentation, Show.Live?.ArrangementId, Library.Get<MediaItem>,
+                     id => LiveTransport(id), DateTimeOffset.Now))
+            RestartVideo(mediaId);
         AutoAdvance.SlideLanded(slide, presentation);
         NoteServiceItemFired(itemId);
     }

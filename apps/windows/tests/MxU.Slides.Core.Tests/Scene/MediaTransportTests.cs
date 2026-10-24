@@ -6,7 +6,7 @@ namespace MxU.Slides.Core.Tests.Scene;
 
 // Ports of SlideSceneTests/MediaTransportTargetTests.swift (the target rules and the seeds),
 // MediaEngineTests/TransportTrackingTests.swift and the arithmetic case of TransportTests.swift
-// (the others drive the Mac's Metal player). The pass cases are Windows-only.
+// (the others drive the Mac's Metal player).
 public class MediaTransportTests
 {
     private static readonly DateTimeOffset T0 = new(2001, 1, 1, 2, 46, 40, TimeSpan.Zero);
@@ -198,19 +198,5 @@ public class MediaTransportTests
         Assert.False(new MediaTransportState(30, 29.97, true, false, T0).IsFinished(T0)); // still playing
         Assert.False(new MediaTransportState(30, 29.97, false, true, T0).IsFinished(T0)); // loops never finish
         Assert.False(new MediaTransportState(30, 12, false, false, T0).IsFinished(T0)); // paused part-way
-    }
-
-    [Fact]
-    public void ATrimmedFileReadsAsItsPass()
-    {
-        // A 60 s file trimmed to 10–40 s, read 25 s into the file: 15 s into a 30 s pass.
-        var pass = MediaTransportState.Pass(25, 60, 10, 40, isPlaying: true, isLooping: false, T0, rate: 2);
-        Assert.Equal((30, 15, 2.0), (pass.Duration, pass.Position, pass.Rate));
-        Assert.Equal(35, MediaTransportState.FileTime(25, 10)); // seeking 25 s into the pass
-        // No trim: the file is the pass; a bad out point is ignored; positions clamp into the pass.
-        Assert.Equal(60, MediaTransportState.Pass(5, 60, null, null, true, false, T0).Duration);
-        Assert.Equal(50, MediaTransportState.Pass(5, 60, 10, 4, true, false, T0).Duration);
-        Assert.Equal(0, MediaTransportState.Pass(5, 60, 10, null, true, false, T0).Position);
-        Assert.Equal(1, MediaTransportState.Pass(5, 60, null, null, true, false, T0, rate: 0).Rate);
     }
 }

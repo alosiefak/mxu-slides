@@ -364,6 +364,71 @@ public class AutoAdvanceControllerTests
         _ = clock;
     }
 
+    private static MediaItem BackgroundLoop(string id)
+    {
+        var item = Video(id);
+        item.Loops = true;
+        item.Classification = MediaClassification.Background;
+        return item;
+    }
+
+    [Fact]
+    public void ALoopingBackgroundNeverAdvancesTheSlide()
+    {
+        // MediaHub raises VideoEnded at every loop of a looping video. A slide that says "after
+        // playback" but has only a looping background has no video of its own to wait for: it
+        // counts its plain delay, and the background's pass ends move nothing.
+        var (controller, host, clock) = Make();
+        host.MediaItems["waves"] = BackgroundLoop("waves");
+        var deck = Deck(null, slide: i => new Slide
+        {
+            Id = $"s{i}", Name = $"Slide {i + 1}", Objects = [],
+            AutoAdvance = i == 0 ? new AutoAdvance { DelaySeconds = 30, AfterPlayback = true } : null,
+            Background = i == 0 ? new CueMedia { MediaId = "waves", Layer = CueMediaLayer.LoopingVideos } : null,
+        });
+        Land(host, deck, 0);
+        Assert.Null(controller.Pending?.MediaId); // it doesn't wait for the loop
+        for (var pass = 0; pass < 5; pass++)
+        {
+            host.Transports["waves"] = new MediaTransportState(4, 4, false, false, clock.Now); // a pass end, however it reads
+            controller.PollNow();
+            clock.Advance(4);
+            host.Transports["waves"] = new MediaTransportState(4, 0, true, true, clock.Now);
+            controller.PollNow();
+        }
+        Assert.Equal(["s0"], host.Fired);
+        Assert.Equal(10, controller.Remaining(clock.Now)!.Value, 3);
+    }
+
+    [Fact]
+    public void ASlideWaitingForItsVideoIgnoresTheBackgroundLoopsPassEnds()
+    {
+        var (_, host, clock) = Make();
+        host.MediaItems["waves"] = BackgroundLoop("waves");
+        host.MediaItems["clip"] = Video("clip");
+        host.Transports["waves"] = new MediaTransportState(2, 0, true, true, clock.Now);
+        host.Transports["clip"] = new MediaTransportState(8, 0, true, false, clock.Now);
+        var deck = Deck(null, slide: i => new Slide
+        {
+            Id = $"s{i}", Name = $"Slide {i + 1}",
+            Objects = i == 0 ? [new SlideObject { Id = "v", ObjectKind = SlideObjectKind.Shape, Name = "Video", Text = "", Fill = new ObjectFill { FillKind = FillKind.Media, MediaId = "clip" } }] : [],
+            AutoAdvance = i == 0 ? new AutoAdvance { DelaySeconds = 0, AfterPlayback = true } : null,
+            Background = i == 0 ? new CueMedia { MediaId = "waves", Layer = CueMediaLayer.LoopingVideos } : null,
+        });
+        Land(host, deck, 0);
+        var controller = host.Controller!;
+        Assert.Equal("clip", controller.Pending?.MediaId);
+        for (var t = 0; t < 7; t++)
+        {
+            clock.Advance(1);
+            controller.PollNow(); // the loop ended a pass (every 2 s)
+        }
+        Assert.Equal(["s0"], host.Fired);
+        host.Transports["clip"] = new MediaTransportState(8, 8, false, false, clock.Now);
+        controller.PollNow();
+        Assert.Equal(["s0", "s1"], host.Fired);
+    }
+
     [Fact]
     public void AfterPlaybackWithNoVideoIsAPlainTimer()
     {

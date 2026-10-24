@@ -6,8 +6,8 @@ namespace MxU.Slides.Core.Media;
 /// Where a playing video is, read once: its length and position at <see cref="CapturedAt"/>,
 /// whether it plays, loops, and how fast. Every later reading is worked out from that, so the
 /// transport strip, the countdowns and auto-advance never ask the player 30 times a second.
-/// Times are in the pass the operator sees: a trimmed video's pass starts at its in point and
-/// ends at its out point (see <see cref="Pass"/>). Port of MediaEngine/MediaTransport.swift.
+/// Times are in the pass the operator sees, as the player reports it: a trimmed video's pass
+/// starts (0) at its in point and is as long as out − in. Port of MediaEngine/MediaTransport.swift.
 /// </summary>
 public sealed record MediaTransportState(double Duration, double Position, bool IsPlaying, bool IsLooping, DateTimeOffset CapturedAt, double Rate = 1)
 {
@@ -45,24 +45,6 @@ public sealed record MediaTransportState(double Duration, double Position, bool 
 
     /// <summary>The pass played out: stopped at its end, not looping. Port of MediaTransportController.isFinished.</summary>
     public bool IsFinished(DateTimeOffset date) => !IsPlaying && !IsLooping && Duration > 0 && PositionAt(date) >= Duration - 0.05;
-
-    /// <summary>
-    /// A reading from a player that knows only the file (its position in the file and the file's
-    /// length), turned into the pass: from the in point to the out point (Windows-only; the Mac's
-    /// player reports the pass itself). Use <see cref="FileTime"/> to seek back into the file.
-    /// </summary>
-    public static MediaTransportState Pass(
-        double filePosition, double fileDuration, double? inPoint, double? outPoint, bool isPlaying, bool isLooping,
-        DateTimeOffset capturedAt, double? rate = null)
-    {
-        var start = Math.Clamp(inPoint ?? 0, 0, Math.Max(0, fileDuration));
-        var end = Math.Clamp(outPoint is { } trimmed && trimmed > start ? trimmed : fileDuration, start, Math.Max(start, fileDuration));
-        return new MediaTransportState(end - start, Math.Clamp(filePosition - start, 0, end - start), isPlaying, isLooping, capturedAt,
-            rate is { } r && r > 0 ? r : 1);
-    }
-
-    /// <summary>A time in the pass as a time in the file (for seeking a player that knows only the file).</summary>
-    public static double FileTime(double passSeconds, double? inPoint) => Math.Max(0, inPoint ?? 0) + Math.Max(0, passSeconds);
 }
 
 /// <summary>

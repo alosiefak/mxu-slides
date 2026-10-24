@@ -70,6 +70,15 @@ row when its timer runs out or its video ends.
 - `MediaPlayer` can report a frame short of the end after it says it ended. The transport reading
   remembers where each player stopped when it raised `VideoEnded`, and counts that as the end
   (`LiveTransport` in `MainViewModel.Transport.cs`), so "finished" never depends on the last frame.
+- **A stopped timer can still go off.** A timer on the show clock hands its callback to the UI
+  thread. If the UI thread is busy at that moment (the self-test was saving a picture), the callback
+  waits in line, and the operator can press Hold, or Next, before it runs. The first self-test run
+  caught exactly that: Hold was pressed just as the timer came due, and the slide moved on anyway.
+  Now every timer and poll checks, when its callback finally runs, that it's still the current one
+  (`After` and `Every` in `AutoAdvanceController.cs`), and the test `HoldingAsTheTimeComesWins…`
+  acts it out with a UI thread that only runs callbacks when told to.
+- A header row with no colour of its own was drawn in a fully transparent colour, so its name was
+  invisible (imported headers often have none). It now falls back to the muted grey, as on the Mac.
 
 ## 2. Music rows play
 
@@ -110,11 +119,32 @@ when it was read); every later moment is worked out from that, so nothing asks t
 a second. The strip, the stage display's video countdown and auto-advance all read the same thing.
 
 **What this relies on from MediaHub** (the render work in this phase makes it honour trims and play
-rate): `MediaHub.Transport(key)` gives the position *in the file* and the *file's* length;
-`MediaHub.Seek` takes a time in the file; `VideoEnded(key)` means "this pass reached its end or out
-point" and is raised for non-looping players only. `LiveTransport` turns the reading into the
-trimmed pass with `MediaTransportState.Pass` (the item's in and out points, its play rate). If
-MediaHub starts reporting the pass itself, drop that one step there (and `FileTime` in `TransportSeek`).
+rate):
+
+- `MediaHub.Transport(key)` reports the *pass*: position 0 is the item's in point, and the length is
+  out − in. (Before that work lands, the pass is simply the whole file.) `LiveTransport` uses those
+  values as they come; only the play rate, for how fast the time left runs out, comes from the item.
+- `MediaHub.Seek(key, t)` takes a time in the pass, so 0 is the in point.
+- `VideoEnded(key)` means "this pass reached its end or out point". It's raised at the end of every
+  loop of a looping video too, and a non-looping video has already paused when it fires.
+
+Auto-advance only ever looks at the video that asked to be waited for: a slide's own foreground
+video (or a video filling one of its shapes), or a media row's own item. `VideoEnded` only makes it
+check *that* video now instead of at its next poll, so a looping background's pass ends never move
+anything (`ALoopingBackgroundNeverAdvancesTheSlide`, `ASlideWaitingForItsVideoIgnoresTheBackgroundLoopsPassEnds`).
+
+### Firing a video again
+
+A video player is shared and kept for a moment after its video leaves the screen. Firing the same
+video again within that moment used to find the player paused at its end, so nothing played. Now,
+as on the Mac, firing restarts it from the start of its pass, playing (`Core/Automation/VideoRestarts.cs`,
+`RestartVideo` in `MainViewModel.Transport.cs`):
+
+- firing media restarts it, unless it's background media (a loop that carries on under the slides);
+- a slide landing restarts its own non-looping videos, and its foreground video background if that
+  one had played out (one still playing from the slide before carries on);
+- an overlay's non-looping videos restart when it goes up (the rule is ported and tested; the app
+  doesn't call it yet, because putting overlays up is in `MainViewModel.Overlays.cs`, outside show flow).
 
 The stage display's video countdown now follows the Mac: it counts down the Foreground Videos
 layer's video only; a background loop never counts down there.
@@ -188,10 +218,10 @@ week's service runs its "11am" too.
 
 ## Testing it
 
-- Unit tests: `AutoAdvanceControllerTests` (timers, loops, holds, builds, video ends, media rows),
-  `AutoAdvanceRulesTests`, `ServiceRunOrderTests`, `ServiceVersionsTests`, `ClearAllScopeTests`,
-  `MediaTransportTests`, `ServiceTrackingTimersTests`, and the `SlideStepsCompletedAt` cases in
-  `ExitSemanticsTests`.
+- Unit tests: `AutoAdvanceControllerTests` (timers, loops, holds, builds, video ends, media rows,
+  looping backgrounds, and a busy UI thread), `AutoAdvanceRulesTests`, `VideoRestartsTests`,
+  `ServiceRunOrderTests`, `ServiceVersionsTests`, `ClearAllScopeTests`, `MediaTransportTests`,
+  `ServiceTrackingTimersTests`, and the `SlideStepsCompletedAt` cases in `ExitSemanticsTests`.
 - Self-test: `Infrastructure/SelfTest.Show.cs` builds a throwaway service and drives all of the
   above in the real app. Pictures `70-show-*` to `79-show-*`.
 
@@ -222,9 +252,10 @@ Rows to add (Mac → C#):
 | `Sources/AppShell.swift` (service picker row menu: Change Date, Duplicate, serviceVersionMenu, ServiceVersionAlerts) | `Views/ServiceMenus.cs`, `Views/ServiceVersionChip.cs`, `Views/ServiceDateWindow.cs` |
 | `Sources/ServicePlannerView.swift` (hiddenGroupRow, hiddenRow, outputPresetMenu, the Changed badge) | `Views/HiddenServiceRows.xaml`, `Views/ServiceMenus.cs` (AddItemOptions), `Views/MainWindow.xaml` (badge) |
 | `Sources/PresentGridView.swift` (AudioFireView, PlaylistFireView) | `Views/ServiceMusicCard.xaml`, `ViewModels/MainViewModel.ServiceMusic.cs` |
+| `Sources/ServiceControls.swift` (restart, resolvedLoops, the restarts in land, fire(mediaItem:), fire(overlay:)) | `MxU.Slides.Core/Automation/VideoRestarts.cs`; `MainViewModel.Transport.cs` (`RestartVideo`) |
 
 Add to **Windows-only**: `Infrastructure/SelfTest.Show.cs`; `ServiceTrackingTimers.Tracks` (publish only
-when news); `MediaTransportState.Pass` / `FileTime` (the trimmed pass from a file-time player).
+when news); `Infrastructure/ThisComputer.cs` (where the Mac uses UserDefaults).
 
 Add to **Not ported yet**:
 
@@ -237,5 +268,7 @@ Add to **Not ported yet**:
   rules are ported in `ServiceRunOrder`, but there's no plan-time picker), and undo for service edits.
 - **Service tracking**: the timer board's "Service Tracking" folder (Windows has no timer board).
 - **Clear**: tracks (stems) count as Music for the green state only while the Music tab plays.
+- **Overlay video restarts**: `VideoRestarts.OnOverlayFired` is ported and tested, but nothing calls it
+  yet (overlays go up in `MainViewModel.Overlays.cs`); one line there would wire it.
 
 Remove from **Not ported yet**: nothing listed there before covered these.
