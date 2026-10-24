@@ -83,15 +83,7 @@ public sealed class AudioImporter(LibraryStore store)
     {
         if (!IsAudioFile(sourcePath)) return null;
         if (!File.Exists(sourcePath)) throw new FileNotFoundException("The audio file is missing", sourcePath);
-        var hash = LibraryStore.HashFile(sourcePath);
-        var blob = Path.Combine(store.BlobDirectory, hash + Path.GetExtension(sourcePath).ToLowerInvariant());
-        Directory.CreateDirectory(store.BlobDirectory);
-        if (!File.Exists(blob))
-        {
-            var temp = blob + ".tmp";
-            File.Copy(sourcePath, temp, overwrite: true);
-            File.Move(temp, blob, overwrite: true);
-        }
+        var (hash, blob) = CopyIn(sourcePath);
         var existing = store.All<AudioItem>().FirstOrDefault(a => a.FileHash == hash);
         if (existing is not null) return existing;
         var item = new AudioItem
@@ -107,6 +99,42 @@ public sealed class AudioImporter(LibraryStore store)
         };
         store.Save(item);
         return item;
+    }
+
+    /// <summary>
+    /// "Replace Music File…": copies a new file in (exactly as an import does) and points the
+    /// item at it. The item keeps its id, name, trim and every playlist place; its file, file
+    /// name and length change. The old file stays in Blobs (another item may use it). Saves
+    /// and returns a copy of the item. Port of the Mac's AppModel.replaceAudioFile.
+    /// </summary>
+    /// <exception cref="FileNotFoundException">The new file is missing.</exception>
+    /// <exception cref="InvalidOperationException">It isn't a music file the importer takes.</exception>
+    public AudioItem ReplaceFile(AudioItem item, string sourcePath)
+    {
+        if (!File.Exists(sourcePath)) throw new FileNotFoundException("The music file is missing", sourcePath);
+        if (!IsAudioFile(sourcePath)) throw new InvalidOperationException($"{Path.GetFileName(sourcePath)} isn't a music file");
+        var (hash, blob) = CopyIn(sourcePath);
+        var copy = Core.Json.MxuJson.Clone(item);
+        copy.FileHash = hash;
+        copy.FileName = Path.GetFileName(sourcePath);
+        copy.DurationSeconds = AudioFileDecoder.ProbeDuration(blob);
+        store.Save(copy);
+        return copy;
+    }
+
+    // Copies a file into Blobs under its SHA-256 (once: the same content is only stored once).
+    private (string Hash, string Blob) CopyIn(string sourcePath)
+    {
+        var hash = LibraryStore.HashFile(sourcePath);
+        var blob = Path.Combine(store.BlobDirectory, hash + Path.GetExtension(sourcePath).ToLowerInvariant());
+        Directory.CreateDirectory(store.BlobDirectory);
+        if (!File.Exists(blob))
+        {
+            var temp = blob + ".tmp";
+            File.Copy(sourcePath, temp, overwrite: true);
+            File.Move(temp, blob, overwrite: true);
+        }
+        return (hash, blob);
     }
 
     /// <summary>The library copy of an item's file, or null when it is missing.</summary>
