@@ -37,7 +37,7 @@ internal sealed class TimelineHost : ITimelineHost
     public string? LiveAlertId => Alert;
     public LayerKind? LayerShowing(string contentId, bool liveInput) => Up.Contains(contentId) ? LayerKind.Videos : null;
     public string? AudioFilePath(AudioItem item) => null;
-    public ITimelineMusic? Music => null;
+    public ITimelineMusic? Music { get; set; }
 }
 
 // C#: the logic of Sources/PresentationTimelineController.swift (the Mac tests its rules,

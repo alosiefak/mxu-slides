@@ -492,6 +492,13 @@ public sealed class AudioEngine : IDisposable, IAudioRenderSource
     private AudioOutputHost.Layout Layout(int deviceChannels) =>
         new(monoOut ? 1 : 2, ChannelMap.Make(deviceChannels, channelOffset, monoOut));
 
+    /// <summary>
+    /// Opens the output now: the slow part of a new engine's first <see cref="Play"/> (Windows
+    /// takes a fraction of a second to open the device), so a later Play starts at once. Call it
+    /// off the UI thread; <see cref="Control.AudioController.Warm"/> does.
+    /// </summary>
+    public void Prepare() => Lock.WithLock(EnsureRunning);
+
     private void EnsureRunning()
     {
         if (manual || disposed) return;

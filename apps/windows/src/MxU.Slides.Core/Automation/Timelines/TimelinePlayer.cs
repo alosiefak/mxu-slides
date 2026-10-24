@@ -145,6 +145,8 @@ public sealed class TimelinePlayer
         if (Playing) return;
 
         if (TimecodeRecording is not null) EndRecording();
+        // Music on the timeline: have the sound device open before its first clip is due.
+        if (host.Music is { } music && CuesOf(presentation)?.Any(c => c.Kind() == TimelineLane.Audio) == true) music.Prepare();
         Playing = true;
         AnchorAt(PlayheadTime);
         if (PlayheadTime <= 0) lastPosition = -PresentationTimelines.Frame;

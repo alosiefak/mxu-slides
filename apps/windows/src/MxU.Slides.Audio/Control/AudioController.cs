@@ -51,6 +51,10 @@ public sealed class AudioController : IDisposable
     private double crossfadeSeconds = PlaylistCrossfade.DefaultSeconds;
     private bool disposed;
 
+    // A bus engine opened ahead of time (see Warm), with the routing key it was opened for.
+    private (string Key, AudioEngine Engine)? standby;
+    private bool warming;
+
     /// <param name="engineFactory">Makes each bus's engine (tests make offline ones). Default: a real one.</param>
     /// <param name="startsPolling">False for tests, which call <see cref="PollNow"/>.</param>
     public AudioController(IAudioLibrary library, SynchronizationContext? context = null, Func<string, AudioEngine>? engineFactory = null,
@@ -431,9 +435,65 @@ public sealed class AudioController : IDisposable
         return holders.Select(h => h.Cue).ToList();
     }
 
+    /// <summary>
+    /// Opens the main mix's next engine in the background, so the next song or timeline clip
+    /// played there starts at once. A new engine's first play otherwise waits a fraction of a
+    /// second for Windows to open the sound device, on the caller's thread: for a timeline that
+    /// is the UI thread, and the slides due just after the music would fire late. Does nothing
+    /// while something already plays on the main mix or an engine is ready.
+    /// </summary>
+    public void Warm()
+    {
+        AudioRouting routing;
+        lock (gate)
+        {
+            if (disposed || warming || standby is not null) return;
+            routing = RoutingFor(null);
+            if (players.Any(p => p.TargetKey == routing.Key)) return;
+            warming = true;
+        }
+        AudioThreads.Chores.Async(() =>
+        {
+            AudioEngine? engine = null;
+            try
+            {
+                engine = makeEngine(routing.Key);
+                engine.SetOutputDevice(routing.Device, routing.ChannelOffset, routing.Mono);
+                engine.Prepare();
+            }
+            catch (Exception)
+            {
+                // No device, or it failed to open: the next play opens one as it always did.
+                engine?.Dispose();
+                engine = null;
+            }
+            lock (gate)
+            {
+                warming = false;
+                if (engine is null) return;
+                if (disposed || standby is not null)
+                {
+                    engine.Dispose();
+                    return;
+                }
+                standby = (routing.Key, engine);
+            }
+        });
+    }
+
+    // The warmed engine, if it was opened for this mix (one for another mix is let go).
+    private AudioEngine? TakeStandby(string key)
+    {
+        if (standby is not { } ready) return null;
+        standby = null;
+        if (ready.Key == key) return ready.Engine;
+        ready.Engine.Dispose();
+        return null;
+    }
+
     private AudioPlayer MakePlayer(AudioRouting routing)
     {
-        var engine = makeEngine(routing.Key);
+        var engine = TakeStandby(routing.Key) ?? makeEngine(routing.Key);
         engine.OutputStatusChanged += status =>
         {
             var handlers = OutputStatusChanged;
@@ -480,6 +540,8 @@ public sealed class AudioController : IDisposable
             disposed = true;
             foreach (var player in players) player.Engine.Dispose();
             players.Clear();
+            standby?.Engine.Dispose();
+            standby = null;
         }
     }
 }

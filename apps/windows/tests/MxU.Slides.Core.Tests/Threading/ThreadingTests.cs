@@ -101,12 +101,15 @@ public class ShowTimeProviderTests
         var failures = 0;
         var calls = 0;
         clock.CallbackFailed += _ => Interlocked.Increment(ref failures);
-        using var timer = clock.CreateTimer(_ =>
+        var timer = clock.CreateTimer(_ =>
         {
             Interlocked.Increment(ref calls);
             throw new InvalidOperationException("boom");
         }, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(15));
         Thread.Sleep(200);
+        // Stop it, and let a tick that was already running finish, before comparing the counts.
+        timer.Dispose();
+        Thread.Sleep(50);
         Assert.True(Volatile.Read(ref calls) >= 3);
         Assert.Equal(Volatile.Read(ref calls), Volatile.Read(ref failures));
     }

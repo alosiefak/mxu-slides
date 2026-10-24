@@ -28,6 +28,9 @@ public sealed class TimelineMusic(AudioController audio) : ITimelineMusic
         if (audio.PlayerForAudioItem(audioItemId) is { } player) audio.Seek(player, seconds);
     }
 
+    /// <summary>Opens the main mix's sound device ahead of time, so the timeline's music starts on cue.</summary>
+    public void Prepare() => audio.Warm();
+
     public void Play(TimelineMusicClip clip)
     {
         var replaced = audio.Play(clip);

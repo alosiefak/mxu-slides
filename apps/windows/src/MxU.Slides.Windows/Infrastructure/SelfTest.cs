@@ -239,6 +239,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await ProPresenterCheck();
             await RenderCheck();
             await EditorsCheck();
+            await TimelineEditorCheck();
         }
         catch (Exception ex)
         {
