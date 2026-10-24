@@ -6,23 +6,38 @@ using MxU.Slides.Broadcast.Control;
 using MxU.Slides.Broadcast.Library;
 using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Outputs;
+using MxU.Slides.Core.Scene;
 using MxU.Slides.Windows.Infrastructure;
 using MxU.Slides.Windows.Outputs;
+using MxU.Slides.Windows.Rendering;
 
 namespace MxU.Slides.Windows.ViewModels;
 
 /// <summary>
-/// Recording and streaming the program. The broadcast engine (MxU.Slides.Broadcast, ported
-/// from the Mac) takes the program feed's pictures (section 17 of HOW-IT-WORKS), encodes them
-/// with Windows' own Media Foundation encoders, and sends them over RTMP/RTMPS or HLS, or
-/// writes an MP4. The sound is <see cref="ProgramAudioTap"/>: everything this app plays
-/// (videos, music) and nothing else on the PC. A stream/record preset says what to do.
+/// Recording and streaming. The broadcast engine (MxU.Slides.Broadcast, ported from the Mac)
+/// encodes pictures and sound with Windows' own Media Foundation encoders, and sends them over
+/// RTMP/RTMPS or HLS, or writes an MP4. This file gives it what to record:
+/// <list type="bullet">
+/// <item><b>Pictures</b>: the audience program feed (section 17 of HOW-IT-WORKS), or one screen
+/// (the stage display, a lower-thirds screen) through <see cref="ScreenFeeds"/>, which also
+/// serves the program at 60 frames a second.</item>
+/// <item><b>Sound</b>: what the preset asks for, opened by <see cref="SessionAudioFeed"/>: the
+/// program audio (<see cref="ProgramAudioTap"/>: everything this app plays and nothing else on
+/// the PC), the main mix (the Music tab), or a sound input such as the mixing desk, maybe with
+/// the program added and a delay.</item>
+/// <item><b>Files</b>: finished recordings are filed into the media library, so they appear in the
+/// Media tab (and a preset can restream "the latest recording").</item>
+/// </list>
+/// A stream/record preset says what to do.
 /// </summary>
 public sealed partial class MainViewModel
 {
     private BroadcastController? broadcast;
     private ProgramAudioTap? audioTap;
-    private ProgramAudioRelay? audioRelay;
+    private ScreenFeeds? screenFeeds;
+    private AudioMixFeeds? mixFeeds;
+    private AudioInputInventory? audioInputs;
     private DispatcherTimer? broadcastTicker;
     private static bool broadcastLogHooked;
 
@@ -49,6 +64,14 @@ public sealed partial class MainViewModel
     /// <summary>The recording and streaming engine (made the first time it's needed, on the UI thread).</summary>
     public BroadcastController Broadcast => broadcast ??= CreateBroadcast();
 
+    /// <summary>Pictures of single screens while one is being recorded or streamed (null until then). The outputs' scenes are handed to it in RenderOutputs and RenderStage.</summary>
+    public ScreenFeeds? ScreenFeeds => screenFeeds;
+
+    /// <summary>The named sound inputs on this PC (kept in audio-inputs.json beside the settings).</summary>
+    public AudioInputInventory AudioInputs => audioInputs ??= new AudioInputInventory(Path.Combine(AppPaths.DataRoot, "audio-inputs.json"));
+
+    private AudioMixFeeds MixFeeds => mixFeeds ??= new AudioMixFeeds(Audio);
+
     private BroadcastController CreateBroadcast()
     {
         if (!broadcastLogHooked)
@@ -60,15 +83,36 @@ public sealed partial class MainViewModel
                 else Log.Warn($"Broadcast: {entry.Category} {entry.Message}");
             };
         }
-        var created = new BroadcastController(Library, new StreamKeyVault(StreamKeyVault.DefaultFolder),
+        var sources = new CaptureSources(
             ProgramSource.From(sink => Program?.Add(sink), sink => Program?.Remove(sink)),
-            Settings.RecordingsFolder);
+            Program?.FrameRate ?? 30)
+        {
+            Screens = (target, width, height, rate) => EnsureScreenFeeds()?.Source(target, width, height, rate),
+            Audio = OpenSessionAudio,
+        };
+        var created = new BroadcastController(Library, new StreamKeyVault(StreamKeyVault.DefaultFolder), sources, Settings.RecordingsFolder);
+        created.FileRecordingsIntoLibrary();
         foreach (var line in created.Prepare()) Log.Info($"Broadcast: {line}");
         created.Streaming.LiveChanged += UpdateBroadcastStatus;
         created.Streaming.StatusChanged += _ => UpdateBroadcastStatus();
         created.Recording.SessionsChanged += UpdateBroadcastStatus;
         created.Recording.StatusChanged += _ => UpdateBroadcastStatus();
+        created.RecordingFiled += item => System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            Notice = $"Recording saved: \"{item.Name}\" is in the Media tab.";
+            BroadcastChanged?.Invoke();
+        });
         return created;
+    }
+
+    private ScreenFeeds? EnsureScreenFeeds()
+    {
+        if (screenFeeds is not null) return screenFeeds;
+        if (Outputs is not { } outputs) return null;
+        screenFeeds = new ScreenFeeds(outputs, Media);
+        // Give it what's live now; from here on RenderOutputs keeps it up to date.
+        RenderOutputs(SceneTransition.Cut);
+        return screenFeeds;
     }
 
     /// <summary>The stream/record presets, by name.</summary>
@@ -131,8 +175,15 @@ public sealed partial class MainViewModel
         var recordings = b.Recording.Sessions.Where(s => s.IsRecording).ToList();
         b.Streaming.EndStream();
         await Task.WhenAny(Task.WhenAll(recordings.Select(b.Recording.StopAsync)), Task.Delay(TimeSpan.FromSeconds(10)));
+        // A few seconds to file them into the library; anything unfinished is filed at the next launch.
+        if (recordings.Count > 0)
+            await Task.Factory.StartNew(() => b.WaitForFiling(TimeSpan.FromSeconds(5)), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         b.Dispose();
         broadcast = null;
+        screenFeeds?.Dispose();
+        screenFeeds = null;
+        mixFeeds?.Dispose();
+        mixFeeds = null;
         broadcastTicker?.Stop();
         broadcastTicker = null;
         IsBroadcasting = false;
@@ -161,24 +212,36 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>
-    /// Program sound follows the program pictures: while anything takes the program feed (a
-    /// recording, a stream), the audio tap captures this app's sound into it as well.
+    /// Called when the program feed starts or stops. Sound used to travel with the program
+    /// pictures; now every recording and stream opens the sound its preset asks for
+    /// (<see cref="OpenSessionAudio"/>), so there is nothing to connect here.
     /// </summary>
     private void UpdateProgramAudio()
     {
-        if (program is not { } feed) return;
-        if (feed.IsActive && audioRelay is null)
-        {
-            audioTap ??= CreateAudioTap();
-            audioRelay = new ProgramAudioRelay(feed);
-            audioTap.AddSink(audioRelay);
-        }
-        else if (!feed.IsActive && audioRelay is not null)
-        {
-            audioTap?.RemoveSink(audioRelay);
-            audioRelay = null;
-        }
     }
+
+    // MARK: Sound for recordings and streams
+
+    /// <summary>Opens the sound a recording or stream asked for (see <see cref="SessionAudioFeed"/>).</summary>
+    private IDisposable OpenSessionAudio(SessionAudioRequest request, IProgramSink sink)
+    {
+        var choice = new SessionAudioChoice(
+            MixId: request.Source.Kind == StreamAudioSourceKind.Mix ? request.Source.Id : null,
+            InputId: request.Source.Kind == StreamAudioSourceKind.Input ? request.Source.Id : null,
+            InputUid: request.InputUid,
+            IncludeProgram: request.IncludesProgram,
+            DelayMilliseconds: request.DelayMs);
+        var feed = SessionAudioFeed.Open(choice, new SessionAudioBackends(this), (buffer, host) => sink.WriteAudio(buffer.ToAudioBuffer(host)));
+        Log.Info($"Broadcast: sound is {feed.Description}");
+        if (feed.FallbackReason is { } why)
+        {
+            Log.Warn($"Broadcast: {why}");
+            Notice = $"Recording sound: {why}";
+        }
+        return feed;
+    }
+
+    private ProgramAudioTap ProgramTap => audioTap ??= CreateAudioTap();
 
     private static ProgramAudioTap CreateAudioTap()
     {
@@ -187,11 +250,84 @@ public sealed partial class MainViewModel
         return tap;
     }
 
-    /// <summary>Passes the tap's sound to the program feed, which hands it to every destination.</summary>
-    private sealed class ProgramAudioRelay(ProgramFeed feed) : IProgramSink
+    /// <summary>Where session sound comes from on this PC: the program tap, the mix feeds and the sound inputs.</summary>
+    private sealed class SessionAudioBackends(MainViewModel model) : ISessionAudioBackends
     {
-        public void WriteVideo(VideoFrame frame) { }
+        public IDisposable OpenProgram(Action<PcmBuffer, double> consumer)
+        {
+            var tap = model.ProgramTap;
+            var token = tap.AddConsumer(consumer);
+            return new Closer(() => tap.RemoveConsumer(token));
+        }
 
-        public void WriteAudio(AudioBuffer buffer) => feed.WriteAudio(buffer);
+        public IDisposable? OpenMix(string mixId, Action<PcmBuffer, double> consumer) => model.MixFeeds.Open(mixId, consumer);
+
+        public IDisposable? OpenInput(string inputId, Action<PcmBuffer, double> consumer, out string? problem)
+        {
+            problem = null;
+            if (model.AudioInputs.Source(inputId) is not { } source)
+            {
+                problem = "it isn't set up on this PC";
+                return null;
+            }
+            return source.Open(consumer, out problem);
+        }
+
+        public IDisposable? OpenInputDevice(string uid, Action<PcmBuffer, double> consumer, out string? problem)
+        {
+            if (model.AudioInputs.ForUid(uid) is { } entry) return OpenInput(entry.Id, consumer, out problem);
+            problem = null;
+            if (AudioDeviceList.InputDevice(uid) is null)
+            {
+                problem = "that sound device isn't connected";
+                return null;
+            }
+            return new AudioInputSource(uid, InputChannelSelection.Default).Open(consumer, out problem);
+        }
+
+        public string? InputName(string inputId) => model.AudioInputs.NameFor(inputId);
     }
+
+    private sealed class Closer(Action close) : IDisposable
+    {
+        private int closed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref closed, 1) == 0) close();
+        }
+    }
+
+    // MARK: For the Stream & Record window
+
+    /// <summary>The screens a preset can record or stream (from Screens & Settings), by name.</summary>
+    public IReadOnlyList<(string Id, string Name, bool IsStage)> BroadcastScreens() =>
+        Outputs is not { } outputs
+            ? []
+            : [.. outputs.Config.Screens.Select(s => (SwiftUuid.Format(s.Id), $"{s.Name} ({s.Width}×{s.Height})", outputs.Config.Role(s.Id) == ScreenRole.Confidence))];
+
+    /// <summary>A screen's name from its id, or null when it isn't in the setup.</summary>
+    public string? BroadcastScreenName(string id) =>
+        Outputs?.Config is { } config && SwiftUuid.Parse(id) is { } guid && config.Screen(guid) is { } screen ? screen.Name : null;
+
+    /// <summary>"Program audio", "Mix · Main mix (music)", "Input · Mixing desk (channels 1–2)" — the Mac's AudioSourceMenuItems.title.</summary>
+    public string AudioSourceTitle(StreamRecordPreset preset)
+    {
+        if (!string.IsNullOrEmpty(preset.AudioMixId))
+            return "Mix · " + (AudioMixFeeds.NameOf(preset.AudioMixId) ?? "Missing");
+        if (!string.IsNullOrEmpty(preset.AudioInputId))
+            return "Input · " + (AudioInputs.Entry(preset.AudioInputId) is { } entry ? $"{entry.Name} ({AudioInputEntry.ChannelsLabel(entry.Channels)})" : "Missing input");
+        if (!string.IsNullOrEmpty(preset.AudioInputUid))
+            return "Input · " + (AudioInputs.ForUid(preset.AudioInputUid)?.Name ?? AudioDeviceList.InputDevice(preset.AudioInputUid)?.Name ?? "Missing input");
+        return "Program audio";
+    }
+
+    /// <summary>The library's videos, newest first (for a preset that streams a media file).</summary>
+    public IReadOnlyList<MediaItem> BroadcastVideos() =>
+        [.. Library.All<MediaItem>().Where(m => m.MediaKind == MediaKind.Video).OrderByDescending(m => m.RecordedAt ?? m.ImportedAt ?? 0)];
+
+    /// <summary>The media folders in the library, plus the default "Recordings".</summary>
+    public IReadOnlyList<string> MediaFolders() =>
+        [.. Library.All<MediaItem>().Select(m => m.Folder).OfType<string>().Append(RecordingLibrary.DefaultFolder)
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.CurrentCultureIgnoreCase)];
 }

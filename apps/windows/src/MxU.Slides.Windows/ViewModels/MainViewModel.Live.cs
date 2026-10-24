@@ -330,6 +330,7 @@ public sealed partial class MainViewModel
                 AudiencePreview?.Present(audience, transition);
                 Program?.Present(audience, transition);
             }
+            ScreenFeeds?.Show(OutputRole.Audience, audience, refreshOnly ? null : transition);
             RenderStage(refreshOnly ? SceneTransition.Cut : transition, refreshOnly);
             EnsureTicking();
         }

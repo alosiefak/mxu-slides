@@ -309,6 +309,7 @@ public sealed partial class MainViewModel
             Outputs?.Present(OutputRole.Stage, scene, SceneTransition.Cut);
             StagePreview?.Present(scene, SceneTransition.Cut);
         }
+        ScreenFeeds?.Show(OutputRole.Stage, scene, refreshOnly ? null : SceneTransition.Cut);
     }
 
     /// <summary>Clocks and timers change every second; anything else only changes when a cue fires.</summary>
