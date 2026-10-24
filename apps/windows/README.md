@@ -33,11 +33,14 @@ Re-run both after pulling changes to update. Your library is stored separately a
 ## Test it
 
 ```powershell
-dotnet test --solution apps\windows\MxUSlides.slnx      # 650+ unit tests: lyrics, animation, timers, the API, both importers
+dotnet test --solution apps\windows\MxUSlides.slnx      # 1,900+ unit tests: lyrics, animation, timers, the API, both importers
 pwsh apps\windows\scripts\self-test.ps1                 # drives the real app through a service, saves pictures, checks the output
+pwsh apps\windows\scripts\display-demo.ps1              # shows the output on your second screen (projector, TV) and photographs it
 ```
 
 The self-test uses a throwaway library. Its report and a picture of every step are written to `%TEMP%\MxU Slides self-test`. Run it on any new computer before a Sunday.
+
+The display demo also uses a throwaway library. With a projector or TV connected as an extended screen (Windows key + P, Extend), it puts the audience output there and steps through a song, a background and an alert. It saves what the screen showed to `%TEMP%\MxU Slides display demo`. It only takes a picture while MxU Slides covers that screen, so nothing else of yours is captured.
 
 GitHub Actions (`.github/workflows/windows.yml`) runs all of this on every push, including the daily merge from MxU's repository.
 
