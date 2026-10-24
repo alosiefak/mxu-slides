@@ -419,7 +419,7 @@
                                         <TextBlock Text="Click something on the slide to change its font, colour, size and position."
                                                    Style="{StaticResource Muted}" TextWrapping="Wrap"
                                                    Visibility="{Binding Inspector, Converter={StaticResource VisibleWhenSet}, ConverterParameter=invert}" />
-                                        <ContentControl Content="{Binding Inspector}">
+                                        <ContentControl Content="{Binding Inspector}" Visibility="{Binding Inspector, Converter={StaticResource VisibleWhenSet}}">
                                             <ContentControl.ContentTemplate>
                                                 <DataTemplate DataType="{x:Type vm:ObjectInspectorViewModel}">
                                                     <StackPanel>
@@ -445,8 +445,8 @@
                                                             <TextBox x:Name="InspectorText" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True"
                                                                      TextWrapping="Wrap" MinHeight="48" Margin="0,0,0,6" />
                                                             <WrapPanel Margin="0,0,0,6">
-                                                                <ComboBox ItemsSource="{Binding FontFamilies}" Text="{Binding FontFamily, UpdateSourceTrigger=LostFocus}"
-                                                                          IsEditable="True" Width="160" Margin="0,0,6,0" ToolTip="Font" />
+                                                                <ComboBox ItemsSource="{Binding FontChoices}" SelectedItem="{Binding FontFamily}"
+                                                                          Width="160" Margin="0,0,6,0" ToolTip="Font" />
                                                                 <TextBox Text="{Binding FontSize, UpdateSourceTrigger=LostFocus}" Width="48" Margin="0,0,6,0" ToolTip="Size"
                                                                          KeyDown="NumberBox_KeyDown" />
                                                                 <ToggleButton IsChecked="{Binding Bold}" Content="B" FontWeight="Bold" Width="30" Margin="0,0,2,0" />

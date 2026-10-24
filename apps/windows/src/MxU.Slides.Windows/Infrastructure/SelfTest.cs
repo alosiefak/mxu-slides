@@ -179,6 +179,9 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             if (model.Inspector is { } inspector)
             {
                 Check("the inspector shows the theme's size", inspector.FontSize == "84");
+                Check("the font box lists the slide's own font (even one this PC hasn't got)",
+                    inspector.FontFamily.Length > 0 && inspector.FontChoices.Contains(inspector.FontFamily));
+                await Step("07-text-inspector", () => { }, settle: 400);
                 inspector.FontSize = "100";
                 inspector.TextColor = "#FACC15FF";
                 Check("changing size writes an override", lyric.TextStyle?.FontSize == 100 && lyric.TextStyle?.ColorHex == "#FACC15FF");
