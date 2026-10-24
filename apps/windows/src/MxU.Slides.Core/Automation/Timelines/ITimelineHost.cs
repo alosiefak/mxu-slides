@@ -12,8 +12,8 @@ public interface ITimelineHost
 {
     Presentation? Presentation(string id);
 
-    /// <summary>The Present setting "an empty repeat plays once" (it changes the played blocks).</summary>
-    bool EmptyRepeatsOnce => false;
+    /// <summary>The Present setting "Show a repeated chord-only section once" (it changes the played blocks).</summary>
+    bool EmptyRepeatsOnce => SlideSceneBuilder.EmptyRepeatsOnce;
 
     /// <summary>
     /// Stores a presentation's timelines. <paramref name="undoLabel"/> null means no undo step

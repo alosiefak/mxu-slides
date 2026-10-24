@@ -2,6 +2,7 @@ using System.Diagnostics;
 using MxU.Slides.Core.Animation;
 using MxU.Slides.Core.Json;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Stage;
 
 namespace MxU.Slides.Core.Scene;
 
@@ -416,8 +417,8 @@ public sealed class ShowState
     private double SlideExitDuration(LiveSlide live) =>
         Compositions(live).Select(c => AnimationSequence.ExitDuration(c.Objects, c.Order, slideAdvanceClicks.Count)).DefaultIfEmpty(0).Max();
 
-    /// <summary>A slide or overlay is playing its Outs before being removed.</summary>
-    public bool HasPendingExits => slideDismissAt is not null || overlayDismissAt.Count > 0;
+    /// <summary>A slide, overlay or alert is playing its Outs before being removed.</summary>
+    public bool HasPendingExits => slideDismissAt is not null || overlayDismissAt.Count > 0 || alertDismissAt is not null;
 
     /// <summary>Removes whatever has finished leaving. Call on a timer while <see cref="HasPendingExits"/>; true when something went.</summary>
     public bool SweepFinishedExits(double? now = null)
@@ -442,30 +443,76 @@ public sealed class ShowState
             overlayDismissAt.Remove(id);
             changed = true;
         }
+        if (alertDismissAt is { } alertAt && (LiveAlert is null || t >= alertAt + AlertSceneBuilder.ExitDuration(LiveAlert)))
+        {
+            RemoveAlert();
+            changed = true;
+        }
         if (changed) Changed?.Invoke();
         return changed;
     }
 
     // MARK: Alerts
 
-    public string? AlertMessage { get; private set; }
-    public bool AlertOnAudience { get; private set; }
-    public bool AlertOnStage { get; private set; }
-    public bool HasAlert => AlertMessage is not null;
+    private double alertFiredAt;
+    private double? alertDismissAt;
 
-    public void FireAlert(string message, bool audience, bool stage)
+    /// <summary>The alert up now (one at a time: firing another replaces it), with its target, behaviour, layer and theme.</summary>
+    public CueAlert? LiveAlert { get; private set; }
+
+    /// <summary>
+    /// False on a Flash alert's off beat. The app blinks it twice a second (the Mac keeps this
+    /// as ServiceControls.alertVisible); a new alert always starts visible.
+    /// </summary>
+    public bool AlertVisible { get; set; } = true;
+
+    /// <summary>Fills "{Timer Name}" slots in an audience alert with live digits. Set by the app, which knows the timers.</summary>
+    public Func<string, string>? AlertMessageResolver { get; set; }
+
+    public string? AlertMessage => LiveAlert?.Message;
+    public bool AlertOnAudience => LiveAlert?.ShowsOnAudience == true;
+    public bool AlertOnStage => LiveAlert?.ShowsOnConfidence == true;
+    public bool HasAlert => LiveAlert is not null;
+
+    /// <summary>True while the alert's design plays its Outs on the way down.</summary>
+    public bool AlertIsLeaving => alertDismissAt is not null;
+
+    /// <param name="atHostTime">When it went up: the clock its design's animations play from.</param>
+    public void FireAlert(CueAlert alert, double? atHostTime = null)
     {
-        AlertMessage = message;
-        AlertOnAudience = audience;
-        AlertOnStage = stage;
+        LiveAlert = alert;
+        alertFiredAt = atHostTime ?? HostClock();
+        alertDismissAt = null;
+        AlertVisible = true;
         Changed?.Invoke();
     }
 
+    /// <summary>A plain message that holds steady (no saved alert): on the stage, the audience or both.</summary>
+    public void FireAlert(string message, bool audience, bool stage) => FireAlert(new CueAlert(message, AlertBehavior.Persist,
+        audience && stage ? AlertTarget.Both : audience ? AlertTarget.Audience : AlertTarget.Confidence));
+
     public void ClearAlert()
     {
-        if (AlertMessage is null) return;
-        AlertMessage = null;
+        if (LiveAlert is null) return;
+        RemoveAlert();
         Changed?.Invoke();
+    }
+
+    /// <summary>Given a time, a themed alert with Outs plays them first and <see cref="SweepFinishedExits"/> removes it; asked again, it cuts.</summary>
+    private void ClearAlert(double? atHostTime)
+    {
+        if (atHostTime is { } at && alertDismissAt is null && LiveAlert is { } alert && AlertSceneBuilder.ExitDuration(alert) > 0)
+        {
+            alertDismissAt = at;
+            return;
+        }
+        RemoveAlert();
+    }
+
+    private void RemoveAlert()
+    {
+        LiveAlert = null;
+        alertDismissAt = null;
     }
 
     // MARK: Clearing
@@ -491,7 +538,7 @@ public sealed class ShowState
                 foreach (var overlay in liveOverlays.ToList()) DismissOverlayQuiet(overlay.Id, atHostTime);
                 break;
             case ShowFunction.Alerts:
-                AlertMessage = null;
+                ClearAlert(atHostTime);
                 break;
             case ShowFunction.Audio:
                 break;
@@ -507,8 +554,6 @@ public sealed class ShowState
                 ClearSlide(atHostTime);
                 break;
             case LayerKind.Alerts:
-                AlertMessage = null;
-                break;
             case LayerKind.Overlays:
                 break;
             default:
@@ -516,9 +561,10 @@ public sealed class ShowState
                 directMediaFires.Remove(layer);
                 break;
         }
-        // Overlays live on whichever layer they name (Overlays unless set).
+        // Overlays live on whichever layer they name (Overlays unless set), and so does the alert (Alerts unless set).
         foreach (var overlay in liveOverlays.Where(o => (LayerKinds.Parse(o.Layer) ?? LayerKind.Overlays) == layer).ToList())
             DismissOverlayQuiet(overlay.Id, atHostTime);
+        if (LiveAlert is { } alert && (LayerKinds.Parse(alert.Layer) ?? LayerKind.Alerts) == layer) ClearAlert(atHostTime);
         Changed?.Invoke();
     }
 
@@ -616,9 +662,13 @@ public sealed class ShowState
             }
         }
 
-        if (AlertMessage is { } message && AlertOnAudience)
-            foreach (var item in AlertBanner.Items(message, canvas, "audience"))
-                scene.AddItem(item, LayerKind.Alerts);
+        // The alert, on its own layer, through its theme's Alerts design (or the amber band); hidden on a flash's off beat.
+        if (LiveAlert is { ShowsOnAudience: true } alert && AlertVisible)
+        {
+            var context = AlertSceneBuilder.Animates(alert) ? new AnimationContext(alertFiredAt, dismissHostTime: alertDismissAt) : null;
+            foreach (var item in AlertSceneBuilder.AudienceItems(alert, canvas, AlertMessageResolver, resolveLinkedText, context, alertFiredAt))
+                scene.AddItem(item, LayerKinds.Parse(alert.Layer) ?? LayerKind.Alerts);
+        }
         return scene;
     }
 

@@ -42,7 +42,7 @@ public static class HotKeyJump
         return table;
     }
 
-    public static List<(int Start, string NormalizedName)> BlockSectionNames(Presentation p, string? arrangementId = null, bool emptyRepeatsOnce = false)
+    public static List<(int Start, string NormalizedName)> BlockSectionNames(Presentation p, string? arrangementId = null, bool? emptyRepeatsOnce = null)
     {
         var sections = p.Sections ?? [];
         string Normalized(string? id) => id is not null && sections.FirstOrDefault(s => s.Id == id) is { } section ? NormalizedName(section.Name) : "";
@@ -69,7 +69,7 @@ public static class HotKeyJump
     }
 
     /// <summary>The slide index to jump to, or null when the song has no such section.</summary>
-    public static int? JumpStart(Presentation p, string? arrangementId, IReadOnlyCollection<string> normalizedNames, int? liveIndex, bool emptyRepeatsOnce = false)
+    public static int? JumpStart(Presentation p, string? arrangementId, IReadOnlyCollection<string> normalizedNames, int? liveIndex, bool? emptyRepeatsOnce = null)
     {
         var blocks = BlockSectionNames(p, arrangementId, emptyRepeatsOnce);
         var slideCount = SlideSceneBuilder.ArrangedSlides(p, arrangementId, emptyRepeatsOnce).Count;

@@ -39,7 +39,22 @@ public static class SlideSceneBuilder
 
     // MARK: Arrangements
 
-    public static List<Slide> ArrangedSlides(Presentation presentation, string? arrangementId = null, bool emptyRepeatsOnce = false)
+    // Read by the show clock's thread (timelines) as well as the UI thread.
+    private static volatile bool emptyRepeatsOnceSetting;
+
+    /// <summary>
+    /// "Show a repeated chord-only section once" (the Mac's present.emptyRepeatsOnce, off unless
+    /// turned on): the same section played twice in a row with only chords, or nothing, on it
+    /// shows once. Every arrangement read below follows it unless told otherwise, as the Mac's
+    /// default arguments do. The app sets it from its settings.
+    /// </summary>
+    public static bool EmptyRepeatsOnce
+    {
+        get => emptyRepeatsOnceSetting;
+        set => emptyRepeatsOnceSetting = value;
+    }
+
+    public static List<Slide> ArrangedSlides(Presentation presentation, string? arrangementId = null, bool? emptyRepeatsOnce = null)
     {
         if (string.IsNullOrEmpty(arrangementId)
             || presentation.Arrangements?.FirstOrDefault(a => a.Id == arrangementId) is not { SectionIds.Count: > 0 } arrangement)
@@ -47,14 +62,15 @@ public static class SlideSceneBuilder
         return PlayedBlocks(arrangement.SectionIds, presentation, emptyRepeatsOnce).SelectMany(block => block).ToList();
     }
 
-    public static List<List<Slide>> PlayedBlocks(IReadOnlyList<string> sectionIds, Presentation presentation, bool emptyRepeatsOnce = false)
+    public static List<List<Slide>> PlayedBlocks(IReadOnlyList<string> sectionIds, Presentation presentation, bool? emptyRepeatsOnce = null)
     {
+        var once = emptyRepeatsOnce ?? EmptyRepeatsOnce;
         string? previous = null;
         var blocks = new List<List<Slide>>();
         foreach (var sectionId in sectionIds)
         {
             var slides = presentation.Slides.Where(s => s.SectionId == sectionId).ToList();
-            var repeatsEmpty = emptyRepeatsOnce && sectionId == previous && slides.All(ShowsNothing);
+            var repeatsEmpty = once && sectionId == previous && slides.All(ShowsNothing);
             previous = sectionId;
             blocks.Add(repeatsEmpty ? [] : slides);
         }
@@ -66,7 +82,7 @@ public static class SlideSceneBuilder
         && (slide.Actions ?? []).Count == 0 && slide.AutoAdvance is null
         && slide.Objects.All(o => o.ObjectKind == SlideObjectKind.Text && string.IsNullOrWhiteSpace(o.Text));
 
-    public static List<int> ArrangementBlockStarts(Presentation presentation, string? arrangementId = null, bool emptyRepeatsOnce = false)
+    public static List<int> ArrangementBlockStarts(Presentation presentation, string? arrangementId = null, bool? emptyRepeatsOnce = null)
     {
         var starts = new List<int>();
         if (!string.IsNullOrEmpty(arrangementId)
