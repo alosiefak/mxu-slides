@@ -61,6 +61,9 @@ public sealed class AppSettings
     /// <summary>Timecode in on this PC (its sound or MIDI input, channel, offset, follow); null until first set.</summary>
     public MxU.Slides.Core.Automation.TimecodeSettings? Timecode { get; set; }
 
+    /// <summary>MIDI devices tied to ports by hand on this PC (library device id → ports).</summary>
+    public Dictionary<string, MxU.Slides.Core.Control.MidiDeviceBinding>? MidiDeviceBindings { get; set; }
+
     /// <summary>Where recordings go; null = Videos\MxU Slides.</summary>
     public string? RecordingsFolder { get; set; }
 

@@ -231,6 +231,7 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
             await LiveInputCheck();
             await TimelineCheck();
             await RecordingCheck();
+            await MidiDevicesCheck();
             await ActionsCheck();
             await ScreensCheck();
             await ApiCheck();
@@ -642,6 +643,33 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
             model.Inputs.Remove(entry.Id);
             model.RefreshInputs();
         }
+    }
+
+    /// <summary>
+    /// MIDI devices: a listed device shows in the Local API, and once a device takes input, MIDI
+    /// control listens only to it (here it isn't plugged in, so nothing counts); removing it goes
+    /// back to listening to every input.
+    /// </summary>
+    private async Task MidiDevicesCheck()
+    {
+        await model.RefreshMidiDevicesAsync();
+        Check("with no MIDI devices listed, every input counts", model.MidiDevices.Count > 0 || model.AcceptsMidiForTest("any-port", 0x90));
+        var device = model.AddMidiDevice("Self-test desk", MIDIDeviceItemDirection.Both, null, null);
+        try
+        {
+            var status = ((IApiBridge)model).MidiDevices().FirstOrDefault(d => d.Id == device.Id);
+            Check("a listed MIDI device shows in the Local API (not connected)", status is { Name: "Self-test desk", Enabled: true, Connected: false, Direction: "both" });
+            Check("once a device takes input, other ports don't count", !model.AcceptsMidiForTest("any-port", 0x90));
+            model.UpdateMidiDevice(device.Id, d => d.Direction = MIDIDeviceItemDirection.Output);
+            Check("an output-only device leaves MIDI control listening to every input", model.AcceptsMidiForTest("any-port", 0x90));
+            ((IApiBridge)model).SetMidiDeviceEnabled(device.Id, false);
+            Check("the Local API turns a MIDI device off", model.MidiDevices.Single(d => d.Id == device.Id).IsEnabled == false);
+        }
+        finally
+        {
+            model.RemoveMidiDevice(device.Id);
+        }
+        Check("removing it goes back to every input", model.MidiDevices.Count > 0 || model.AcceptsMidiForTest("any-port", 0x90));
     }
 
     /// <summary>

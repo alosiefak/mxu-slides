@@ -94,7 +94,11 @@ public partial class SettingsWindow : Window
             MidiOutCombo.ItemsSource = choices;
             MidiOutCombo.SelectedItem = choices.FirstOrDefault(c => c.DeviceName == s.MidiOutputId) ?? choices[0];
             await LoadTimecodeAsync();
+            await model.RefreshMidiDevicesAsync();
+            BuildMidiDeviceRows();
         };
+        model.MidiDevicesChanged += BuildMidiDeviceRows;
+        Closed += (_, _) => model.MidiDevicesChanged -= BuildMidiDeviceRows;
         ApiEnabled.IsChecked = s.LocalApiEnabled;
         ApiPort.Text = s.LocalApiPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         ApiConnect.Text = s.LocalApiEnabled
@@ -115,6 +119,88 @@ public partial class SettingsWindow : Window
         StageCombo.ItemsSource = choices;
         AudienceCombo.SelectedItem = choices.FirstOrDefault(c => c.DeviceName == outputs.AssignedDisplay(OutputRole.Audience)) ?? choices[0];
         StageCombo.SelectedItem = choices.FirstOrDefault(c => c.DeviceName == outputs.AssignedDisplay(OutputRole.Stage)) ?? choices[0];
+    }
+
+    // MARK: MIDI devices (apply straight away)
+
+    private void BuildMidiDeviceRows()
+    {
+        MidiDeviceRows.Children.Clear();
+        var (inputs, outputs) = model.MidiPorts;
+        var destinations = outputs.Select(o => o.Id).ToHashSet();
+        var sources = inputs.Select(i => i.Id).ToHashSet();
+        if (model.MidiDevices.Count == 0)
+        {
+            MidiDeviceRows.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = "No devices listed: MIDI control listens to every input.", Style = (Style)FindResource("Muted"), FontSize = 11,
+            });
+            return;
+        }
+        var directions = new[] { Core.Model.MIDIDeviceItemDirection.Both, Core.Model.MIDIDeviceItemDirection.Input, Core.Model.MIDIDeviceItemDirection.Output };
+        var channels = new[] { "All channels" }.Concat(Enumerable.Range(1, 16).Select(c => $"Channel {c}")).ToList();
+        foreach (var device in model.MidiDevices)
+        {
+            var id = device.Id;
+            var enabled = new System.Windows.Controls.CheckBox { IsChecked = device.IsEnabled, VerticalAlignment = VerticalAlignment.Center, ToolTip = "On" };
+            enabled.Click += (_, _) => model.UpdateMidiDevice(id, d => d.Enabled = enabled.IsChecked == true);
+            var direction = new System.Windows.Controls.ComboBox
+            {
+                ItemsSource = directions.Select(Core.Control.ResolvedMidiDevice.DirectionName).ToList(),
+                SelectedIndex = Array.IndexOf(directions, device.Direction), Width = 90, Margin = new Thickness(6, 0, 0, 0),
+            };
+            direction.SelectionChanged += (_, _) =>
+            {
+                if (direction.SelectedIndex >= 0) model.UpdateMidiDevice(id, d => d.Direction = directions[direction.SelectedIndex]);
+            };
+            var channel = new System.Windows.Controls.ComboBox
+            {
+                ItemsSource = channels, SelectedIndex = device.Device.Channel ?? 0, Width = 105, Margin = new Thickness(6, 0, 0, 0),
+                ToolTip = "Listen on one channel, or all of them",
+            };
+            channel.SelectionChanged += (_, _) =>
+            {
+                if (channel.SelectedIndex >= 0) model.UpdateMidiDevice(id, d => d.Channel = channel.SelectedIndex == 0 ? null : channel.SelectedIndex);
+            };
+            var connected = device.IsConnected(destinations, sources);
+            var status = new System.Windows.Controls.TextBlock
+            {
+                Text = connected ? "connected" : "not connected", Width = 85, FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0), Style = (Style)FindResource("Muted"),
+            };
+            var remove = new System.Windows.Controls.Button { Content = "Remove", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 1, 8, 1) };
+            remove.Click += (_, _) => model.RemoveMidiDevice(id);
+            var row = new System.Windows.Controls.DockPanel { Margin = new Thickness(0, 0, 0, 4) };
+            foreach (var right in new FrameworkElement[] { remove, status, channel, direction })
+            {
+                System.Windows.Controls.DockPanel.SetDock(right, System.Windows.Controls.Dock.Right);
+                row.Children.Add(right);
+            }
+            System.Windows.Controls.DockPanel.SetDock(enabled, System.Windows.Controls.Dock.Left);
+            row.Children.Add(enabled);
+            row.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = device.Device.Name, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            MidiDeviceRows.Children.Add(row);
+        }
+    }
+
+    private async void AddMidiDevice_Click(object sender, RoutedEventArgs e)
+    {
+        await model.RefreshMidiDevicesAsync();
+        var (inputs, outputs) = model.MidiPorts;
+        var listed = model.MidiDevices.Select(d => d.Device.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var menu = new System.Windows.Controls.ContextMenu { PlacementTarget = (UIElement)sender };
+        foreach (var found in Core.Control.MidiDeviceResolver.Discovered(outputs, inputs).Where(f => !listed.Contains(f.Name)))
+        {
+            var item = new System.Windows.Controls.MenuItem { Header = $"{found.Name} ({Core.Control.ResolvedMidiDevice.DirectionName(found.Direction)})" };
+            item.Click += (_, _) => model.AddMidiDevice(found.Name, found.Direction, found.Destination?.Id, found.Source?.Id);
+            menu.Items.Add(item);
+        }
+        if (menu.Items.Count == 0) menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "No other MIDI devices are connected", IsEnabled = false });
+        menu.IsOpen = true;
     }
 
     // MARK: Timecode in (applies straight away; the follower saves its own settings)

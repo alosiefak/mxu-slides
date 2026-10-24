@@ -19,9 +19,10 @@ public sealed partial class MainViewModel
         get
         {
             if (midi is not null) return midi;
-            midi = new MidiInputService();
+            midi = new MidiInputService { Accepts = AcceptsMidiFrom };
             midi.NoteOn += OnMidiNoteOn;
             midi.DevicesChanged += UpdateMidiStatus;
+            midi.DevicesChanged += () => _ = RefreshMidiDevicesAsync();
             return midi;
         }
     }

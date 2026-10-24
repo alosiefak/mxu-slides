@@ -34,6 +34,7 @@ public sealed class LibraryStore
         [typeof(ControlBoard)] = "ComboBoard",
         [typeof(SchedulerBoard)] = "SchedulerBoard",
         [typeof(GroupPalette)] = "GroupPalette",
+        [typeof(MIDIDevice)] = "MidiDevices",
     };
 
     private readonly object gate = new();

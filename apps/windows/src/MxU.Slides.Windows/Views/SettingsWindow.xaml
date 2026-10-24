@@ -84,6 +84,14 @@
             <TextBlock Text="Send MIDI out to" VerticalAlignment="Center" Width="120" />
             <ComboBox x:Name="MidiOutCombo" ToolTip="Where slide actions and combos send MIDI when they don't name an output (a lighting desk, a mixer…)" />
         </DockPanel>
+        <Expander Header="MIDI devices" Foreground="{StaticResource Text}" Margin="0,0,0,6">
+            <StackPanel Margin="0,6,0,0">
+                <TextBlock Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap"
+                           Text="Name the MIDI devices the show talks to (ProPresenter's import here too). Once any device takes input, MIDI control listens only to the devices that are on, on their channel." />
+                <StackPanel x:Name="MidiDeviceRows" Margin="0,6,0,4" />
+                <Button Content="+ Add a connected device" HorizontalAlignment="Left" Click="AddMidiDevice_Click" />
+            </StackPanel>
+        </Expander>
         <Expander Header="Note for each command" Foreground="{StaticResource Text}" Margin="0,0,0,0">
             <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0">
                 <ItemsControl x:Name="MidiMapRows">

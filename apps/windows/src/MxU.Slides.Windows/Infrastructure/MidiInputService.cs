@@ -18,8 +18,11 @@ public sealed class MidiInputService : IDisposable
     private DeviceWatcher? watcher;
     private bool running;
 
-    /// <summary>Raw (status, note, velocity) of each note-on.</summary>
+    /// <summary>Raw (status, note, velocity) of each note-on that <see cref="Accepts"/> lets through.</summary>
     public event Action<byte, byte, byte>? NoteOn;
+
+    /// <summary>Which note-ons count (the port's device id and the status byte); all of them when null.</summary>
+    public Func<string, byte, bool>? Accepts { get; set; }
 
     public event Action? DevicesChanged;
 
@@ -92,7 +95,13 @@ public sealed class MidiInputService : IDisposable
             {
                 if (Message is { } raw) raw(info.Id, Bytes(args.Message.RawData), ShowState.HostClock());
                 if (args.Message is MidiNoteOnMessage on)
-                    dispatcher.BeginInvoke(() => NoteOn?.Invoke((byte)(0x90 | on.Channel), on.Note, on.Velocity));
+                {
+                    var status = (byte)(0x90 | on.Channel);
+                    dispatcher.BeginInvoke(() =>
+                    {
+                        if (Accepts?.Invoke(info.Id, status) != false) NoteOn?.Invoke(status, on.Note, on.Velocity);
+                    });
+                }
             };
             lock (ports) ports[info.Id] = (port, info.Name);
             Log.Info($"MIDI input connected: {info.Name}");

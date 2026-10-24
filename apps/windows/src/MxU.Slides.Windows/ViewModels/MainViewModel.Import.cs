@@ -153,6 +153,7 @@ public sealed partial class MainViewModel
             if (applied?.TimersImported > 0) parts.Add($"{applied.TimersImported} timers");
             if (applied?.InputsImported > 0) parts.Add($"{applied.InputsImported} video inputs");
             if (hotKeys > 0) parts.Add($"{hotKeys} group hot keys");
+            if (result.MidiDevices.Count > 0) parts.Add($"{result.MidiDevices.Count} MIDI devices");
             Notice = $"Imported {string.Join(", ", parts)} from ProPresenter"
                 + (result.SkippedEdited.Count > 0 ? $"; kept {result.SkippedEdited.Count} you've changed here" : "")
                 + (result.Warnings.Count > 0 ? ". Details are in the log." : ".");
@@ -191,6 +192,8 @@ public sealed partial class MainViewModel
             Library.Save(board);
         }
         foreach (var trigger in result.ScheduleTriggers.Where(t => Library.Get<ScheduleTrigger>(t.Id) is null)) Library.Save(trigger);
+        var midiDevices = SaveImportedMidiDevices(result.MidiDevices);
+        if (midiDevices > 0) Log.Info($"ProPresenter library import: {midiDevices} MIDI devices");
         if (result.Combos.Count + result.ScheduleTriggers.Count > 0)
             Log.Info($"ProPresenter library import: {result.Combos.Count} macros as action combos, {result.ScheduleTriggers.Count} calendar events as schedule triggers");
     }

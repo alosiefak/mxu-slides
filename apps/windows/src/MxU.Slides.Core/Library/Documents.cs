@@ -39,5 +39,8 @@ public sealed partial class GroupPalette : ILibraryDocument
     string ILibraryDocument.Name { get => "Groups"; set { } }
 }
 
+/// <summary>A MIDI device the show talks to ("Lighting desk"); which ports it uses on this PC is a setting (see Core/Control/MidiDevices.cs).</summary>
+public sealed partial class MIDIDevice : ILibraryDocument;
+
 /// <summary>A streaming destination. Its stream key is a secret, kept out of the JSON (see the Broadcast project).</summary>
 public sealed partial class StreamDestination : ILibraryDocument;

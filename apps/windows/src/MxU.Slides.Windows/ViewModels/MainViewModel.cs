@@ -51,6 +51,7 @@ public sealed partial class MainViewModel : ObservableObject
         StartScheduler();
         StartInputs();
         StartTimecode();
+        _ = RefreshMidiDevicesAsync();
         _ = RefreshMidiOutputsAsync();
         // Combos marked "run on startup" go once the window has settled, as on the Mac.
         var startup = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
@@ -128,6 +129,7 @@ public sealed partial class MainViewModel : ObservableObject
         else if (type == typeof(AudioItem) || type == typeof(Playlist)) RefreshAudio();
         else if (type == typeof(ActionCombo)) RefreshCombos();
         else if (type == typeof(GroupPalette)) RefreshHotKeys();
+        else if (type == typeof(MIDIDevice)) ResolveMidiDevices();
         else if (type == typeof(Overlay) && !suppressOverlayRefresh) RefreshOverlays();
     }
 
