@@ -280,6 +280,34 @@ public sealed partial class SelfTest
         feed.Add(sink);
         try
         {
+            // The trails are blended by a pixel shader. A capture that draws in software (no graphics
+            // card, or a fallback capture) can't show shader effects, so first check one shows at all.
+            Show(new Slide
+            {
+                Id = "selftest-trails-probe", Name = "Probe",
+                Objects =
+                [
+                    new SlideObject
+                    {
+                        Id = "probe", ObjectKind = SlideObjectKind.Shape, Name = "Box", Text = "", X = 0, Y = 0, Width = 1920, Height = 1080,
+                        Fill = new ObjectFill { FillKind = FillKind.Solid, ColorHex = "#FFFFFFFF" },
+                        Effects = [new Effect { EffectKind = EffectKind.Invert }],
+                    },
+                ],
+            });
+            await Delay(700);
+            if (sink.Last is not { } probe || sink.Width == 0)
+            {
+                Skip("Echo and Ghost Trails on the outputs", "this PC's graphics-card capture gave no frames");
+                return;
+            }
+            var middle = (sink.Height / 2 * sink.Width + sink.Width / 2) * 4;
+            if (probe[middle] > 40 || probe[middle + 1] > 40 || probe[middle + 2] > 40)
+            {
+                Skip("Echo and Ghost Trails on the outputs", "the program capture doesn't show pixel-shader effects on this PC");
+                return;
+            }
+
             List<Effect> echo = [new Effect { EffectKind = EffectKind.Echo, Amount = 2 }];
             Show(Dot("selftest-echo-left", TextHorizontalAlignment.Left, echo));
             await Delay(900);
