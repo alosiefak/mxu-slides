@@ -272,6 +272,7 @@ public sealed partial class MediaHub
         {
             player.Opened = true;
             naturalSizes[mediaId] = new Size(mp.NaturalVideoWidth, mp.NaturalVideoHeight);
+            StartPass(player); // the in point and play rate (MediaHub.Trim.cs)
             MediaReady?.Invoke(mediaId);
         };
         mp.MediaFailed += (_, e) =>
@@ -294,28 +295,21 @@ public sealed partial class MediaHub
             Log.Warn($"Video failed to play ({media.Name}): {player.FailureReason}");
             MediaReady?.Invoke(mediaId);
         };
-        mp.MediaEnded += (_, _) =>
-        {
-            if (player.Loops)
-            {
-                mp.Position = TimeSpan.Zero;
-                mp.Play();
-            }
-            else
-            {
-                mp.Pause();
-                player.Playing = false;
-                VideoEnded?.Invoke(playbackKey);
-            }
-        };
+        // The end of a pass: loop back to the in point, or stop (MediaHub.Trim.cs).
+        mp.MediaEnded += (_, _) => PassEnded(player, playbackKey);
         players[playbackKey] = player;
+        BeginPass(player);
         mp.Open(new Uri(media.Path));
         mp.Play();
         player.Playing = true;
         return mp;
     }
 
-    /// <summary>Raised when a non-looping video reaches its end, with its playback key.</summary>
+    /// <summary>
+    /// Raised once each time a video finishes a pass, with its playback key: at its out point (a
+    /// trimmed video) or the file's end. A non-looping video has then paused; a looping one has gone
+    /// back to its in point and plays on, so this is raised again at the end of every pass.
+    /// </summary>
     public event Action<string>? VideoEnded;
 
     public Size? NaturalSize(string mediaId) => naturalSizes.TryGetValue(mediaId, out var size) && size.Width > 0 ? size : null;
@@ -362,7 +356,9 @@ public sealed partial class MediaHub
     {
         if (!players.TryGetValue(playbackKey, out var p) || !p.Opened) return null;
         var mp = p.MediaPlayer;
-        return (mp.Position, mp.NaturalDuration.HasTimeSpan ? mp.NaturalDuration.TimeSpan : null, p.Playing);
+        // A trimmed video reports its window: from the in point, as long as the trim (as on the Mac).
+        var (position, duration) = WindowTransport(p, mp.Position, mp.NaturalDuration.HasTimeSpan ? mp.NaturalDuration.TimeSpan : null);
+        return (position, duration, p.Playing);
     }
 
     public IEnumerable<(string Key, string MediaId)> ActiveVideos => players.Select(p => (p.Key, p.Value.MediaId));
@@ -378,22 +374,28 @@ public sealed partial class MediaHub
     {
         if (!players.TryGetValue(playbackKey, out var p)) return;
         p.MediaPlayer.Play();
+        ApplyRate(p);
         p.Playing = true;
     }
 
     public void Restart(string playbackKey)
     {
         if (!players.TryGetValue(playbackKey, out var p)) return;
-        p.MediaPlayer.Position = TimeSpan.Zero;
+        p.MediaPlayer.Position = PassStart(p);
         p.MediaPlayer.Play();
+        ApplyRate(p);
         p.Playing = true;
     }
 
-    /// <summary>Jumps to a position, clamped to the video's length; playing or paused stays as it was.</summary>
+    /// <summary>
+    /// Jumps to a position (from a trimmed video's in point), clamped to the video's length or its
+    /// out point; playing or paused stays as it was.
+    /// </summary>
     public void Seek(string playbackKey, TimeSpan position)
     {
         if (!players.TryGetValue(playbackKey, out var p)) return;
         var mp = p.MediaPlayer;
+        position = InWindow(p, position < TimeSpan.Zero ? TimeSpan.Zero : position);
         if (mp.NaturalDuration.HasTimeSpan && position > mp.NaturalDuration.TimeSpan) position = mp.NaturalDuration.TimeSpan;
         mp.Position = position < TimeSpan.Zero ? TimeSpan.Zero : position;
     }

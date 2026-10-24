@@ -24,6 +24,7 @@ public sealed partial class MainViewModel : ObservableObject
         Settings = settings;
         Session = session;
         Media = new MediaHub(ResolveMedia) { VideoVolume = settings.VideoVolume, PosterCache = Path.Combine(AppPaths.LocalRoot, "Posters") };
+        Media.TrimOf = TrimFor; // each video's in point, out point and play rate (MainViewModel.Rendering.cs)
         SceneView.DefaultMedia = Media;
         Library.Changed += OnLibraryChanged;
 

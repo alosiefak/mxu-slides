@@ -6,7 +6,8 @@ namespace MxU.Slides.Windows.ViewModels;
 
 /// <summary>
 /// Rendering a Mac or ProPresenter document the way the Mac draws it: which theme each slide
-/// uses (a slide can follow its own theme, or none when it's Blank).
+/// uses (a slide can follow its own theme, or none when it's Blank), each video's trim and speed,
+/// live inputs and screen mirrors inside slide objects, and the library's own fonts.
 /// </summary>
 public sealed partial class MainViewModel
 {
@@ -21,6 +22,12 @@ public sealed partial class MainViewModel
 
     /// <summary>The theme of the slide being edited (the canvas, its inspector and the Design picker use it).</summary>
     private Theme? EditedSlideTheme => EditedSlide is { } slide && CurrentPresentation is { } p ? ThemeFor(slide, p) : CurrentTheme;
+
+    // MARK: Video trim and play rate
+
+    /// <summary>A video's in point, out point and speed from its media item (set in ProPresenter imports), or null to play it whole.</summary>
+    private Core.Media.PlaybackOptions? TrimFor(string mediaId) =>
+        Library.Get<MediaItem>(mediaId) is { } item ? Core.Media.PlaybackOptions.Of(item) : null;
 
     // MARK: Live inputs and screen mirrors on slides
 
