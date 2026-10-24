@@ -117,6 +117,35 @@ public class PagingTests
         var s = WithSideThirdDesign(ScriptureSlide());
         var pages = Paging.PageCount(PlaceholderAnimations.RenderedThroughOverride(s, SideThirds()), SideThirds(), Pager);
         Assert.Equal(pages, PlaceholderAnimations.ClickCount(s, [null, SideThirds()], Pager)); // pages minus one, plus the Out
+
+        var show = new ShowState { SlideThemeOverrides = [SideThirds()], Pager = Pager };
+        show.Fire(s, theme: null, atHostTime: 1);
+        Assert.Equal(pages, show.SlideClickCount); // pages minus one, plus the Out
+    }
+
+    [Fact]
+    public void TheLiveLookTurnsItsPagesOnClick()
+    {
+        // End to end through ShowState: the look's scene shows page 1, a click turns to page 2 (the morph
+        // step starts at the click), and the projector's own scene is untouched.
+        var s = WithSideThirdDesign(ScriptureSlide());
+        var look = SideThirds();
+        var show = new ShowState { SlideThemeOverrides = [look], Pager = Pager, PageTurn = Paging.Turn.Fade };
+        show.Fire(s, theme: Digital(), atHostTime: 1);
+        var verse = show.AnimatedScene(slideThemeOverride: look)[LayerKind.Slide].Items.First(i => i.Id == "verse");
+        var pageOne = Assert.IsType<ItemContent.Text>(verse.Render.Content).Styled.String;
+        Assert.True(pageOne.Length < Verse.Length);
+        var turn = verse.AnimationSteps.First(step => step.Id.Contains(Paging.StepMarker));
+        Assert.Equal(SceneAnimationKind.Morph, turn.Kind);
+        Assert.Equal(SceneStepAnimation.Fade, turn.Animation);
+        Assert.Equal(0.35, turn.Duration, 3);
+        Assert.Equal(SceneAnimationGroupKind.Click, turn.Group.Kind);
+        Assert.True(show.AdvanceStep(2));
+        Assert.Equal([2.0], show.SlideAnimationContext!.ClickHostTimes);
+        Assert.Equal(Verse, Assert.IsType<ItemContent.Text>(show.AnimatedScene()[LayerKind.Slide].Items.First(i => i.Id == "verse").Render.Content).Styled.String);
+
+        show.Pager = null; // no measurer: nothing pages, as before
+        Assert.Equal(1, show.SlideClickCount);
     }
 
     [Fact]
@@ -140,6 +169,32 @@ public class PagingTests
         var leave = PlaceholderAnimations.ClickCount(@short, [null, sideThirds], Pager);
         Assert.Equal(leave + pages.Count - 1, PlaceholderAnimations.ClickCount(own, [null, sideThirds], Pager)); // the page turns, then the design's own leave
         Assert.Equal(leave, PlaceholderAnimations.ClickCount(own, [null, sideThirds])); // the body's cheap count skips the page measuring
+
+        var show = new ShowState { SlideThemeOverrides = [sideThirds], Pager = Pager };
+        show.Fire(own, theme: null, atHostTime: 1);
+        Assert.Equal(leave + pages.Count - 1, show.SlideClickCount); // the advance bookkeeping sees the pages the output turns
+    }
+
+    [Fact]
+    public void TextThatMovesOnItsOwnNeverPages()
+    {
+        // TextRasterizer.pages returns a ticker, a block scroll or text on a path whole.
+        var sideThirds = SideThirds();
+        var r = PlaceholderAnimations.RenderedThroughOverride(WithSideThirdDesign(ScriptureSlide()), sideThirds);
+        r.Objects[1].TextStyle = new TextStyle { TickerSpeed = 60 };
+        Assert.Single(Paging.Pages(r, sideThirds, Pager));
+        r.Objects[1].TextStyle = new TextStyle { Scroll = new BlockScroll { Speed = 40 } };
+        Assert.Single(Paging.Pages(r, sideThirds, Pager));
+    }
+
+    [Fact]
+    public void ThumbnailScenesShowPageOne()
+    {
+        var sideThirds = SideThirds();
+        var r = PlaceholderAnimations.RenderedThroughOverride(WithSideThirdDesign(ScriptureSlide()), sideThirds);
+        string VerseText(RenderScene scene) => scene.AllItems.Select(i => i.Content).OfType<ItemContent.Text>().Select(t => t.Styled.String).First(t => t.StartsWith("grace", StringComparison.Ordinal));
+        Assert.Equal(Verse, VerseText(SlideSceneBuilder.Scene(r, sideThirds)));
+        Assert.Equal(Paging.Pages(r, sideThirds, Pager)[0].Objects[1].Text, VerseText(SlideSceneBuilder.Scene(r, sideThirds, pager: Pager)));
     }
 
     [Fact]

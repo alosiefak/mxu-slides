@@ -215,7 +215,8 @@ public sealed class ItemEffect : ShaderEffect
     /// <summary>
     /// The shader mode and parameters for a pass at <paramref name="hostTime"/>, with distances
     /// turned from canvas units into pixels by <paramref name="pixelsPerUnit"/>; null for passes
-    /// drawn elsewhere (blur) or not drawn on Windows (echo, ghost trails).
+    /// drawn elsewhere: blur (a <see cref="BlurEffect"/>), and echo and ghost trails, which need the
+    /// previous frame (<see cref="TrailStore"/> and <see cref="TrailEffect"/>).
     /// </summary>
     public static (int Mode, Point4D Parameters)? Pass(AnimationEffect effect, double hostTime, double pixelsPerUnit) => effect switch
     {

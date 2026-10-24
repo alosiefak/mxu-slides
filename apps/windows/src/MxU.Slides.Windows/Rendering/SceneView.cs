@@ -6,24 +6,44 @@ using System.Windows.Media.Media3D;
 using MxU.Slides.Core.Animation;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Windows.Infrastructure;
+using LayerTransition = MxU.Slides.Core.Animation.SceneTransition;
 
 namespace MxU.Slides.Windows.Rendering;
 
-public enum TransitionStyle { Cut, Dissolve, FadeThroughColor }
+/// <summary>
+/// How a view changes to a new scene. <see cref="Cut"/>, <see cref="Dissolve"/> and
+/// <see cref="FadeThroughColor"/> change the whole picture at once. <see cref="Automatic"/>
+/// changes each layer its own way, as the Mac does (a slide's own transition on the slide
+/// layer, a video's on its layer, and so on): see <see cref="SceneTransition.Layers"/>.
+/// </summary>
+public enum TransitionStyle { Cut, Dissolve, FadeThroughColor, Automatic }
 
 public readonly record struct SceneTransition(TransitionStyle Style, double Seconds = 0, Color? ThroughColor = null)
 {
     public static readonly SceneTransition Cut = new(TransitionStyle.Cut);
+
+    /// <summary>Let the show decide each layer's transition (the view model works it out; see <c>LiveTransitions</c>).</summary>
+    public static readonly SceneTransition Automatic = new(TransitionStyle.Automatic);
+
+    /// <summary>The transition for each layer whose items change; null (or a cut) for none. Set for <see cref="TransitionStyle.Automatic"/>.</summary>
+    public Func<LayerKind, LayerTransition?>? Layers { get; init; }
+
+    /// <summary>Each layer changes its own way: the slide dissolving while the background cuts, say.</summary>
+    public static SceneTransition PerLayer(Func<LayerKind, LayerTransition?> layers) => new(TransitionStyle.Automatic) { Layers = layers };
 }
 
 /// <summary>
 /// Draws a scene scaled to fit (letterboxed) with cut/dissolve/fade-through
-/// transitions, and plays its animation builds: every frame while something
+/// transitions, or layer-by-layer transitions (dissolve, fade through a colour,
+/// blur dissolve, film burn: <see cref="SceneTransitionEngine"/>), and plays its
+/// animation builds: every frame while something
 /// moves, the animation engine says where each item is, and the view moves,
 /// fades, wipes and blurs that item's cached drawing (redrawing it only when its
 /// look changes, e.g. a colour morph or letters typing on). Each item is its own
-/// visual, so shadows, blur, rotation and opacity compose on the GPU. A single
-/// bad item is skipped and logged rather than taking the frame down.
+/// visual, so shadows, blur, rotation and opacity compose on the GPU; picture
+/// effects are shader layers around it, and Echo and Ghost Trails blend in the
+/// item's trail (<see cref="TrailStore"/>). A single bad item is skipped and
+/// logged rather than taking the frame down.
 /// </summary>
 public sealed class SceneView : FrameworkElement
 {
@@ -45,6 +65,29 @@ public sealed class SceneView : FrameworkElement
     private sealed record PoseKey(SceneRect Frame, double Rotation, bool FlipH, bool FlipV, AnimationMotion Motion);
 
     /// <summary>
+    /// One picture effect on an item. A shader pass is a layer with an <see cref="ItemEffect"/>.
+    /// An Echo or Ghost Trails pass needs a picture of what is under it, so what is under it
+    /// lives in <see cref="Source"/> (not in the visual tree) and is shown through
+    /// <see cref="Face"/>, a rectangle painted with that picture over exactly the item's area,
+    /// so the trail bitmap lines up with it.
+    /// </summary>
+    private sealed class EffectPass
+    {
+        public ContainerVisual Layer { get; } = new();
+        public ItemEffect? Shader;
+        public ContainerVisual? Source;
+        public DrawingVisual? Face;
+        public DrawingVisual? Under;
+        public TrailEffect? Trail;
+        public Rect Region;
+
+        public bool IsTrail => Source is not null;
+
+        /// <summary>Where what is under this pass goes.</summary>
+        public ContainerVisual Host => Source ?? Layer;
+    }
+
+    /// <summary>
     /// One item: Outer (canvas space) carries the matte clip, Inner (moves with the item) the
     /// pose, opacity, wipe and blur, and between Inner and the drawing sits one layer per
     /// picture effect (first effect innermost, as the Mac applies them in order).
@@ -54,15 +97,19 @@ public sealed class SceneView : FrameworkElement
         public Slot() => Outer.Children.Add(Inner);
         public ContainerVisual Outer { get; } = new();
         public ContainerVisual Inner { get; } = new();
-        public List<(ContainerVisual Layer, ItemEffect Effect)> EffectLayers { get; } = [];
+        public List<EffectPass> Passes { get; } = [];
+        public string PassShape = "";
         public ItemVisual? Drawing;
         public ContentKey? Content;
         public PoseKey? Pose;
         public double Blur;
         public Geometry? Matte;
 
-        /// <summary>Where the drawing goes: the innermost effect layer, or Inner when there are none.</summary>
-        public ContainerVisual Host => EffectLayers.Count > 0 ? EffectLayers[0].Layer : Inner;
+        /// <summary>The video players its drawing uses (released when the item goes).</summary>
+        public HashSet<string> Keys { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>Where the drawing goes: under the innermost effect pass, or Inner when there are none.</summary>
+        public ContainerVisual Host => Passes.Count > 0 ? Passes[0].Host : Inner;
     }
 
     private sealed class Root
@@ -92,6 +139,11 @@ public sealed class SceneView : FrameworkElement
     private bool transitioning;
     private bool hooked;
     private MediaHub? media;
+
+    // Layer-by-layer transitions (TransitionStyle.Automatic): the engine composites the old and
+    // new scenes per layer, and the one root draws its result every frame until it lands.
+    private SceneTransitionEngine? layered;
+    private bool layerTransitioning;
 
     public SceneView()
     {
@@ -155,6 +207,13 @@ public sealed class SceneView : FrameworkElement
 
     public void Present(AnimatedScene? scene, SceneTransition transition)
     {
+        if (transition.Style == TransitionStyle.Automatic && scene is not null)
+        {
+            PresentLayered(scene, transition.Layers ?? (_ => null));
+            return;
+        }
+        layered = null;
+        layerTransitioning = false;
         var next = scene is null ? null : new Root(scene);
         if (next is not null) Render(next, Now);
 
@@ -194,10 +253,51 @@ public sealed class SceneView : FrameworkElement
             Present(scene, SceneTransition.Cut);
             return;
         }
-        var resized = current.Scene.CanvasSize != scene.CanvasSize;
-        current.Scene = scene;
-        Render(current, Now);
-        if (resized) current.Visual.Transform = FitTransform(scene.CanvasSize);
+        if (layered is not null)
+        {
+            // A layer transition carries on; the new scene becomes what it lands on.
+            PresentLayered(scene, _ => null);
+            return;
+        }
+        Show(current, scene);
+        EnsureFrames();
+    }
+
+    /// <summary>Draws a new scene on a root that's already showing, keeping each unchanged item's drawing.</summary>
+    private void Show(Root root, AnimatedScene scene)
+    {
+        var resized = root.Scene.CanvasSize != scene.CanvasSize;
+        root.Scene = scene;
+        Render(root, Now);
+        if (resized) root.Visual.Transform = FitTransform(scene.CanvasSize);
+    }
+
+    /// <summary>
+    /// The Mac's way: each layer whose items change transitions on its own (the slide layer
+    /// dissolving, a background fading through black, the alert cutting), composited by the
+    /// <see cref="SceneTransitionEngine"/> into one scene this view draws every frame until it lands.
+    /// Items that stay (same id, same media) are never faded, so a clock tick or a build never flickers.
+    /// </summary>
+    private void PresentLayered(AnimatedScene scene, Func<LayerKind, LayerTransition?> transitionFor)
+    {
+        FinishTransition();
+        var now = Now;
+        // A view no one can see cuts, as with whole-view transitions.
+        var cut = !IsVisible && !Offscreen;
+        layered ??= new SceneTransitionEngine(current?.Scene ?? new AnimatedScene(scene.CanvasSize, scene.Background));
+        layered.Push(scene, cut ? LiveTransitions.AllCut : transitionFor, now);
+        var shown = layered.Scene(now);
+        if (current is null)
+        {
+            current = new Root(shown);
+            Render(current, now);
+            Attach(current, opacity: 1);
+        }
+        else
+        {
+            Show(current, shown);
+        }
+        layerTransitioning = layered.IsTransitioning(now);
         EnsureFrames();
     }
 
@@ -205,7 +305,7 @@ public sealed class SceneView : FrameworkElement
 
     private void EnsureFrames()
     {
-        var wanted = transitioning || current?.Animating == true || outgoing?.Animating == true;
+        var wanted = transitioning || layerTransitioning || current?.Animating == true || outgoing?.Animating == true;
         if (wanted == hooked) return;
         if (wanted) CompositionTarget.Rendering += OnFrame;
         else CompositionTarget.Rendering -= OnFrame;
@@ -215,7 +315,17 @@ public sealed class SceneView : FrameworkElement
     private void OnFrame(object? sender, EventArgs e)
     {
         var now = Now;
-        if (current?.Animating == true) Render(current, now);
+        if (layerTransitioning && layered is not null && current is not null)
+        {
+            // The engine's composite for this instant; once it lands it hands back the new scene.
+            current.Scene = layered.Scene(now);
+            layerTransitioning = layered.IsTransitioning(now);
+            Render(current, now);
+        }
+        else if (current?.Animating == true)
+        {
+            Render(current, now);
+        }
         if (outgoing?.Animating == true) Render(outgoing, now);
         if (transitioning)
         {
@@ -265,6 +375,8 @@ public sealed class SceneView : FrameworkElement
         FinishTransition();
         Detach(current);
         current = null;
+        layered = null;
+        layerTransitioning = false;
         EnsureFrames();
     }
 
@@ -370,6 +482,7 @@ public sealed class SceneView : FrameworkElement
             }
         }
         foreach (var gone in root.Slots.Keys.Where(k => !seen.Contains(k)).ToList()) root.Slots.Remove(gone);
+        ReleaseUnusedPlayers(root);
 
         var kids = root.Visual.Children;
         if (kids.Count != order.Count || order.Where((visual, i) => !ReferenceEquals(kids[i], visual)).Any())
@@ -378,6 +491,23 @@ public sealed class SceneView : FrameworkElement
             foreach (var visual in order) kids.Add(visual);
         }
         root.Animating = AnimationTimeline.IsAnimating(scene, now);
+    }
+
+    /// <summary>
+    /// Lets go of video players no item on this root draws any more (a video that left in a layer
+    /// transition), so its sound and decoding stop. A root used to live for one scene; with layer
+    /// transitions one root shows scene after scene, so this is checked on every frame.
+    /// </summary>
+    private void ReleaseUnusedPlayers(Root root)
+    {
+        if (root.Keys.Count == 0) return;
+        var inUse = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var slot in root.Slots.Values) inUse.UnionWith(slot.Keys);
+        foreach (var key in root.Keys.Where(k => !inUse.Contains(k)).ToList())
+        {
+            root.Keys.Remove(key);
+            media?.Release(key);
+        }
     }
 
     private static RenderScene Still(AnimatedScene scene)
@@ -400,8 +530,10 @@ public sealed class SceneView : FrameworkElement
             HiddenKey(item.HiddenRuns), item.StrokeTrim, item.FillOpacity);
         if (slot.Content != content)
         {
+            slot.Keys.Clear();
             var drawing = BuildContent(item, ppd, key =>
             {
+                slot.Keys.Add(key);
                 if (root.Keys.Add(key)) media?.Retain(key);
             });
             slot.Host.Children.Clear();
@@ -409,7 +541,7 @@ public sealed class SceneView : FrameworkElement
             slot.Drawing = drawing;
             slot.Content = content;
         }
-        ApplyEffects(slot, item.Effects, now);
+        ApplyEffects(slot, item, now);
 
         var opacity = Math.Clamp(render.Opacity, 0, 1);
         if (slot.Inner.Opacity != opacity) slot.Inner.Opacity = opacity;
@@ -440,41 +572,130 @@ public sealed class SceneView : FrameworkElement
         }
     }
 
+    /// <summary>One pass to draw this frame: a shader pass (mode and parameters) or a trail pass (the effect and its index in the list).</summary>
+    private readonly record struct PassPlan(AnimationEffect Effect, int Index, int Mode, Point4D Parameters, bool Trail);
+
     /// <summary>Keeps one effect layer per drawable pass and sets each pass's parameters for this frame.</summary>
-    private void ApplyEffects(Slot slot, IReadOnlyList<AnimationEffect> effects, double now)
+    private void ApplyEffects(Slot slot, AnimatedItem item, double now)
     {
-        var passes = new List<(int Mode, Point4D Parameters, double Opacity)>();
-        if (effects.Count > 0 && ItemEffect.IsSupported)
+        var effects = item.Effects;
+        var passes = new List<PassPlan>();
+        if (effects.Count > 0)
         {
             var pixelsPerUnit = RenderScale();
-            foreach (var effect in effects)
-                if (ItemEffect.Pass(effect, now, pixelsPerUnit) is { } pass) passes.Add((pass.Mode, pass.Parameters, effect.Opacity));
-        }
-        if (passes.Count != slot.EffectLayers.Count)
-        {
-            // Rebuild the chain: Inner → last effect → … → first effect → drawing.
-            foreach (var (layer, _) in slot.EffectLayers) layer.Children.Clear();
-            slot.Inner.Children.Clear();
-            slot.EffectLayers.Clear();
-            ContainerVisual outer = slot.Inner;
-            var chain = new List<(ContainerVisual, ItemEffect)>();
-            for (var i = passes.Count - 1; i >= 0; i--)
+            for (var index = 0; index < effects.Count; index++)
             {
-                var effect = new ItemEffect();
-                var layer = new ContainerVisual { Effect = effect };
-                outer.Children.Add(layer);
-                chain.Insert(0, (layer, effect));
-                outer = layer;
+                var effect = effects[index];
+                if (effect is AnimationEffect.Echo or AnimationEffect.GhostTrails)
+                {
+                    // Trails need frames over time; thumbnails and the editor show the item as it is.
+                    if (PlaysVideo) passes.Add(new PassPlan(effect, index, 0, default, Trail: true));
+                }
+                else if (ItemEffect.IsSupported && ItemEffect.Pass(effect, now, pixelsPerUnit) is { } pass)
+                {
+                    passes.Add(new PassPlan(effect, index, pass.Mode, pass.Parameters, Trail: false));
+                }
             }
-            slot.EffectLayers.AddRange(chain);
-            if (slot.Drawing is { } drawing) outer.Children.Add(drawing);
         }
+        var shape = string.Concat(passes.Select(p => p.Trail ? 'T' : 'S'));
+        if (shape != slot.PassShape) RebuildPasses(slot, passes);
         for (var i = 0; i < passes.Count; i++)
         {
-            var effect = slot.EffectLayers[i].Effect;
-            var modeOpacity = new Point4D(passes[i].Mode, passes[i].Opacity, 0, 0);
-            if (effect.ModeOpacity != modeOpacity) effect.ModeOpacity = modeOpacity;
-            if (effect.Parameters != passes[i].Parameters) effect.Parameters = passes[i].Parameters;
+            var plan = passes[i];
+            var pass = slot.Passes[i];
+            if (pass.Shader is { } shader)
+            {
+                var modeOpacity = new Point4D(plan.Mode, plan.Effect.Opacity, 0, 0);
+                if (shader.ModeOpacity != modeOpacity) shader.ModeOpacity = modeOpacity;
+                if (shader.Parameters != plan.Parameters) shader.Parameters = plan.Parameters;
+            }
+            else
+            {
+                ApplyTrail(pass, plan, item, now);
+            }
+        }
+    }
+
+    /// <summary>Rebuilds the chain: Inner → last effect → … → first effect → drawing (a trail pass holds what's under it in its Source).</summary>
+    private static void RebuildPasses(Slot slot, List<PassPlan> passes)
+    {
+        foreach (var pass in slot.Passes)
+        {
+            pass.Layer.Children.Clear();
+            pass.Source?.Children.Clear();
+        }
+        slot.Inner.Children.Clear();
+        slot.Passes.Clear();
+        ContainerVisual outer = slot.Inner;
+        var chain = new List<EffectPass>();
+        for (var i = passes.Count - 1; i >= 0; i--)
+        {
+            var pass = new EffectPass();
+            outer.Children.Add(pass.Layer);
+            if (passes[i].Trail)
+            {
+                pass.Source = new ContainerVisual();
+                pass.Face = new DrawingVisual();
+                if (TrailEffect.IsSupported)
+                {
+                    pass.Trail = new TrailEffect();
+                    pass.Layer.Effect = pass.Trail;
+                }
+                else
+                {
+                    // No pixel shader 3.0: the trail is drawn under the live picture instead of blended with it.
+                    pass.Under = new DrawingVisual();
+                    pass.Layer.Children.Add(pass.Under);
+                }
+                pass.Layer.Children.Add(pass.Face);
+            }
+            else
+            {
+                pass.Shader = new ItemEffect();
+                pass.Layer.Effect = pass.Shader;
+            }
+            chain.Insert(0, pass);
+            outer = pass.Host;
+        }
+        slot.Passes.AddRange(chain);
+        slot.PassShape = string.Concat(passes.Select(p => p.Trail ? 'T' : 'S'));
+        if (slot.Drawing is { } drawing) outer.Children.Add(drawing);
+    }
+
+    /// <summary>
+    /// An Echo or Ghost Trails pass this frame: the area it covers (the item's frame, plus room for a
+    /// ghost's drift, as the Mac pads it), the picture of what's under it, and the trail from
+    /// <see cref="TrailStore"/> combined with it on the graphics card (or drawn under it without shaders).
+    /// </summary>
+    private void ApplyTrail(EffectPass pass, PassPlan plan, AnimatedItem item, double now)
+    {
+        var frame = item.Render.Frame;
+        var pad = plan.Effect is AnimationEffect.GhostTrails ghost ? ghost.Drift * 12 : 0;
+        var region = new Rect(frame.X - pad, frame.Y - pad, Math.Max(1, frame.Width + 2 * pad), Math.Max(1, frame.Height + 2 * pad));
+        if (pass.Region != region)
+        {
+            // The face shows what's under the pass over exactly the region, so the trail lines up with it.
+            var brush = new VisualBrush(pass.Source) { Viewbox = region, ViewboxUnits = BrushMappingMode.Absolute, Stretch = Stretch.Fill };
+            using (var dc = pass.Face!.RenderOpen()) dc.DrawRectangle(brush, null, region);
+            pass.Region = region;
+        }
+        // Views drawing the same item at the same moment share one trail; looks with the same item id differ by frame.
+        var key = $"{PlaybackScope}:{item.Id}#{plan.Index}@{frame.X:0},{frame.Y:0},{frame.Width:0},{frame.Height:0}";
+        var trail = TrailStore.Update(key, pass.Source!, region, plan.Effect, now);
+        var ghostly = plan.Effect is AnimationEffect.GhostTrails;
+        if (pass.Trail is { } effect)
+        {
+            if (!ReferenceEquals(effect.Trail, trail.Brush)) effect.Trail = trail.Brush;
+            var modeKeep = new Point4D(ghostly ? 1 : 0, trail.Keep, trail.Has ? 1 : 0, plan.Effect.Opacity);
+            if (effect.ModeKeep != modeKeep) effect.ModeKeep = modeKeep;
+        }
+        else if (pass.Under is { } under)
+        {
+            using (var dc = under.RenderOpen())
+                if (trail.Has && trail.Brush is { } brush) dc.DrawRectangle(brush, null, region);
+            under.Opacity = plan.Effect.Opacity;
+            // A ghost is mostly its trail: the live picture shows through by what isn't kept.
+            pass.Face!.Opacity = ghostly && trail.Has ? Math.Max(0.05, 1 - trail.Keep * plan.Effect.Opacity) : 1;
         }
     }
 
@@ -842,8 +1063,10 @@ public sealed class SceneView : FrameworkElement
                         dc.DrawImage(image, Place(new Size(image.Width, image.Height), frame, mode));
                     break;
                 case Core.Model.MediaKind.Video when PlaysVideo:
-                    var key = $"{PlaybackScope}:{item.Id}:{mediaId}";
-                    var player = media.Video(key, mediaId, item.Loops, IsAudible(item.Id));
+                    // A video fading out in a layer transition keeps playing on the same player.
+                    var playbackId = PlaybackId(item.Id);
+                    var key = $"{PlaybackScope}:{playbackId}:{mediaId}";
+                    var player = media.Video(key, mediaId, item.Loops, IsAudible(playbackId));
                     usesKey(key);
                     if (player is null || media.IsVideoFailed(key))
                     {
@@ -869,6 +1092,12 @@ public sealed class SceneView : FrameworkElement
             dc.Pop();
         }
     }
+
+    /// <summary>The item id a video plays under: a leaving copy (<c>id::leaving</c>, from a layer transition) shares its player.</summary>
+    private static string PlaybackId(string itemId) =>
+        itemId.EndsWith(LeavingSuffix, StringComparison.Ordinal) ? itemId[..^LeavingSuffix.Length] : itemId;
+
+    private const string LeavingSuffix = "::leaving";
 
     private double RenderScale()
     {

@@ -38,8 +38,14 @@ public abstract record AnimationEffect
         public override bool VariesWithTime => Speed > 0;
     }
 
-    /// <summary>Needs the previous frame; not drawn on Windows yet.</summary>
-    public sealed record Echo(double Fade) : AnimationEffect;
+    /// <summary>
+    /// Anything that changes inside the item leaves a copy that fades to a tenth in <see cref="Fade"/>
+    /// seconds (see <see cref="EffectTrail"/>). It needs every frame, so the view keeps drawing.
+    /// </summary>
+    public sealed record Echo(double Fade) : AnimationEffect
+    {
+        public override bool VariesWithTime => true;
+    }
 
     public sealed record Scatter(double Amount, double Size, double Speed, double Smooth) : AnimationEffect
     {
@@ -56,8 +62,14 @@ public abstract record AnimationEffect
         public override bool VariesWithTime => Speed > 0.001;
     }
 
-    /// <summary>Needs the previous frame; not drawn on Windows yet.</summary>
-    public sealed record GhostTrails(double Fade, double Drift, double Scale, double Speed) : AnimationEffect;
+    /// <summary>
+    /// The item smokes: each frame is mixed with the last one pushed about by slow noise
+    /// (<see cref="Drift"/> canvas units, noise cells of <see cref="Scale"/>, moving at <see cref="Speed"/>).
+    /// </summary>
+    public sealed record GhostTrails(double Fade, double Drift, double Scale, double Speed) : AnimationEffect
+    {
+        public override bool VariesWithTime => true;
+    }
 
     /// <summary>
     /// An object's effect list as passes, skipping disabled, invisible and do-nothing ones.

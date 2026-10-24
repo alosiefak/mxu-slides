@@ -316,5 +316,7 @@ public sealed partial class MainViewModel
         Outputs?.IsShowing(OutputRole.Stage) == true || StagePreview is not null
         || Show.Live?.Slide.Objects.Any(o => o.TextLink is { } link && LinkedText.IsTimeVarying(link)) == true
         || Show.LiveOverlays.Any(o => o.Objects.Any(x => x.TextLink is { } link && LinkedText.IsTimeVarying(link)))
-        || Show.Live?.Theme?.Slides?.Any(s => s.Objects.Any(x => x.TextLink is { } link && LinkedText.IsTimeVarying(link))) == true;
+        || Show.Live?.Theme?.Slides?.Any(s => s.Objects.Any(x => x.TextLink is { } link && LinkedText.IsTimeVarying(link))) == true
+        // A look a screen shows can carry its own clock or timer.
+        || Show.Live is not null && Show.SlideThemeOverrides.Any(t => t.Slides?.Any(s => s.Objects.Any(x => x.TextLink is { } link && LinkedText.IsTimeVarying(link))) == true);
 }

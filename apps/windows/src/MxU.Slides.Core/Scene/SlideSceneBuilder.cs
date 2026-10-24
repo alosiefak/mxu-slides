@@ -222,7 +222,8 @@ public static class SlideSceneBuilder
         string? arrangementId = null,
         bool showThemeDecor = true,
         SceneSize? canvasSize = null,
-        IReadOnlyDictionary<LayerKind, string>? carriedMedia = null)
+        IReadOnlyDictionary<LayerKind, string>? carriedMedia = null,
+        Animation.TextPager? pager = null)
     {
         var canvas = canvasSize ?? CanvasSizeFor(presentation);
         var scene = new RenderScene(canvas);
@@ -252,7 +253,15 @@ public static class SlideSceneBuilder
             && BackdropItem(fill, canvas, $"{slide.Id}-backdrop") is { } backdrop)
             scene.AddItem(backdrop, LayerKind.Slide);
 
-        AddSlideObjects(scene, slide.Objects, theme, ThemeSlide(slide, theme), canvas, showThemeDecor);
+        var template = ThemeSlide(slide, theme);
+        IReadOnlyList<SlideObject> objects = slide.Objects;
+        // With a pager (thumbnails), text that pages on click shows its first page, as the output first does.
+        if (pager is not null)
+        {
+            var donated = Animation.PlaceholderAnimations.Compose(objects, template, slide.AnimationOrder);
+            objects = Animation.Paging.Paged(donated.Objects, template, theme, donated.Order, canvas, pager).Objects;
+        }
+        AddSlideObjects(scene, objects, theme, template, canvas, showThemeDecor);
         return scene;
     }
 

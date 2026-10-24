@@ -2,11 +2,16 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using MxU.Slides.Core.Animation;
+using MxU.Slides.Core.Json;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Outputs;
 using MxU.Slides.Core.Scene;
+using MxU.Slides.Core.Threading;
 using MxU.Slides.Windows.Infrastructure;
 using MxU.Slides.Windows.Outputs;
 using MxU.Slides.Windows.Rendering;
+using SceneTransition = MxU.Slides.Windows.Rendering.SceneTransition;
 
 namespace MxU.Slides.Windows.ViewModels;
 
@@ -63,16 +68,36 @@ public sealed partial class MainViewModel
     /// <param name="runActions">False when a timeline jumps (lands on a slide without running its actions, as on the Mac).</param>
     private void Fire(Presentation presentation, string? arrangementId, int occurrence, string? itemId, bool runActions = true)
     {
+        SettlePending();
         var arranged = SlideSceneBuilder.ArrangedSlides(presentation, arrangementId);
         if (occurrence < 0 || occurrence >= arranged.Count) return;
         var slide = arranged[occurrence];
+
+        // The hand-off, as on the Mac: a look that goes away with this slide (its preset drops it, the
+        // slide needs another of its designs, or the slide is blank) plays its Outs first, while every
+        // other output stays as it is; then the slide lands.
+        var handoff = Show.Handoff(slide, IncomingLooks(slide, itemId, runActions));
+        if (handoff.Wait > 0)
+        {
+            Show.DismissLooks(handoff.Leaving, ShowState.HostClock());
+            RenderOutputs(SceneTransition.Cut, refreshOnly: true);
+            var settled = fireSettled;
+            Defer(handoff.Wait, () =>
+            {
+                fireSettled = settled;
+                try { Fire(presentation, arrangementId, occurrence, itemId, runActions); }
+                finally { fireSettled = false; }
+            });
+            return;
+        }
+
         var theme = Library.Get<Theme>(presentation.ThemeId);
-        var wasLive = Show.Live is not null;
         // A slide (or its service item) can switch the output preset first, as on the Mac.
         if (runActions) Actions.ApplyPresetSwitches(slide, itemId);
         Show.Fire(slide, presentation, theme, arrangementId, arrivesSettled: fireSettled);
         Live = new LiveContext(itemId, presentation.Id, arrangementId, occurrence);
-        RenderOutputs(TransitionFor(slide, presentation, wasLive));
+        // Each layer changes the Mac's way: the slide's own transition, else its presentation's, else Settings'.
+        RenderOutputs(SceneTransition.Automatic);
         UpdateLiveLabels(presentation, slide, occurrence, arranged.Count);
         Session.LivePresentationId = presentation.Id;
         Session.LiveSlideId = slide.Id;
@@ -249,6 +274,8 @@ public sealed partial class MainViewModel
         Actions.CancelPendingDelayedActions();
         timeline?.Stop();
         audio?.Stop();
+        // As on the Mac, Clear All leaves every layer to its room default (no media item's own exit).
+        nextRenderClearsAll = true;
         Clear(() => Show.ClearAll());
         UpdateNowPlaying();
     }
@@ -275,8 +302,11 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private void ClearAlerts() => Clear(() => Show.Clear(ShowFunction.Alerts));
 
-    private void Clear(Action clear)
+    /// <param name="settle">False for the ticker tidying up after Outs finish (that never cuts through a waiting hand-off).</param>
+    private void Clear(Action clear, bool settle = true)
     {
+        // A clear cuts through a waiting hand-off, as on the Mac.
+        if (settle) SettlePending();
         clear();
         if (Show.Live is null)
         {
@@ -289,47 +319,77 @@ public sealed partial class MainViewModel
 
     // MARK: Rendering the outputs
 
-    private SceneTransition DefaultTransition() => Settings.Transition switch
+    /// <summary>
+    /// How the outputs change for a cue: each layer the Mac's way (see <see cref="LiveTransitions"/>):
+    /// the cue's own transition, else its presentation's, else the room default from Settings.
+    /// </summary>
+    private static SceneTransition DefaultTransition() => SceneTransition.Automatic;
+
+    /// <summary>
+    /// The room defaults from Settings › Transition: what a slide does when neither it nor its
+    /// presentation names a transition. Media takes the Mac's default (dissolve, 0.7 s) unless
+    /// Settings says Cut, which cuts media too (Windows has one setting where the Mac has two).
+    /// </summary>
+    private RoomTransitions RoomDefaults() => Settings.Transition switch
     {
-        OutputTransition.Cut => SceneTransition.Cut,
-        OutputTransition.FadeThroughBlack => new SceneTransition(TransitionStyle.FadeThroughColor, Settings.TransitionSeconds * 2, Colors.Black),
-        _ => new SceneTransition(TransitionStyle.Dissolve, Settings.TransitionSeconds),
+        OutputTransition.Cut => new(null, null),
+        OutputTransition.FadeThroughBlack => new(
+            new Transition { TransitionKind = TransitionKind.FadeBlack, DurationSeconds = Settings.TransitionSeconds * 2 },
+            Core.Animation.RoomTransitions.MacDefault.Media),
+        _ => new(
+            new Transition { TransitionKind = TransitionKind.Dissolve, DurationSeconds = Settings.TransitionSeconds },
+            Core.Animation.RoomTransitions.MacDefault.Media),
     };
 
-    /// <summary>The slide's transition, else the presentation's, else the default from Settings.</summary>
-    private SceneTransition TransitionFor(Slide slide, Presentation presentation, bool wasLive)
+    /// <summary>Long text turns its pages the way slides change (ServiceControls.apply on the Mac).</summary>
+    private Paging.Turn PageTurn() => Settings.Transition switch
     {
-        if ((slide.Transition ?? presentation.Transition) is not { } transition) return DefaultTransition();
-        var seconds = transition.DurationSeconds ?? Settings.TransitionSeconds;
-        return transition.TransitionKind switch
-        {
-            TransitionKind.Cut => SceneTransition.Cut,
-            TransitionKind.FadeBlack => new SceneTransition(TransitionStyle.FadeThroughColor, seconds, Colors.Black),
-            TransitionKind.FadeWhite => new SceneTransition(TransitionStyle.FadeThroughColor, seconds, Colors.White),
-            TransitionKind.FadeColor => new SceneTransition(TransitionStyle.FadeThroughColor, seconds,
-                Painting.ToColor(ColorHex.Color(transition.ColorHex) ?? SceneColor.Black)),
-            _ => new SceneTransition(TransitionStyle.Dissolve, seconds),
-        };
+        OutputTransition.Cut => Paging.Turn.Cut,
+        OutputTransition.FadeThroughBlack => Paging.Turn.Following(TransitionKind.FadeBlack, Settings.TransitionSeconds * 2),
+        _ => Paging.Turn.Following(TransitionKind.Dissolve, Settings.TransitionSeconds),
+    };
+
+    // What the outputs were last given, so the next push knows which cues changed.
+    private LiveCues renderedCues = LiveCues.Nothing;
+    private bool nextRenderClearsAll;
+
+    /// <summary>
+    /// The layer transitions for this push. An explicit cut (not a refresh) cuts every layer;
+    /// anything else follows the Mac's rules, comparing what's live now with what the outputs last showed.
+    /// </summary>
+    private SceneTransition LayerTransitions(SceneTransition requested, bool refreshOnly)
+    {
+        var before = renderedCues;
+        var after = LiveCues.Of(Show);
+        renderedCues = after;
+        var clearAll = nextRenderClearsAll;
+        nextRenderClearsAll = false;
+        if (requested.Layers is not null) return requested;
+        if (requested.Style == TransitionStyle.Cut && !refreshOnly) return SceneTransition.PerLayer(LiveTransitions.AllCut);
+        return SceneTransition.PerLayer(LiveTransitions.For(before, after, id => Library.Get<MediaItem>(id)?.Transition, RoomDefaults(), clearAll));
     }
 
-    /// <summary>Renders the audience and stage scenes to the outputs and the operator previews.</summary>
+    /// <summary>
+    /// Renders the audience and stage scenes to the outputs and the operator previews. The audience
+    /// scene is built once as designed and once per look a screen shows (each screen picks its own),
+    /// and every view changes layer by layer.
+    /// </summary>
     public void RenderOutputs(SceneTransition transition, bool refreshOnly = false)
     {
         try
         {
+            WireLooks();
+            Show.Pager ??= TextLayout.Pager;
+            Show.PageTurn = PageTurn();
+            var looks = SyncLooks();
             var audience = Show.AnimatedScene(resolveLinkedText: ResolveLinkedText);
-            if (refreshOnly)
-            {
-                Outputs?.Update(OutputRole.Audience, audience);
-                AudiencePreview?.Update(audience);
-                Program?.Update(audience);
-            }
-            else
-            {
-                Outputs?.Present(OutputRole.Audience, audience, transition);
-                AudiencePreview?.Present(audience, transition);
-                Program?.Present(audience, transition);
-            }
+            var lookScenes = new Dictionary<string, Core.Animation.AnimatedScene>(StringComparer.Ordinal);
+            foreach (var (key, look) in looks)
+                lookScenes[key] = Show.AnimatedScene(resolveLinkedText: ResolveLinkedText, slideThemeOverride: look);
+            var push = LayerTransitions(transition, refreshOnly);
+            Outputs?.Present(OutputRole.Audience, audience, push, lookScenes);
+            AudiencePreview?.Present(audience, push);
+            Program?.Present(audience, push);
             RenderStage(refreshOnly ? SceneTransition.Cut : transition, refreshOnly);
             EnsureTicking();
         }
@@ -355,7 +415,7 @@ public sealed partial class MainViewModel
             // A slide or overlay playing its Outs leaves once they finish.
             if (Show.HasPendingExits && Show.SweepFinishedExits())
             {
-                if (Show.Live is null) Clear(() => { });
+                if (Show.Live is null) Clear(() => { }, settle: false);
                 else RenderOutputs(SceneTransition.Cut, refreshOnly: true);
                 MarkLiveOverlays();
             }
@@ -365,5 +425,133 @@ public sealed partial class MainViewModel
             RenderOutputs(SceneTransition.Cut, refreshOnly: true);
         };
         ticker.Start();
+    }
+
+    // MARK: Looks (each screen's theme)
+
+    private OutputManager? looksWiredTo;
+
+    private bool ThemeExists(string themeId) => Library.Get<Theme>(themeId) is not null;
+
+    /// <summary>
+    /// Once the outputs exist: the Look picker's theme list, rendering again when a screen's look
+    /// changes, and the output preset that was active last time (applied at launch, as on the Mac).
+    /// </summary>
+    private void WireLooks()
+    {
+        if (Outputs is not { } outputs || ReferenceEquals(looksWiredTo, outputs)) return;
+        looksWiredTo = outputs;
+        outputs.Themes = () => [.. Library.All<Theme>().OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase)];
+        outputs.LooksChanged += () => RenderOutputs(SceneTransition.Cut);
+        if (Settings.ActiveOutputPresetId is { } presetId && Library.Get<OutputPreset>(presetId) is { } preset)
+            OutputPresets.Apply(outputs.Config, preset, ThemeExists);
+    }
+
+    /// <summary>Looks as themes, scoped to their folder or design; a look whose theme has gone is left out (that screen shows the slide as designed).</summary>
+    private Dictionary<string, Theme> ResolveLooks(IReadOnlyDictionary<string, SlideThemeLook>? looks)
+    {
+        var themes = new Dictionary<string, Theme>(StringComparer.Ordinal);
+        foreach (var (key, look) in looks ?? new Dictionary<string, SlideThemeLook>())
+            if (Library.Get<Theme>(look.ThemeId) is { } theme)
+                themes[key] = theme.ScopedToSlideFolder(look.Folder).ScopedToSlideId(look.SlideId);
+        return themes;
+    }
+
+    /// <summary>The looks some screen shows now, handed to the show (which counts their builds) in the Mac's order.</summary>
+    private Dictionary<string, Theme> SyncLooks()
+    {
+        var looks = ResolveLooks(Outputs?.Config.ActiveLooks);
+        Show.SlideThemeOverrides = [.. looks.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Value)];
+        return looks;
+    }
+
+    /// <summary>The looks that will show once this slide fires (it, or its service item, may switch the output preset).</summary>
+    private IReadOnlyList<Theme> IncomingLooks(Slide slide, string? itemId, bool runActions)
+    {
+        if (Outputs is not { } outputs) return Show.SlideThemeOverrides;
+        var routed = slide;
+        if (!runActions)
+        {
+            routed = MxuJson.Clone(slide);
+            routed.Actions = null;
+        }
+        var presetId = Actions.PredictedPresetId(routed, itemId);
+        var looks = presetId == Settings.ActiveOutputPresetId
+            ? outputs.Config.ActiveLooks
+            : outputs.Config.LooksUnder(OutputPresets.Routing(presetId is null ? null : Library.Get<OutputPreset>(presetId), ThemeExists));
+        return [.. ResolveLooks(looks).Values];
+    }
+
+    /// <summary>
+    /// Makes an output preset (or none) active. Looks it drops play their Outs first while the slide
+    /// stays up, then the outputs switch (the Mac's switchPreset). A slide or a clear in the meantime
+    /// switches straight away.
+    /// </summary>
+    public void ActivateOutputPreset(OutputPreset? preset)
+    {
+        if (Outputs is not { } outputs) return;
+        SettlePending();
+        void Activate()
+        {
+            OutputPresets.Apply(outputs.Config, preset, ThemeExists);
+            Settings.ActiveOutputPresetId = preset?.Id;
+            Settings.Save();
+            RenderOutputs(SceneTransition.Cut);
+        }
+        var incoming = ResolveLooks(outputs.Config.LooksUnder(OutputPresets.Routing(preset, ThemeExists))).Values.ToList();
+        var change = Show.LookSwitch(incoming);
+        if (change.Wait <= 0)
+        {
+            Activate();
+            return;
+        }
+        Show.DismissLooks(change.Leaving, ShowState.HostClock());
+        RenderOutputs(SceneTransition.Cut, refreshOnly: true);
+        pendingSwitch = Activate;
+        Defer(change.Wait, () =>
+        {
+            if (pendingSwitch is not { } activate) return;
+            pendingSwitch = null;
+            activate();
+        });
+    }
+
+    // MARK: Waiting hand-offs
+
+    private ITimer? pendingTimer;
+    private int pendingGeneration;
+    private Action? pendingSwitch;
+
+    /// <summary>
+    /// Runs <paramref name="then"/> on the UI thread after a look's Outs, timed by the show clock
+    /// (never the shared thread pool). A later fire or clear cancels it (<see cref="SettlePending"/>).
+    /// </summary>
+    private void Defer(double seconds, Action then)
+    {
+        var generation = ++pendingGeneration;
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        pendingTimer?.Dispose();
+        pendingTimer = ShowTimeProvider.Shared.CreateTimer(_ => dispatcher.BeginInvoke(() =>
+        {
+            if (generation != pendingGeneration) return;
+            pendingTimer?.Dispose();
+            pendingTimer = null;
+            try { then(); }
+            catch (Exception ex) { Log.Error("A slide waiting for a look's Outs couldn't go live", ex); }
+        }), null, TimeSpan.FromSeconds(seconds), Timeout.InfiniteTimeSpan);
+    }
+
+    /// <summary>A fire or a clear cuts through a waiting hand-off; a waiting preset switch happens now (as on the Mac).</summary>
+    private void SettlePending()
+    {
+        if (pendingTimer is not null) Log.Info("Live: a waiting hand-off was cut through by this fire or clear");
+        pendingTimer?.Dispose();
+        pendingTimer = null;
+        pendingGeneration++;
+        if (pendingSwitch is { } activate)
+        {
+            pendingSwitch = null;
+            activate();
+        }
     }
 }

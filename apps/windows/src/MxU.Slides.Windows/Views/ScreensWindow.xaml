@@ -48,6 +48,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <TextBlock Text="Name" VerticalAlignment="Center" />
                         <TextBox x:Name="ScreenName" Grid.Column="1" LostFocus="Identity_Changed" KeyDown="Identity_KeyDown" Margin="0,2" />
@@ -64,8 +65,16 @@
                         <TextBlock Grid.Row="3" Text="Fit" VerticalAlignment="Center" />
                         <ComboBox x:Name="ScaleCombo" Grid.Row="3" Grid.Column="1" SelectionChanged="Scale_Changed" Margin="0,2"
                                   ToolTip="When the slides' shape differs from this screen: show it all (bars at the sides) or fill it (trim the edges)" />
+                        <TextBlock Grid.Row="4" Text="Look" VerticalAlignment="Center" />
+                        <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                            <ComboBox x:Name="LookCombo" Width="250" SelectionChanged="Look_Changed"
+                                      ToolTip="Show the live slide on this screen through another theme (a lower third on the stream, say) while the other screens show it as designed" />
+                            <ComboBox x:Name="LookScopeCombo" Width="250" Margin="10,0,0,0" SelectionChanged="LookScope_Changed"
+                                      ToolTip="Which of the theme's designs to use: all of them, one folder of them, or just one" />
+                        </StackPanel>
                     </Grid>
                     <TextBlock x:Name="ScreenStatus" Style="{StaticResource Muted}" FontSize="11" Margin="110,4,0,0" TextWrapping="Wrap" />
+                    <TextBlock x:Name="LookStatus" Style="{StaticResource Muted}" FontSize="11" Margin="110,2,0,0" TextWrapping="Wrap" />
 
                     <TextBlock Text="LAYOUT" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
                     <StackPanel Orientation="Horizontal">

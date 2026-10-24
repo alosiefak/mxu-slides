@@ -97,6 +97,18 @@ public sealed class SceneTransitionEngine
         }
     }
 
+    /// <summary>True while a transition is still playing at <paramref name="now"/>, so the view keeps drawing frames.</summary>
+    public bool IsTransitioning(double now)
+    {
+        lock (gate) return active is not null && Progress(active, now) < 1;
+    }
+
+    /// <summary>The newest scene pushed (what shows once any transition lands).</summary>
+    public AnimatedScene Target
+    {
+        get { lock (gate) return target; }
+    }
+
     private static double Progress(Active active, double now) => Math.Clamp((now - active.StartedAt) / active.Duration, 0, 1);
 
     internal static string? MediaId(ItemContent content) => content switch
