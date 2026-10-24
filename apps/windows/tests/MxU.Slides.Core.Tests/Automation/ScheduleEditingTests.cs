@@ -26,7 +26,7 @@ public class ScheduleEditingTests
     private static ScheduleCondition OneTime(string date) => new() { Id = "o", Kind = ScheduleConditionKind.OneTime, Date = date };
 
     /// <summary>Some regions put a narrow no-break space before AM/PM; tests compare plain spaces.</summary>
-    private static string Plain(string text) => text.Replace(' ', ' ').Replace(' ', ' ');
+    private static string Plain(string text) => text.Replace('\u202F', ' ').Replace('\u00A0', ' ');
 
     // MARK: ScheduleConditionFormat
 

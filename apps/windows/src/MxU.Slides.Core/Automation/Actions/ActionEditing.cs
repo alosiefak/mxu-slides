@@ -47,8 +47,11 @@ public sealed record ActionChoices
     public IReadOnlyList<EditorChoice> CapturePresets { get; init; } = [];
     public IReadOnlyList<EditorChoice> MidiDevices { get; init; } = [];
 
-    /// <summary>How many slides a presentation has (for the Slide number's upper limit); null when unknown.</summary>
+    /// <summary>How many slides a presentation has (shown beside the Slide number); null when unknown.</summary>
     public Func<string, int?>? SlideCount { get; init; }
+
+    /// <summary>A combo's icon name, so a Fire Combo step can wear its combo's icon.</summary>
+    public Func<string, string?>? ComboIcon { get; init; }
 }
 
 /// <summary>Where a picker's entries come from.</summary>
