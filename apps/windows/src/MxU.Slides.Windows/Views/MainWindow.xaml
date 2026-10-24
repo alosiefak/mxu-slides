@@ -193,6 +193,7 @@
                             <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Command="{Binding NewServiceCommand}" ToolTip="New service">
                                 <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE710;" />
                             </Button>
+                            <v:ServiceVersionChip DockPanel.Dock="Right" />
                             <ComboBox Margin="8,0,4,0" ItemsSource="{Binding Services}" SelectedItem="{Binding SelectedService}" DisplayMemberPath="Name" />
                         </DockPanel>
                         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
@@ -203,6 +204,7 @@
                                 <TextBlock Text="+ Header" />
                             </Button>
                         </StackPanel>
+                        <v:HiddenServiceRows DockPanel.Dock="Bottom" />
                         <ListBox x:Name="ServiceList" ItemsSource="{Binding ServiceItems}" SelectedItem="{Binding SelectedServiceItem}"
                                  AllowDrop="True" Drop="ServiceList_Drop" DragOver="ServiceList_DragOver"
                                  MouseDoubleClick="ServiceList_DoubleClick" PreviewMouseLeftButtonDown="ServiceList_PreviewMouseDown"
@@ -224,10 +226,17 @@
                                             <TextBlock x:Name="ItemDetail" Text="{Binding Detail}" Style="{StaticResource Muted}" FontSize="11"
                                                        Visibility="{Binding Detail, Converter={StaticResource VisibleWhenSet}}" />
                                         </StackPanel>
-                                        <Border Grid.Column="3" Background="{StaticResource Live}" CornerRadius="3" Padding="5,1" VerticalAlignment="Center"
-                                                Visibility="{Binding IsLive, Converter={StaticResource Visible}}">
-                                            <TextBlock Text="LIVE" FontSize="9" FontWeight="Bold" Foreground="White" />
-                                        </Border>
+                                        <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Background="{StaticResource Raised}" CornerRadius="7" Padding="6,0" Margin="4,0,0,0"
+                                                    Visibility="{Binding IsChanged, Converter={StaticResource Visible}}"
+                                                    ToolTip="Changed in this version. Right-click and choose Use Main's to undo it.">
+                                                <TextBlock Text="Changed" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource MutedText}" />
+                                            </Border>
+                                            <Border Background="{StaticResource Live}" CornerRadius="3" Padding="5,1" Margin="4,0,0,0"
+                                                    Visibility="{Binding IsLive, Converter={StaticResource Visible}}">
+                                                <TextBlock Text="LIVE" FontSize="9" FontWeight="Bold" Foreground="White" />
+                                            </Border>
+                                        </StackPanel>
                                     </Grid>
                                     <DataTemplate.Triggers>
                                         <DataTrigger Binding="{Binding IsHeader}" Value="True">
@@ -243,7 +252,7 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                             <ListBox.ContextMenu>
-                                <ContextMenu>
+                                <ContextMenu Opened="ServiceItemMenu_Opened">
                                     <MenuItem Header="Go live" Click="ServiceGoLive_Click" />
                                     <MenuItem Header="Rename…" Click="ServiceItemRename_Click" />
                                     <MenuItem Header="Actions…" Click="ServiceItemActions_Click" />
@@ -645,6 +654,8 @@
                         </StackPanel>
                         <Slider HorizontalAlignment="Right" VerticalAlignment="Bottom" Width="120" Margin="0,0,16,8" Minimum="120" Maximum="420"
                                 Value="{Binding Settings.ThumbnailSize}" ValueChanged="ThumbSize_Changed" ToolTip="Thumbnail size" Opacity="0.7" />
+                        <!-- A music row selected in the service shows its card over the slides. -->
+                        <v:ServiceMusicCard x:Name="MusicCard" />
                     </Grid>
                 </DockPanel>
             </Border>
@@ -690,24 +701,8 @@
                                     </StackPanel>
                                 </Button>
                             </Grid>
-                            <TextBlock Text="CLEAR" Style="{StaticResource SectionLabel}" Margin="0,12,0,6" />
-                            <WrapPanel>
-                                <Button Style="{StaticResource ClearButton}" Command="{Binding ClearAllCommand}" Background="#7F1D1D" BorderBrush="#991B1B" ToolTip="Clear everything (F1)">
-                                    <TextBlock Text="All  F1" />
-                                </Button>
-                                <Button Style="{StaticResource ClearButton}" Command="{Binding ClearSlideCommand}" ToolTip="Clear the slide text (F2)">
-                                    <TextBlock Text="Slide  F2" />
-                                </Button>
-                                <Button Style="{StaticResource ClearButton}" Command="{Binding ClearMediaCommand}" ToolTip="Clear backgrounds and videos (F3)">
-                                    <TextBlock Text="Media  F3" />
-                                </Button>
-                                <Button Style="{StaticResource ClearButton}" Command="{Binding ClearOverlaysCommand}" ToolTip="Clear overlays (F4)">
-                                    <TextBlock Text="Overlays  F4" />
-                                </Button>
-                                <Button Style="{StaticResource ClearButton}" Command="{Binding ClearAlertsCommand}" ToolTip="Clear the message (F6)">
-                                    <TextBlock Text="Message  F6" />
-                                </Button>
-                            </WrapPanel>
+                            <!-- Show flow: the auto-advance chip, the video transport strip and the Clear controls. -->
+                            <v:LiveShowControls x:Name="LiveControls" Margin="0,10,0,0" />
                         </StackPanel>
                     </Border>
 
@@ -781,6 +776,8 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+
+                    <v:ServiceTrackingPanel x:Name="TrackingPanel" Margin="0,0,0,8" />
 
                     <Border Style="{StaticResource Panel}" Margin="0,0,0,8">
                         <StackPanel>

@@ -151,19 +151,22 @@ public sealed partial class MainViewModel : IApiBridge
 
     void IApiBridge.AddServiceItem(string serviceId, string refId, int? index)
     {
-        if (Library.Get<Service>(serviceId) is not { } service) throw ApiError.NotFound($"No service '{serviceId}'.");
+        if (Library.Get<Service>(serviceId) is null) throw ApiError.NotFound($"No service '{serviceId}'.");
         ServiceItem item = Library.Get<Presentation>(refId) is { } p
             ? new ServiceItem { Id = LibraryStore.NewId(), ItemKind = ServiceItemKind.Presentation, Name = p.Name, RefId = p.Id }
             : Library.Get<MediaItem>(refId) is { } m
                 ? new ServiceItem { Id = LibraryStore.NewId(), ItemKind = ServiceItemKind.Media, Name = m.Name, RefId = m.Id }
                 : throw ApiError.NotFound($"No library item '{refId}'.");
-        service.Items.Add(item);
-        if (index is { } i && i < service.Items.Count - 1)
+        // Into the version this computer runs, if it runs one (MainViewModel.ServiceVersions.cs).
+        UpdateService(serviceId, service =>
         {
-            service.Items.RemoveAt(service.Items.Count - 1);
-            service.Items.Insert(Math.Max(0, i), item);
-        }
-        Library.Save(service);
+            service.Items.Add(item);
+            if (index is { } i && i < service.Items.Count - 1)
+            {
+                service.Items.RemoveAt(service.Items.Count - 1);
+                service.Items.Insert(Math.Max(0, i), item);
+            }
+        });
     }
 
     void IApiBridge.SelectService(string id)
@@ -264,13 +267,14 @@ public sealed partial class MainViewModel : IApiBridge
                 "inputs" => ShowFunction.Inputs,
                 _ => throw ApiError.BadRequest($"Unknown function '{raw}'. Functions: slides, media, overlays, audio, alerts, inputs."),
             };
-            Clear(() => Show.Clear(function, ShowState.HostClock()));
+            // As its key does: Music stops the music too (MainViewModel.Clear.cs).
+            ClearFunction(function);
         }
         else if (command.Layer is { } layerRaw)
         {
             var layer = LayerKinds.Parse(layerRaw)
                 ?? throw ApiError.BadRequest($"Unknown layer '{layerRaw}'. Layers: {string.Join(", ", LayerKinds.All.Select(l => l.Raw()))}.");
-            Clear(() => Show.Clear(layer, ShowState.HostClock()));
+            ClearLayer(layer);
         }
         else
         {

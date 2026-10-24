@@ -79,6 +79,8 @@ public sealed partial class MainViewModel
         var handoff = Show.Handoff(slide, IncomingLooks(slide, itemId, runActions));
         if (handoff.Wait > 0)
         {
+            // Nothing advances by itself while the slide waits to land (the Mac's deferring).
+            AutoAdvance.HandingOff();
             Show.DismissLooks(handoff.Leaving, ShowState.HostClock());
             RenderOutputs(SceneTransition.Cut, refreshOnly: true);
             var settled = fireSettled;
@@ -109,6 +111,8 @@ public sealed partial class MainViewModel
         timeline?.NoteSlideLanded(TimelineItemId(itemId, presentation.Id), occurrence);
         // Then the slide's own actions: fire media, an overlay, a message, a timer, a combo…
         if (runActions) Actions.SlideDidFire(slide, itemId);
+        // Its timer (if it advances by itself) takes over, and the service clock notes its row.
+        ShowFlowSlideLanded(slide, presentation, itemId);
     }
 
     private void UpdateLiveLabels(Presentation presentation, Slide slide, int occurrence, int count)
@@ -127,8 +131,9 @@ public sealed partial class MainViewModel
             tile.IsLive = Live is not null && CurrentPresentation?.Id == livePresentation
                 && Live.ArrangementId == SelectedArrangement?.Id && tile.Index == Live.Occurrence && Show.Live is not null;
         foreach (var row in ServiceItems)
-            row.IsLive = Live?.ItemId == row.Item.Id && Show.Live is not null
-                || row.Item.ItemKind == ServiceItemKind.Media && Show.LiveMedia.Values.Any(m => m.MediaId == row.Item.RefId);
+            row.IsLive = IsMusicRow(row.Item) ? IsMusicLive(row.Item)
+                : Live?.ItemId == row.Item.Id && Show.Live is not null
+                  || row.Item.ItemKind == ServiceItemKind.Media && Show.LiveMedia.Values.Any(m => m.MediaId == row.Item.RefId);
         foreach (var tile in MediaItems)
             tile.IsLive = Show.LiveMedia.Values.Any(m => m.MediaId == tile.Item.Id);
         MarkLiveOverlays();
@@ -168,6 +173,8 @@ public sealed partial class MainViewModel
         {
             RenderOutputs(SceneTransition.Cut, refreshOnly: true);
             UpdateBuildLabel();
+            // A slide that advances by itself starts counting once its last build has played.
+            AutoAdvance.StepsChanged();
             return true;
         }
         if (Live is null || Show.Live is null && Live.ItemId is null)
@@ -185,7 +192,7 @@ public sealed partial class MainViewModel
         if (Live.ItemId is { } itemId && SelectedService is { } service && service.Items.Any(i => i.Id == itemId))
         {
             var positions = Positions(service);
-            var index = positions.FindIndex(p => p.Item.Id == itemId && (p.Media is not null || p.Occurrence == Live.Occurrence));
+            var index = positions.FindIndex(p => p.Item.Id == itemId && (p.Presentation is null || p.Occurrence == Live.Occurrence));
             if (index < 0) return false;
             var next = index + direction;
             if (next < 0 || next >= positions.Count)
@@ -233,6 +240,11 @@ public sealed partial class MainViewModel
                 case ServiceItemKind.Media when Library.Get<MediaItem>(item.RefId) is { } m:
                     positions.Add(new Position(item, null, null, 0, m));
                     break;
+                // Music rows (walk-in music, an offering playlist) are a stop too: arriving plays them.
+                case ServiceItemKind.Audio when Library.Get<AudioItem>(item.RefId) is not null:
+                case ServiceItemKind.Playlist when Library.Get<Playlist>(item.RefId) is not null:
+                    positions.Add(new Position(item, null, null, 0, null));
+                    break;
             }
         }
         return positions;
@@ -246,14 +258,12 @@ public sealed partial class MainViewModel
             var row = ServiceItems.FirstOrDefault(r => r.Item.Id == position.Item.Id);
             if (row is not null) SelectedServiceItem = row;
         }
-        if (position.Media is { } media)
+        if (position.Presentation is null)
         {
-            FireMedia(media);
-            Live = new LiveContext(position.Item.Id, Live?.PresentationId ?? "", null, 0);
-            MarkLiveTiles();
+            FireRow(position.Item);
             return;
         }
-        Fire(position.Presentation!, position.ArrangementId, position.Occurrence, position.Item.Id);
+        Fire(position.Presentation, position.ArrangementId, position.Occurrence, position.Item.Id);
     }
 
     [RelayCommand]
@@ -268,16 +278,23 @@ public sealed partial class MainViewModel
 
     // MARK: Clearing (F1–F6, as on the Mac)
 
-    /// <summary>F1: everything off, and any slide-action steps still waiting on a delay are cancelled.</summary>
+    /// <summary>
+    /// F1: everything the Clear All checklist ticks goes (by default all but Inputs, as on the Mac:
+    /// see <see cref="ClearAllScope"/>), and any slide-action steps still waiting on a delay are cancelled.
+    /// </summary>
     [RelayCommand]
     private void ClearAll()
     {
         Actions.CancelPendingDelayedActions();
-        timeline?.Stop();
-        audio?.Stop();
+        var swept = ClearAllScope.Swept(ClearAllSkips);
+        // A timeline would put its next slide straight back up; music and stems only go when Music is ticked.
+        if (swept.Contains(ShowFunction.Slides)) timeline?.Stop();
+        if (TracksClear.StopsTracks(swept)) timeline?.ClearTracks();
+        if (swept.Contains(ShowFunction.Audio)) audio?.Stop();
         // As on the Mac, Clear All leaves every layer to its room default (no media item's own exit).
         nextRenderClearsAll = true;
-        Clear(() => Show.ClearAll());
+        Clear(() => Show.ClearAll(swept));
+        AutoAdvance.CancelMedia();
         UpdateNowPlaying();
     }
 
@@ -313,6 +330,8 @@ public sealed partial class MainViewModel
         {
             LiveTitle = Show.IsEmpty ? "Nothing live" : "Media only";
             LiveDetail = "";
+            // The slide went (cleared, or its Outs finished): its timer goes with it.
+            AutoAdvance.Cancel();
         }
         RenderOutputs(DefaultTransition());
         MarkLiveTiles();

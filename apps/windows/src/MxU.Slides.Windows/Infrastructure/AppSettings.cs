@@ -7,7 +7,7 @@ namespace MxU.Slides.Windows.Infrastructure;
 public enum OutputTransition { Cut, Dissolve, FadeThroughBlack }
 
 /// <summary>Per-computer preferences, saved as settings.json next to the library.</summary>
-public sealed class AppSettings
+public sealed partial class AppSettings
 {
     public string LibraryPath { get; set; } = AppPaths.DefaultLibrary;
 

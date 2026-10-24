@@ -94,7 +94,8 @@ public sealed partial class ServiceItemViewModel : ObservableObject
         Number = number;
         Detail = detail;
         IsMissing = missing;
-        Accent = Painting.Brush(item.ColorHex, new SceneColor(0.23, 0.51, 0.96, 0));
+        // A header with no colour of its own reads in the muted grey (the Mac's secondary), not invisibly.
+        Accent = Painting.Brush(item.ColorHex, new SceneColor(0.64, 0.64, 0.64));
     }
 
     public ServiceItem Item { get; }
@@ -108,10 +109,13 @@ public sealed partial class ServiceItemViewModel : ObservableObject
     public string Glyph => Item.ItemKind switch
     {
         ServiceItemKind.Media => "",
-        ServiceItemKind.Audio => "",
+        ServiceItemKind.Audio or ServiceItemKind.Playlist => "",
         ServiceItemKind.Header => "",
         _ => "",
     };
+
+    /// <summary>The version this computer runs changed this row (a "Changed" badge; Use Main's undoes it).</summary>
+    public bool IsChanged { get; init; }
 
     [ObservableProperty]
     public partial bool IsLive { get; set; }

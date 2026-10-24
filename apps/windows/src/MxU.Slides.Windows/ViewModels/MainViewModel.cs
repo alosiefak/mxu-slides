@@ -36,6 +36,7 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshAudio();
         RefreshCombos();
         InitializeStage();
+        InitializeShowFlow();
 
         if (App.RecoveredFromCrash)
             Notice = "MxU Slides closed unexpectedly last time. Your library is safe and your service has been reopened.";
@@ -229,7 +230,7 @@ public sealed partial class MainViewModel : ObservableObject
             && service.Items.FirstOrDefault(i => i.Id == itemId) is { } item && item.ArrangementId != value?.Id)
         {
             item.ArrangementId = value?.Id;
-            Library.Save(service);
+            SaveService(service);
         }
     }
 
@@ -315,5 +316,6 @@ public sealed partial class MainViewModel : ObservableObject
         Library.Save(presentation);
         Show.PresentationEdited(presentation);
         if (Show.Live?.Presentation?.Id == presentation.Id) RenderOutputs(SceneTransition.Cut, refreshOnly: true);
+        AutoAdvance.PresentationEdited(presentation.Id);
     }
 }

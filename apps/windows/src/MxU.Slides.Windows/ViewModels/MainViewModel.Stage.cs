@@ -91,12 +91,18 @@ public sealed partial class MainViewModel
         RefreshStageLayouts();
     }
 
+    private byte[]? savedTimers;
+
     private void SaveTimers()
     {
         try
         {
+            // The service-tracking timers change often and are never saved: skip a write that changes nothing.
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(Timers.Export());
+            if (savedTimers is not null && bytes.AsSpan().SequenceEqual(savedTimers)) return;
             Directory.CreateDirectory(AppPaths.DataRoot);
-            LibraryStore.AtomicWrite(TimersFile, JsonSerializer.SerializeToUtf8Bytes(Timers.Export()));
+            LibraryStore.AtomicWrite(TimersFile, bytes);
+            savedTimers = bytes;
         }
         catch (Exception ex)
         {
@@ -114,7 +120,8 @@ public sealed partial class MainViewModel
 
     private void SyncTimerRows()
     {
-        var ids = Timers.Timers.Select(t => t.Id).ToList();
+        // The service-tracking timers have their own panel (MainViewModel.ServiceTracking.cs).
+        var ids = Timers.Timers.Where(t => !TimerController.IsPermanent(t.Id)).Select(t => t.Id).ToList();
         for (var i = TimerRows.Count - 1; i >= 0; i--)
             if (!ids.Contains(TimerRows[i].Id)) TimerRows.RemoveAt(i);
         for (var i = 0; i < ids.Count; i++)
@@ -258,19 +265,11 @@ public sealed partial class MainViewModel
         };
     }
 
-    /// <summary>Time left on the live foreground (else background) video, for the stage's video countdown.</summary>
-    private VideoCountdown? LiveVideoCountdown()
-    {
-        foreach (var layer in new[] { LayerKind.Videos, LayerKind.LoopingVideos })
-        {
-            if (!Show.LiveMedia.TryGetValue(layer, out var cue)) continue;
-            var key = $"live:live-media-{layer.Raw()}:{cue.MediaId}";
-            if (Media.Transport(key) is not { Duration: { } duration } transport) continue;
-            return new VideoCountdown(Media.NameOf(cue.MediaId) ?? "Video", duration.TotalSeconds, transport.Position.TotalSeconds,
-                DateTimeOffset.Now, transport.Playing);
-        }
-        return null;
-    }
+    /// <summary>
+    /// Time left on the live foreground video, for the stage's video countdown: the transport
+    /// strip's countdown target, as on the Mac (a background loop never counts down here).
+    /// </summary>
+    private VideoCountdown? LiveVideoCountdown() => TransportCountdown();
 
     private List<SlideObject> ResolveLinkedText(IReadOnlyList<SlideObject> objects)
     {

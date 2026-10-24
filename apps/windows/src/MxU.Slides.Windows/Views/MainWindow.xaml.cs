@@ -514,24 +514,11 @@ public partial class MainWindow : Window
         if (InputDialog.Ask(this, "Rename", "Name in this service", row.Name) is { } name) model.RenameServiceItem(row, name);
     }
 
-    private void ServiceMenu_Click(object sender, RoutedEventArgs e)
-    {
-        var menu = new ContextMenu { PlacementTarget = (UIElement)sender, Placement = PlacementMode.Bottom };
-        var service = model.SelectedService;
-        menu.Items.Add(Item("New service", () => model.NewServiceCommand.Execute(null)));
-        menu.Items.Add(Item("Rename service…", () =>
-        {
-            if (service is not null && InputDialog.Ask(this, "Rename service", "Name", service.Name) is { } name) model.RenameService(service, name);
-        }, service is not null));
-        menu.Items.Add(new Separator());
-        menu.Items.Add(Item("Move service to Trash", () =>
-        {
-            if (service is not null && MessageBox.Show(this, $"Move \"{service.Name}\" to the library's Trash folder?", "MxU Slides",
-                    MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
-                model.DeleteServiceCommand.Execute(null);
-        }, service is not null));
-        menu.IsOpen = true;
-    }
+    /// <summary>The service's ⋯ menu: New, Rename, Change Date, Duplicate, Versions, Trash (Views/ServiceMenus.cs).</summary>
+    private void ServiceMenu_Click(object sender, RoutedEventArgs e) => ServiceMenus.ShowServiceMenu(this, model, (UIElement)sender);
+
+    /// <summary>A row's right-click menu gains Hide, Output Preset and Use Main's as it opens.</summary>
+    private void ServiceItemMenu_Opened(object sender, RoutedEventArgs e) => ServiceMenus.AddItemOptions((ContextMenu)sender, model);
 
     // MARK: Canvas editing
 

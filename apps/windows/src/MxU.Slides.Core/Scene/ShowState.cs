@@ -22,7 +22,7 @@ public enum ShowFunction { Slides, Media, Overlays, Audio, Alerts, Inputs }
 /// slide's clock, so a click plays the builds of every look at once.
 /// </para>
 /// </summary>
-public sealed class ShowState
+public sealed partial class ShowState
 {
     /// <param name="FiredAtHostTime">The <see cref="HostClock"/> time it went live: the anchor its animations play from.</param>
     public sealed record LiveSlide(Slide Slide, Presentation? Presentation, Theme? Theme, string? ArrangementId, DateTimeOffset FiredAt,

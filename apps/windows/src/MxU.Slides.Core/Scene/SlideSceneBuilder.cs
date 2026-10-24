@@ -8,7 +8,7 @@ namespace MxU.Slides.Core.Scene;
 /// not rendered yet, but the composition rules (theme placeholders, design
 /// decor, backgrounds carried through arrangements) are the same.
 /// </summary>
-public static class SlideSceneBuilder
+public static partial class SlideSceneBuilder
 {
     public static readonly SceneSize CanvasSize = SceneSize.Hd;
 
