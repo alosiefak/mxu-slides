@@ -359,14 +359,23 @@ public partial class MainWindow : Window
         {
             Title = "Import",
             Multiselect = true,
-            Filter = $"Everything MxU Slides can import|*.pptx;{ProPresenterPatterns};{LyricsPatterns}|ProPresenter 7|{ProPresenterPatterns}"
+            Filter = $"Everything MxU Slides can import|*.mxuslides;*.pptx;{ProPresenterPatterns};{LyricsPatterns}"
+                + $"|MxU Slides presentations (from a Mac or another PC)|*.mxuslides|ProPresenter 7|{ProPresenterPatterns}"
                 + $"|PowerPoint decks|*.pptx|Lyrics files|{LyricsPatterns}|All files|*.*",
         };
         if (dialog.ShowDialog(this) != true) return;
-        var decks = dialog.FileNames.Where(IsPowerPoint).ToList();
-        var pro = dialog.FileNames.Where(f => !IsPowerPoint(f) && MainViewModel.IsProPresenterFile(f)).ToList();
-        var lyrics = dialog.FileNames.Except(decks).Except(pro).ToList();
+        await ImportFiles(dialog.FileNames);
+    }
+
+    /// <summary>Sends each file to its importer: .mxuslides presentations, PowerPoint, ProPresenter, and lyrics for the rest.</summary>
+    internal async Task ImportFiles(IReadOnlyList<string> files)
+    {
+        var slides = files.Where(MainViewModel.IsPresentationFile).ToList();
+        var decks = files.Where(IsPowerPoint).ToList();
+        var pro = files.Except(slides).Where(f => !IsPowerPoint(f) && MainViewModel.IsProPresenterFile(f)).ToList();
+        var lyrics = files.Except(slides).Except(decks).Except(pro).ToList();
         if (lyrics.Count > 0) model.ImportLyricsFiles(lyrics);
+        if (slides.Count > 0) await model.ImportPresentationFilesAsync(slides);
         if (decks.Count > 0) await model.ImportPowerPointAsync(decks);
         if (pro.Count > 0) await model.ImportProPresenterAsync(pro);
 
@@ -471,7 +480,8 @@ public partial class MainWindow : Window
         }
         else if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
         {
-            foreach (var media in model.ImportMediaFiles(files)) model.AddMediaToService(media);
+            // Asks about duplicates once the drop has finished (MainViewModel.MediaImport.cs).
+            _ = model.ImportMediaFilesAsync(files, addToService: true);
         }
     }
 
@@ -630,7 +640,7 @@ public partial class MainWindow : Window
 
     private void MediaBin_Drop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] files) model.ImportMediaFiles(files);
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] files) _ = model.ImportMediaFilesAsync(files);
     }
 
     // MARK: Timers and messages

@@ -95,7 +95,7 @@ public partial class App : Application
     {
         try
         {
-            var library = new LibraryStore(settings.LibraryPath);
+            var library = new LibraryStore(settings.LibraryPath) { Prober = new Broadcast.Media.MediaImportProbe() };
             library.Load();
             if (library.IsNew || library.Count<Core.Model.Theme>() == 0) LibrarySeeder.Seed(library);
             else LibrarySeeder.RefreshStarterPacks(library);

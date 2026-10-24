@@ -247,6 +247,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await OverlayEditorChecks();
             await BroadcastExtrasCheck();
             await RenderFixesCheck();
+            await LibraryCheck();
         }
         catch (Exception ex)
         {

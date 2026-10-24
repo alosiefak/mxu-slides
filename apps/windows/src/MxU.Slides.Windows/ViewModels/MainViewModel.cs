@@ -303,6 +303,7 @@ public sealed partial class MainViewModel : ObservableObject
             }
         }
         MarkLiveTiles();
+        MarkMissingMediaTiles();
         UpdateTimelineBar();
         SelectedSlide = Slides.FirstOrDefault(s => s.Slide.Id == selectedId) ?? (IsEditing ? Slides.FirstOrDefault() : null);
         OnPropertyChanged(nameof(CurrentTitle));
