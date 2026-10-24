@@ -4,8 +4,8 @@ using static MxU.Slides.Core.Tests.Animation.AnimationFixtures;
 
 namespace MxU.Slides.Core.Tests.Animation;
 
-// Port of the engine-level cases in SlideSceneTests/ExitSemanticsTests.swift; the
-// ShowState bookkeeping cases wait for ShowState's animation port (see the report).
+// Port of SlideSceneTests/ExitSemanticsTests.swift: the engine-level cases, and the
+// ShowState.slideStepsCompletedAt cases that auto-advance relies on.
 public class ExitSemanticsTests
 {
     private static List<SlideObject> ExitSlideObjects() =>
@@ -43,6 +43,36 @@ public class ExitSemanticsTests
         Assert.Equal(10, context.Start(SceneAnimationGroup.Exit)); // a played exit anchors the group
         var dismissed = new AnimationContext(0, dismissHostTime: 50);
         Assert.Equal(50, dismissed.Start(SceneAnimationGroup.Exit)); // no exit press = the dismiss anchors it
+    }
+
+    [Fact]
+    public void StepsCompletedAtGatesOnEveryHumanPress()
+    {
+        var show = new Core.Scene.ShowState();
+        show.Fire(new Slide { Id = "s", Name = "S", Objects = ExitSlideObjects() }, atHostTime: 100);
+        Assert.Null(show.SlideStepsCompletedAt()); // clicks pending: never auto-click
+        foreach (var t in new[] { 101.0, 102, 103 }) show.AdvanceStep(t);
+        Assert.Null(show.SlideStepsCompletedAt()); // the exit press is a human step too
+        show.AdvanceStep(104);
+        Assert.Equal(104.4, show.SlideStepsCompletedAt()!.Value, 9); // exit press + the exit group's animations
+
+        show.UnadvanceStep();
+        Assert.Null(show.SlideStepsCompletedAt());
+    }
+
+    [Fact]
+    public void StepsCompletedAtForClickOnlyAndPlainSlides()
+    {
+        var clickObject = Text("o", "a\nb", [Step("c1", AnimationTrigger.OnClick, duration: 1), Step("c2", AnimationTrigger.OnClick, duration: 2)], name: "T");
+        var show = new Core.Scene.ShowState();
+        show.Fire(new Slide { Id = "s", Name = "S", Objects = [clickObject] }, atHostTime: 10);
+        show.AdvanceStep(11);
+        Assert.Null(show.SlideStepsCompletedAt());
+        show.AdvanceStep(12);
+        Assert.Equal(14, show.SlideStepsCompletedAt()); // last click + that group's duration
+
+        show.Fire(new Slide { Id = "p", Name = "P", Objects = [] }, atHostTime: 20);
+        Assert.Equal(20, show.SlideStepsCompletedAt());
     }
 
     [Fact]
