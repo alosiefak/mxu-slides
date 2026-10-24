@@ -28,6 +28,33 @@ public sealed partial class SlideTileViewModel : ObservableObject
     [ObservableProperty]
     public partial RenderScene Scene { get; set; }
 
+    /// <summary>
+    /// Some text on the slide doesn't fit its box, so the output cuts it off: the tile shows the
+    /// Mac's orange warning. Measured just after the grid draws, so opening a long song stays quick.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool HasClippedText { get; set; }
+
+    public static string ClippedTextHelp =>
+        "Text on this slide doesn't fit its box — the overflow is clipped on the output. Open the slide in Edit to see the outlined box.";
+
+    partial void OnSceneChanged(RenderScene value)
+    {
+        var scene = value;
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+        {
+            if (!ReferenceEquals(Scene, scene)) return; // edited again since: that scene is measured instead
+            try
+            {
+                HasClippedText = SlideSceneBuilder.ClippedTextObjectIds(Slide, scene, TextLayout.OverflowsFrame).Count > 0;
+            }
+            catch (Exception ex)
+            {
+                Infrastructure.Log.Warn($"Couldn't measure slide {Number}'s text: {ex.Message}");
+            }
+        });
+    }
+
     public string? GroupName { get; }
     public bool StartsGroup { get; }
     public Brush GroupBrush { get; }

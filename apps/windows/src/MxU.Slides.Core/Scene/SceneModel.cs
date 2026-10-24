@@ -239,6 +239,13 @@ public sealed record StyledText
     /// <summary>Eases each counted pass of a ticker with a repeat count.</summary>
     public Animation.SceneAnimationRamp TickerRamp { get; init; }
 
+    /// <summary>
+    /// The block scroll (credits) the text rolls with, as on the Mac's StyledText. The renderer
+    /// plays it from <see cref="Animation.AnimatedItem.Scroll"/>; it's here so a scene alone can tell
+    /// text that shows all its words by rolling from text that's cut off (the clipped-text badge).
+    /// </summary>
+    public Animation.SceneBlockScroll? Scroll { get; init; }
+
     /// <summary>The string as displayed (after the uppercase transform).</summary>
     public string DisplayString => Transform == SceneTextTransform.Uppercase
         ? String.ToUpper(CultureInfo.CurrentCulture)

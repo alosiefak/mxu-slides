@@ -235,11 +235,11 @@ public class PathTextTests
     }
 
     [Fact]
-    public void StripKeyIgnoresRamp()
+    public void StripKeyIgnoresRampAndScroll()
     {
-        // BlockScrollTests.testStripKeyIgnoresRampAndScroll: the ramp never lays the strip out again.
+        // BlockScrollTests.testStripKeyIgnoresRampAndScroll: neither the ramp nor a block scroll lays the strip out again.
         var a = new StyledText { String = "Ticker", FontSize = 10, TickerRamp = SceneAnimationRamp.EaseInOut };
-        Assert.Equal(NormalizedText(a), NormalizedText(a with { TickerRamp = SceneAnimationRamp.None }));
+        Assert.Equal(NormalizedText(a), NormalizedText(a with { TickerRamp = SceneAnimationRamp.None, Scroll = new SceneBlockScroll(3) }));
     }
 
     // MARK: Ticker phase (the Compositor half of drawPathText)

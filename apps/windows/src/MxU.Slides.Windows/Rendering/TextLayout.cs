@@ -100,6 +100,36 @@ public sealed class TextLayout
         return pages;
     }
 
+    private static readonly Dictionary<string, bool> OverflowCache = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// True when the words don't fit a frame of this size even after shrinking as far as the text
+    /// allows, so the output cuts the end off (the slide grid's warning badge). Line breaks inside
+    /// long words don't count, only height. Port of the Mac's TextRasterizer.overflows.
+    /// </summary>
+    public static bool OverflowsFrame(StyledText text, SceneSize frameSize)
+    {
+        if (text.String.Length == 0 || frameSize.Width <= 0 || frameSize.Height <= 0 || text.FontSize <= 0) return false;
+        var key = Signature(text, new SceneRect(0, 0, frameSize.Width, frameSize.Height), 1);
+        lock (OverflowCache)
+        {
+            if (OverflowCache.TryGetValue(key, out var cached)) return cached;
+        }
+        var inner = new SceneRect(0, 0,
+            Math.Max(frameSize.Width - text.InsetLeft - text.InsetRight, 1),
+            Math.Max(frameSize.Height - text.InsetTop - text.InsetBottom, 1));
+        var display = text.DisplayString.Replace("\r\n", "\n").Replace('\r', '\n');
+        var scale = new Builder(text, display, 1).FittedScale(inner);
+        // As on the Mac, the probe lets lines wrap: a box too narrow for one word isn't "clipped".
+        var overflows = !new Builder(text with { KeepLinesWhole = false }, display, 1).Fits(scale, inner);
+        lock (OverflowCache)
+        {
+            if (OverflowCache.Count > 1024) OverflowCache.Clear();
+            OverflowCache[key] = overflows;
+        }
+        return overflows;
+    }
+
     private static IReadOnlyList<string> ComputePages(StyledText text, SceneSize frameSize)
     {
         var inner = new SceneRect(0, 0,

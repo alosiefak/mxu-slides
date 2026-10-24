@@ -397,6 +397,7 @@ public static class PathTextLayout
             TickerGap = 0,
             TickerSeparator = "",
             TickerRamp = SceneAnimationRamp.None,
+            Scroll = null,
         };
         if (text.TickerStream && text.TickerSeparator.Length > 0)
             flat = flat with { String = flat.String + text.TickerSeparator, TickerSeparator = text.TickerSeparator };

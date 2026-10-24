@@ -265,6 +265,30 @@ public static class SlideSceneBuilder
         return scene;
     }
 
+    /// <summary>
+    /// The slide's text objects whose words don't fit their box, so the output cuts them off: the
+    /// slide grid marks such slides with a warning. Text that shows all its words its own way (on a
+    /// path, a ticker, a block scroll) never counts, and nor does the design's own text. A shape's text
+    /// counts as the shape. Port of SlideSceneBuilder.clippedTextObjectIDs; <paramref name="overflows"/>
+    /// is the renderer's measure (TextRasterizer.overflows on the Mac, TextLayout.OverflowsFrame here).
+    /// </summary>
+    /// <param name="scene">The slide's scene, as <see cref="Scene"/> builds it (with a pager, text that pages shows its first page, which fits).</param>
+    public static List<string> ClippedTextObjectIds(Slide slide, RenderScene scene, Func<StyledText, SceneSize, bool> overflows)
+    {
+        var objectIds = slide.Objects.Select(o => o.Id).ToHashSet();
+        var clipped = new List<string>();
+        foreach (var item in scene[LayerKind.Slide].Items)
+        {
+            if (item.Content is not ItemContent.Text { Styled: var styled }
+                || styled.PathData is not null || styled.TickerSpeed != 0 || styled.Scroll is not null)
+                continue;
+            var baseId = item.Id.EndsWith("::text", StringComparison.Ordinal) ? item.Id[..^"::text".Length] : item.Id;
+            if (!objectIds.Contains(baseId) || clipped.Contains(baseId)) continue;
+            if (overflows(styled, new SceneSize(item.Frame.Width, item.Frame.Height))) clipped.Add(baseId);
+        }
+        return clipped;
+    }
+
     /// <summary>Adds a slide's own objects, composed with its theme design, to the slide layer.</summary>
     public static void AddSlideObjects(
         RenderScene scene, IReadOnlyList<SlideObject> objects, Theme? theme, Slide? template,
@@ -509,6 +533,7 @@ public static class SlideSceneBuilder
             TickerSeparator = R(s => s.TickerSeparator) ?? "",
             WordSpacing = V(s => s.WordSpacing) ?? 0,
             TickerRamp = SceneRamp(V(s => s.TickerRamp)),
+            Scroll = R(s => s.Scroll) is { } scroll ? Animation.AnimatedItems.BlockScroll(scroll) : null,
             StyleRuns = (o.StyleRuns ?? [])
                 .Select(r => new StyleRun(r.Line, r.Column, r.Length, r.Underline, r.Strikethrough, r.FontName, r.FontSize,
                     ColorHex.Color(r.ColorHex), ColorHex.Color(r.HighlightColorHex)))
