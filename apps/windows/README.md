@@ -75,7 +75,7 @@ GitHub Actions (`.github/workflows/windows.yml`) runs all of this on every push,
 | Things that happen by themselves | **Combos › Scheduler…**: on chosen days at a time, once on a date, or when a timer reaches a value |
 | Edit a song's timeline | **Timeline › ⋯ › Edit timeline…**: drag cues, trim and fade the music, add stems |
 | MIDI devices | **Screens & Settings › MIDI › MIDI devices**: name the devices the show talks to |
-| Record or stream | **Stream & Record** in the toolbar: pick a preset and press **Start recording** or **Go live**. Add YouTube, Facebook or any RTMP server with its stream key |
+| Record or stream | **Stream & Record** in the toolbar: pick a preset and press **Start recording** or **Go live**. Add YouTube, Facebook or any RTMP server with its stream key. A preset can record or stream one screen (the stage, a lower-thirds screen), stream a video ("replay"), and take its sound from the Music tab or a sound input. Recordings appear in the **Media** tab; **Also copy to** keeps a copy in a folder such as Videos\MxU Slides |
 
 **On a laptop with one screen**, click **Audience** or **Stage** in the toolbar to open that output as a normal window. It shows exactly what the projector would. When you plug in a projector, choose it under **Screens & Settings**. The output then goes full screen there, stays on top, hides the mouse and never steals the keyboard.
 

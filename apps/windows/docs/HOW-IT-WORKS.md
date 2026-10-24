@@ -364,16 +364,16 @@ A **timeline** belongs to a song (one per arrangement). It is a list of cues at 
 `src/MxU.Slides.Broadcast/` is a port of the Mac's StreamEngine and recorder. It has no WPF in it; the app gives it pictures and sound.
 
 - **Pictures** come from the program feed (section 17): each recording or stream is one more `IProgramSink`. `FramePacer` thins the feed to the preset's frame rate, and each sink scales the picture to its own size.
-- **Sound** comes from `ProgramAudioTap` (section 21). `UpdateProgramAudio` in `MainViewModel.Broadcast.cs` connects it whenever the program feed has anyone listening, so recordings hear the videos and music this app plays, and nothing else on the PC.
+- **Sound:** each recording or stream opens the sound its preset asks for (section 35). The default is `ProgramAudioTap` (section 21): the videos and music this app plays, and nothing else on the PC.
 - **Encoding** uses Windows' own Media Foundation encoders (H.264 video, AAC sound), through hand-written COM declarations in `Media/MediaFoundationInterop.cs`. A hardware encoder (Intel Quick Sync, NVIDIA, AMD) is tried first; if it fails the rest of the run uses the software one.
-- **Recordings** are MP4 files in `Videos\MxU Slides`. The file is written as `name.partial.mp4` in fragments, so a crash or power cut still leaves a file that plays. It's renamed when the recording stops, and leftovers are renamed at the next launch (`RecoverInterrupted`).
+- **Recordings** are MP4 files, filed into the media library when they finish (section 35), with an optional copy in a folder such as Videos\MxU Slides. The file is written as `name.partial.mp4` in fragments, so a crash or power cut still leaves a file that plays. It's renamed when the recording stops, and leftovers are renamed at the next launch (`RecoverInterrupted`).
 - **Streams** go out over RTMP or RTMPS (YouTube, Facebook, Restream, any RTMP server: `Rtmp/RtmpPublisher.cs`, written from scratch) or HLS. A dropped connection reconnects with back-off; the status line says "Reconnecting (try 2)". When the network can't keep up, video is dropped until the next keyframe rather than letting a delay build up.
 - **Stream keys are secrets.** `StreamKeyVault` keeps them encrypted for your Windows user (DPAPI) in `%LOCALAPPDATA%\MxU Slides\StreamKeys`. They are never written into the library, so a backup or a shared library never leaks them.
 - **In the app:** **Stream & Record** in the toolbar opens `Views/BroadcastWindow.cs`. A **preset** says what to do: record only, or stream to the ticked destinations (and maybe record too), at what size, frame rate and bitrate. While anything runs, the toolbar button shows "REC 12:03" or "LIVE 4:10 · REC 4:10". It turns orange if a stream is struggling and red if one failed.
 - **Automation:** the slide/combo actions "Start capture" and "Stop capture" start and stop presets (`StartBroadcast` in `MainViewModel.Broadcast.cs`).
 - **Quitting** while recording asks first, then waits for the files to finish before closing.
 
-Not on Windows (yet): SRT, HDR/HEVC streaming, ProRes recording, streaming a media file, and per-screen stream canvases (every preset records the audience program).
+Not on Windows (yet): SRT, HDR/HEVC streaming, ProRes recording, and signing in to YouTube or Facebook. Streams use a server URL and key.
 
 ## 26. Keeping it running
 
@@ -383,7 +383,7 @@ Not on Windows (yet): SRT, HDR/HEVC streaming, ProRes recording, streaming a med
   - A `WorkQueue` runs jobs in order on its own thread. The music engine has four (`MxU.Slides.Audio/AudioThreads.cs`): events (a song ended, so the playlist moves on), chores, stem preloading, and Windows' audio-device calls.
   - `BusyThreadPoolTests` and `BusyPoolThreadingTests` tie up every pool thread on purpose and check a song still ends on time, the next song still loads and the clock still ticks.
 - A `running.marker` file shows when the last session crashed.
-- `Infrastructure/SelfTest.cs` drives the real app through a service and checks what's on screen. It covers lyrics, builds, overlays, video, the Local API (over real HTTP and a WebSocket), both importers, the program feed, screens, NDI, music, live inputs, actions, timelines and recording. Run `scripts/self-test.ps1` after any change. Checks that need hardware this PC doesn't have (a graphics card, NDI Tools) report SKIP, not FAIL.
+- `Infrastructure/SelfTest.cs` drives the real app through a service and checks what's on screen. It covers lyrics, builds, overlays, video, the Local API (over real HTTP and a WebSocket), both importers, the program feed, screens, NDI, music, live inputs, actions, timelines, recording, recording the stage screen, recording the Music tab's sound, 60 fps, recordings filed into the Media tab, replaying the newest recording, looks, page turns, transitions, trails, and the combo, scheduler, timeline, overlay and mask editors. Run `scripts/self-test.ps1` after any change. Checks that need hardware this PC doesn't have (a graphics card, NDI Tools) report SKIP, not FAIL.
 
 ## 27. Looks: one slide, a different design on each screen (Phase 4)
 
@@ -622,6 +622,49 @@ The editor draws over the screen's live picture (`OutputManager.Picture`), or ov
 - **Make a lower third from nothing.** Open Overlays › Edit…, press + New, add a Box and a Text. Select the box, pick *Slide* under Bring in; select the text, pick *Fade*, then set its Plays to *After previous*. Press ▶. Then Go live, and type a new name in the bin while it's up.
 - **Hide a pillar.** In Screens, open a screen's masks, press + Rectangle, and drag its corners over where the pillar is. Turn up Feather so the edge isn't harsh.
 - **Read the pen.** Open `OutputMaskPen.Press` and follow what a click does while drawing, then while editing. The tests in `OutputMaskEditingTests.cs` do exactly what a user does with the mouse.
+
+## 35. What a preset records and streams (Phase 4)
+
+A preset now says three things: what the **picture** is, what the **sound** is, and where **recordings** are filed. You set them in **Stream & Record**.
+
+**The picture**
+
+- **The audience program** (the default): what the audience sees, from the program feed (section 17).
+- **One screen**: the stage display, a lower-thirds-only screen, an LED wall. `Outputs/ScreenFeeds.cs` makes a hidden copy of that screen, exactly like the program feed does for the audience: a `SceneView` in a hidden window, captured by `HiddenCapture`.
+  - It shows exactly what that screen's outputs show (`OutputManager.Picture`): the program reshaped to the screen's size with its layer routing and its look, the stage display, or the alignment grid while you line projectors up.
+  - It gets every new scene at the same moment the real outputs do. `RenderOutputs` and `RenderStage` hand their scenes to `ScreenFeeds.Show` right after they send them to the outputs, so transitions, builds and videos match the real screen.
+  - A screen feed only exists while something records or streams that screen. Two destinations wanting the same screen at the same size share one.
+- **60 frames a second**: the program feed runs at 30. A 60 fps preset gets the program from a screen feed running at 60 instead.
+- **A media file ("replay")**: a stream preset can play out a video from the library, or **the newest recording** in a folder. Use this to stream a pre-recorded service. `Broadcast/Media/MediaFileSource.cs` decodes the file with Windows' own decoders (the Media Foundation source reader), and two threads hand its pictures and sound to the stream in real time. The stream ends by itself when the video does, and the toolbar counts down ("REPLAY 41:10"). A replay isn't recorded again.
+  - `Broadcast/Library/StreamSources.cs` works out which file a preset means, and why it can't play if it can't: "no finished recording in “Recordings”", "newest recording … is 3 days old — over the 24h limit", "“Intro” isn't ready to play". The window shows this line under the preset before you go live.
+
+The code that picks the picture is `CaptureSources` (in `Broadcast/Control/`). The app fills it in with the program feed, `ScreenFeeds` and the sound opener described next. The controllers just ask it for "the pictures of screen X at this size and rate". The tests give it fakes.
+
+**The sound**
+
+Each recording or stream opens its own sound, chosen by its preset. `Audio/SessionAudioFeed.cs` is a port of the Mac's `SessionAudioFeed`.
+
+- **Program audio** (the default): everything this app plays, from `ProgramAudioTap` (section 21).
+- **The main mix**: just the Music tab (playlists, songs, timeline music), with no video sound. `Audio/AudioMixFeeds.cs` takes each music bus's sound after its fader and adds them up on a steady 10 ms clock (`AudioMixFeed`). This works even on a PC with no sound card.
+- **A sound input**: for example, the mixing desk plugged into a USB sound interface. Pick the device, then which channels (1–2, 3–4, or one channel in mono). `Audio/AudioInputInventory.cs` remembers these inputs in `audio-inputs.json` beside the settings, because they name this PC's devices. The device is opened only while a recording or stream uses it, so Windows' "microphone in use" light isn't on all service.
+- **Add the program audio too**: mixes the program into a mix or input (`ProgramAudioSummer`).
+- **Delay the sound** (0–2000 ms): holds the sound back so lips line up with a late picture (`AudioDelayLine`).
+- If the chosen mix or input can't be opened (unplugged, or blocked in Windows Settings › Privacy › Microphone), the session falls back to program audio. The app shows a notice saying why.
+
+The program feed no longer carries sound itself: every session opens exactly the sound it asked for (`OpenSessionAudio` in `MainViewModel.Broadcast.cs`).
+
+**Recordings in the media library**
+
+As on the Mac, a finished recording is filed into the media library, so it appears in the **Media** tab:
+
+1. While recording, the file is written to the library's `spool` folder (on the same disk, so filing it is just a rename).
+2. When it's finished, `Broadcast/Library/RecordingLibrary.Adopt` fingerprints it, saves a `MediaItem` (folder "Recordings" unless the preset says otherwise, with when and by which preset it was recorded) and moves the file into the library's Blobs folder. This runs on its own thread (`BroadcastController.FileRecordingsIntoLibrary`), so the screen never waits for a long recording.
+3. **Also copy to** puts a copy in an ordinary folder too, such as Videos\MxU Slides, OneDrive or Dropbox.
+4. If the app stops before a recording is filed, the file is still in the spool. The next launch files it. The item is saved before the file moves, so this never makes two items.
+
+**Something learnt the hard way:** in a COM interface, .NET sends a `byte[]` as a SAFEARRAY unless told otherwise. Media Foundation expects a plain pointer. So reading a blob overwrote memory and crashed the app, and the MP4 writer had been giving Windows a garbage H.264 header; recordings only played because the decoder found the real one inside the video. Every blob in `MediaFoundationInterop.cs` is now marked `LPArray`, and `MediaFoundationBlobTests` checks a blob round-trips byte for byte.
+
+**And another:** a graphics-card encoder (Intel Quick Sync, NVIDIA, AMD) works *asynchronously*. It says "need input" when it wants a picture, and "have output" when one is encoded. `MftEncoder` used to hand a waiting picture over only after the *next* event arrived. If the encoder had already asked while no picture was waiting, it then waited for a picture that never came: each picture stalled a quarter of a second and was dropped. Quick Sync does exactly that (it asks for two pictures at the start, and for the next one as soon as it hands one back), and a busy graphics card (OBS, a second stream) makes it much worse. Now a "need input" is kept like an IOU and spent on the next picture straight away. `MftEncoderTests` checks this with a fake encoder that behaves like Quick Sync (the old code dropped 27 of 30 pictures), and runs two real encoders at once.
 
 ## Things to try, to learn by doing
 
