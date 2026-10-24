@@ -87,11 +87,13 @@ public static class TimecodeStartWindow
     {
         var window = TimelineDialog.Make(owner, "Timecode Start", 380);
         var body = new StackPanel { Margin = new Thickness(18) };
-        window.Content = body;
+        window.Content = new Border { Child = body };
         var text = new TextBox { Width = 140, FontFamily = new FontFamily("Consolas"), Margin = new Thickness(0, 0, 8, 0), Tag = "HH:MM:SS:FF" };
         text.Text = PresentationTimelines.Timecode(vm.Timeline?.TimecodeStart ?? vm.SuggestedStart(0));
         void Build()
         {
+            // The text box is kept between builds (it holds what's typed): take it out of its old row first.
+            if (text.Parent is Panel row) row.Children.Remove(text);
             body.Children.Clear();
             body.Children.Add(TimelineDialog.Heading("Timecode Start"));
             var typed = PresentationTimelines.Frames(text.Text);
@@ -178,7 +180,7 @@ public static class SongMapWindow
     {
         var window = TimelineDialog.Make(owner, "Section Map", 520);
         var body = new StackPanel { Margin = new Thickness(18) };
-        window.Content = body;
+        window.Content = new Border { Child = body };
         void Build()
         {
             body.Children.Clear();
@@ -302,7 +304,7 @@ public static class UnmatchedStemsWindow
     {
         var window = TimelineDialog.Make(owner, "Import Audio", 560);
         var body = new StackPanel { Margin = new Thickness(18) };
-        window.Content = body;
+        window.Content = new Border { Child = body };
         body.Children.Add(TimelineDialog.Heading(plan.Unmatched.Count == 1 ? "1 file matches no track" : $"{plan.Unmatched.Count} files match no track"));
         var matched = plan.Assignments.Keys.Select(Path.GetFileNameWithoutExtension).OfType<string>().Order(StringComparer.CurrentCultureIgnoreCase).ToList();
         if (matched.Count is > 0 and <= 3)
@@ -402,9 +404,9 @@ public static class TrackOutputsWindow
     /// <summary>The window, not yet shown (the self-test pictures it).</summary>
     public static Window Make(Window owner, MainViewModel model)
     {
-        var window = TimelineDialog.Make(owner, "Tracks: Outputs", 520);
+        var window = TimelineDialog.Make(owner, "Tracks: Outputs", 560);
         var body = new StackPanel { Margin = new Thickness(18) };
-        window.Content = body;
+        window.Content = new Border { Child = body };
         var settings = model.TrackOutputs;
         var devices = AudioDeviceList.OutputDevices();
         void Save()
@@ -424,7 +426,7 @@ public static class TrackOutputsWindow
             interfaces.AddRange(devices.Select(d => ((string?)d.Uid, $"{d.Name} ({d.ChannelCount} outputs)")));
             var picker = new ComboBox
             {
-                Width = 330, ItemsSource = interfaces.Select(i => i.Name).ToList(), SelectedIndex = Math.Max(interfaces.FindIndex(i => i.Uid == settings.DeviceUid), 0),
+                Width = 300, ItemsSource = interfaces.Select(i => i.Name).ToList(), SelectedIndex = Math.Max(interfaces.FindIndex(i => i.Uid == settings.DeviceUid), 0),
             };
             picker.SelectionChanged += (_, _) =>
             {
@@ -526,7 +528,7 @@ public static class TrackOutputsWindow
     private static DockPanel Labelled(string label, UIElement content)
     {
         var row = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
-        var text = new TextBlock { Text = label, Width = 170, VerticalAlignment = VerticalAlignment.Center };
+        var text = new TextBlock { Text = label, Width = 196, VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(text, Dock.Left);
         row.Children.Add(text);
         row.Children.Add(content);
@@ -555,7 +557,7 @@ public static class TimelineActionsWindow
         var changed = false;
         var window = TimelineDialog.Make(owner, "Timeline Actions", 460);
         var body = new StackPanel { Margin = new Thickness(18) };
-        window.Content = body;
+        window.Content = new Border { Child = body };
         var names = new SlideActions.LabelNames(id => EntryName(model, id), model.TimerRows.Select(t => (t.Id, t.Name)).ToList());
         void Build()
         {

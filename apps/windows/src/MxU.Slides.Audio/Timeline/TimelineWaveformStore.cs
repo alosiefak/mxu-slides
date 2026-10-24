@@ -40,7 +40,7 @@ public sealed class TimelineWaveformStore : IDisposable
     }
 
     /// <summary>How many combined waveforms are kept in memory.</summary>
-    public const int Capacity = 256;
+    public const int Capacity = 64;
 
     /// <summary>A waveform finished: draw again (raised on the UI thread).</summary>
     public event Action? Changed;

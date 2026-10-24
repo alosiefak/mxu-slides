@@ -172,3 +172,4 @@ Windows-only additions to list under **Windows-only**:
 - `MxU.Slides.Windows/Views/MainWindow.xaml.cs`: the "Edit timeline…" entry in `TimelineMenu_Click` only.
 - `MxU.Slides.Windows/Infrastructure/SelfTest.cs`: `partial`, and `await TimelineEditorCheck();` after `ProPresenterCheck`.
 - `tests/MxU.Slides.Core.Tests/Automation/TimelinePlayerTests.cs`: the test host's `Music` became settable.
+- `MxU.Slides.Windows/App.xaml.cs`: the single-copy lock is per data folder, and a self-test never waits on the "already running" box (the integrator's change, applied word for word so it merges cleanly).
