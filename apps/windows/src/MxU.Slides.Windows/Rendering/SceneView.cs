@@ -391,7 +391,7 @@ public sealed class SceneView : FrameworkElement
     {
         if (root is null) return;
         children.Remove(root.Visual);
-        foreach (var key in root.Keys) media?.Release(key);
+        foreach (var key in root.Keys) ReleaseKey(key);
         root.Keys.Clear();
     }
 
@@ -531,7 +531,7 @@ public sealed class SceneView : FrameworkElement
         foreach (var key in root.Keys.Where(k => !inUse.Contains(k)).ToList())
         {
             root.Keys.Remove(key);
-            media?.Release(key);
+            ReleaseKey(key);
         }
     }
 
@@ -560,7 +560,7 @@ public sealed class SceneView : FrameworkElement
             var drawing = BuildContent(item, ppd, pathPose, key =>
             {
                 slot.Keys.Add(key);
-                if (root.Keys.Add(key)) media?.Retain(key);
+                if (root.Keys.Add(key)) RetainKey(key);
             });
             slot.Host.Children.Clear();
             slot.Host.Children.Add(drawing);
@@ -1036,7 +1036,7 @@ public sealed class SceneView : FrameworkElement
         {
             if (fillOpacity < 1) dc.PushOpacity(fillOpacity);
             if (style.Fill is SceneFill.Media mediaFill)
-                DrawMedia(dc, mediaFill.Id, mediaFill.ScaleMode, frame, item, usesKey, geometry);
+                DrawMedia(dc, mediaFill.Id, mediaFill.ScaleMode, frame, item, usesKey, geometry, isFill: true);
             else if (Painting.FillBrush(style.Fill, frame) is { } brush)
                 dc.DrawGeometry(brush, null, geometry);
             if (fillOpacity < 1) dc.Pop();
@@ -1126,19 +1126,51 @@ public sealed class SceneView : FrameworkElement
         }
     }
 
-    private void DrawMedia(DrawingContext dc, string mediaId, SceneMediaScaleMode mode, Rect frame, RenderItem item, Action<string> usesKey, Geometry clip)
+    /// <summary>
+    /// A camera, NDI source or mirrored screen: its picture updates in place as frames arrive, and
+    /// the view keeps it coming for as long as it shows it (<see cref="MediaHub.LiveKey"/>). On the
+    /// Video Input layer it says "Waiting for…" until the first frame. As a shape's fill (a
+    /// picture-in-picture camera on a slide), live views draw nothing until then, as the Mac does,
+    /// and thumbnails and the editor always draw the Mac's placeholder instead of the live picture.
+    /// </summary>
+    private void DrawLivePicture(DrawingContext dc, string mediaId, SceneMediaScaleMode mode, Rect frame, Action<string> usesKey, bool isFill)
+    {
+        if (isFill && !PlaysVideo)
+        {
+            if (LiveInputPlaceholder.For(mediaId) is { } glyph)
+                LiveInputPlaceholder.Draw(dc, glyph, Place(LiveInputPlaceholder.NaturalSize, frame, mode));
+            return;
+        }
+        usesKey(MediaHub.LiveKey(mediaId));
+        if (media!.LiveInputPicture(mediaId) is { } picture)
+            dc.DrawImage(picture, Place(new Size(picture.PixelWidth, picture.PixelHeight), frame, mode));
+        else if (!isFill)
+            DrawPlaceholder(dc, frame, $"Waiting for {media.LiveInputName?.Invoke(mediaId) ?? "the input"}…", failed: false);
+    }
+
+    /// <summary>Holds a video player or a live picture while an item draws it.</summary>
+    private void RetainKey(string key)
+    {
+        if (MediaHub.IsLiveKey(key)) media?.RetainLive(key);
+        else media?.Retain(key);
+    }
+
+    private void ReleaseKey(string key)
+    {
+        if (MediaHub.IsLiveKey(key)) media?.ReleaseLive(key);
+        else media?.Release(key);
+    }
+
+    private void DrawMedia(DrawingContext dc, string mediaId, SceneMediaScaleMode mode, Rect frame, RenderItem item, Action<string> usesKey, Geometry clip,
+        bool isFill = false)
     {
         if (media is null || frame.Width <= 0 || frame.Height <= 0) return;
         dc.PushClip(clip);
         try
         {
-            if (MediaHub.IsLiveInput(mediaId))
+            if (MediaHub.IsLivePicture(mediaId))
             {
-                // A camera or NDI source: its picture updates in place as frames arrive.
-                if (media.LiveInputPicture(mediaId) is { } picture)
-                    dc.DrawImage(picture, Place(new Size(picture.PixelWidth, picture.PixelHeight), frame, mode));
-                else
-                    DrawPlaceholder(dc, frame, $"Waiting for {media.LiveInputName?.Invoke(mediaId) ?? "the input"}…", failed: false);
+                DrawLivePicture(dc, mediaId, mode, frame, usesKey, isFill);
                 return;
             }
             switch (media.KindOf(mediaId))

@@ -611,12 +611,83 @@ public static class SlideSceneBuilder
             case FillKind.LinearGradient:
                 return (SceneFill?)Gradient(fill) ?? new SceneFill.Solid(SceneColor.White);
             default:
-                if (!string.IsNullOrEmpty(fill.ScreenSourceId) || !string.IsNullOrEmpty(fill.LiveInputId)
-                    || !string.IsNullOrEmpty(fill.CaptureSourceId) || fill.CaptureSourceKind is not null)
-                    return SceneFill.None; // Live inputs and screen mirrors arrive in a later phase.
+                // A screen mirror wins over a live input, which wins over a library file, as on the Mac.
+                if (!string.IsNullOrEmpty(fill.ScreenSourceId))
+                    return new SceneFill.Media(ScreenMirrorEngineId(fill.ScreenSourceId), ScaleMode(fill.MediaScaleMode));
+                if (FillInputEngineId(fill) is { } input)
+                    return new SceneFill.Media(input, ScaleMode(fill.MediaScaleMode));
                 if (string.IsNullOrEmpty(fill.MediaId)) return SceneFill.None;
                 return new SceneFill.Media(fill.MediaId, ScaleMode(fill.MediaScaleMode), SourceRect(fill.MediaSourceRect));
         }
+    }
+
+    // MARK: Live inputs and screen mirrors as fills (a picture-in-picture camera on a slide)
+
+    /// <summary>
+    /// The engine id of a live-input object: a named input from the inventory (<c>input::item::id</c>),
+    /// else the legacy direct device reference (<c>input::camera::deviceId</c>, <c>input::ndi::name</c>).
+    /// </summary>
+    public static string LiveInputEngineId(SlideObject o)
+    {
+        if (!string.IsNullOrEmpty(o.LiveInputId)) return $"input::item::{o.LiveInputId}";
+        var kind = o.CaptureSourceKind == CaptureSourceKind.Ndi ? "ndi" : "camera";
+        return $"input::{kind}::{o.CaptureSourceId ?? ""}";
+    }
+
+    /// <summary>A mirror of one of this app's screens (what that screen's outputs show), drawn like a live input.</summary>
+    public static string ScreenMirrorEngineId(string screenId) => $"screen::{screenId}";
+
+    /// <summary>The screen a shape's fill mirrors, as an engine id, or null.</summary>
+    public static string? FillScreenMirrorId(SlideObject source)
+    {
+        var o = SlideObjectNormalization.Normalized(source);
+        if (o.ObjectKind != SlideObjectKind.Shape || o.Fill is not { FillKind: FillKind.Media } fill || string.IsNullOrEmpty(fill.ScreenSourceId)) return null;
+        return ScreenMirrorEngineId(fill.ScreenSourceId);
+    }
+
+    /// <summary>The library media a shape's fill shows, or null (a live input or a mirror isn't library media).</summary>
+    public static string? FillMediaId(SlideObject source)
+    {
+        var o = SlideObjectNormalization.Normalized(source);
+        if (o.ObjectKind != SlideObjectKind.Shape || o.Fill is not { FillKind: FillKind.Media } fill
+            || !string.IsNullOrEmpty(fill.ScreenSourceId) || FillInputEngineId(fill) is not null || string.IsNullOrEmpty(fill.MediaId))
+            return null;
+        return fill.MediaId;
+    }
+
+    /// <summary>The live input a shape's fill shows (an assigned one: a named input or a device), as an engine id, or null.</summary>
+    public static string? FillLiveInputId(SlideObject source)
+    {
+        var o = SlideObjectNormalization.Normalized(source);
+        if (o.ObjectKind != SlideObjectKind.Shape || o.Fill is not { FillKind: FillKind.Media } fill
+            || !string.IsNullOrEmpty(fill.ScreenSourceId)
+            || string.IsNullOrEmpty(fill.LiveInputId) && string.IsNullOrEmpty(fill.CaptureSourceId))
+            return null;
+        return FillInputEngineId(fill);
+    }
+
+    private static string? FillInputEngineId(ObjectFill fill)
+    {
+        if (!string.IsNullOrEmpty(fill.LiveInputId)) return $"input::item::{fill.LiveInputId}";
+        if (fill.CaptureSourceKind is null && string.IsNullOrEmpty(fill.CaptureSourceId)) return null;
+        var kind = fill.CaptureSourceKind == CaptureSourceKind.Ndi ? "ndi" : "camera";
+        return $"input::{kind}::{fill.CaptureSourceId ?? ""}";
+    }
+
+    /// <summary>
+    /// What a set of objects needs opened to draw: library media and live inputs (with whether they
+    /// loop), then screen mirrors. An unassigned live input wants nothing (it draws its placeholder).
+    /// Port of SlideSceneBuilder.mediaWants.
+    /// </summary>
+    public static Dictionary<string, bool?> MediaWants(IEnumerable<SlideObject> objects)
+    {
+        var normalized = SlideObjectNormalization.Normalized(objects);
+        var wanted = new Dictionary<string, bool?>(StringComparer.Ordinal);
+        foreach (var o in normalized)
+            if ((FillMediaId(o) ?? FillLiveInputId(o)) is { } id) wanted.TryAdd(id, o.Fill?.Loops);
+        foreach (var o in normalized)
+            if (FillScreenMirrorId(o) is { } id) wanted.TryAdd(id, null);
+        return wanted;
     }
 
     public static SceneMediaScaleMode ScaleMode(MediaScaleMode? mode) => mode switch
