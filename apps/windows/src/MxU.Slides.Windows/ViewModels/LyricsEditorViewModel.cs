@@ -116,13 +116,12 @@ public sealed partial class LyricsEditorViewModel : ObservableObject
         try
         {
             var song = Build();
-            var theme = main.Library.Get<Theme>(song.ThemeId);
             var arranged = SlideSceneBuilder.ArrangedSlides(song, song.DefaultArrangementId);
             var starts = SlideSceneBuilder.ArrangementBlockStarts(song, song.DefaultArrangementId).ToHashSet();
             for (var i = 0; i < arranged.Count; i++)
             {
                 var slide = arranged[i];
-                Preview.Add(new SlideTileViewModel(i, slide, SlideSceneBuilder.Scene(slide, theme, song, song.DefaultArrangementId, pager: Rendering.TextLayout.Pager),
+                Preview.Add(new SlideTileViewModel(i, slide, SlideSceneBuilder.Scene(slide, main.ThemeFor(slide, song), song, song.DefaultArrangementId, pager: Rendering.TextLayout.Pager),
                     GroupNames.For(slide, song), GroupNames.ColorFor(slide, song), starts.Contains(i)));
             }
             var sections = song.Sections?.Count ?? 0;

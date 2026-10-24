@@ -58,7 +58,7 @@ public sealed partial class MainViewModel
         {
             foreach (var o in slide.Objects.Where(o => o.ObjectKind == SlideObjectKind.Text && o.TextLink is null))
                 SlideTextFields.Add(new SlideTextFieldViewModel(o, SlideEdited));
-            foreach (var design in CurrentTheme?.Slides ?? []) Designs.Add(new DesignChoice(design.Name, design.Folder));
+            foreach (var design in EditedSlideTheme?.Slides ?? []) Designs.Add(new DesignChoice(design.Name, design.Folder));
         }
         OnPropertyChanged(nameof(HasSelectedSlide));
         OnPropertyChanged(nameof(SelectedDesign));
@@ -71,8 +71,8 @@ public sealed partial class MainViewModel
     {
         get
         {
-            if (EditedSlide is not { } slide || CurrentTheme is null) return null;
-            var template = SlideSceneBuilder.ThemeSlide(slide, CurrentTheme);
+            if (EditedSlide is not { } slide || EditedSlideTheme is not { } theme) return null;
+            var template = SlideSceneBuilder.ThemeSlide(slide, theme);
             return Designs.FirstOrDefault(d => d.Name == template?.Name);
         }
         set
@@ -123,9 +123,9 @@ public sealed partial class MainViewModel
     private void SlideEdited()
     {
         if (CurrentPresentation is not { } p || SelectedSlide is not { } tile) return;
-        tile.Scene = SlideSceneBuilder.Scene(tile.Slide, CurrentTheme, p, SelectedArrangement?.Id, pager: Rendering.TextLayout.Pager);
+        tile.Scene = SlideSceneBuilder.Scene(tile.Slide, ThemeFor(tile.Slide, p), p, SelectedArrangement?.Id, pager: Rendering.TextLayout.Pager);
         foreach (var other in Slides.Where(t => t != tile && t.Slide.Id == tile.Slide.Id))
-            other.Scene = SlideSceneBuilder.Scene(other.Slide, CurrentTheme, p, SelectedArrangement?.Id, pager: Rendering.TextLayout.Pager);
+            other.Scene = SlideSceneBuilder.Scene(other.Slide, ThemeFor(other.Slide, p), p, SelectedArrangement?.Id, pager: Rendering.TextLayout.Pager);
         Show.PresentationEdited(p);
         if (Show.Live?.Slide.Id == tile.Slide.Id) RenderOutputs(Rendering.SceneTransition.Cut, refreshOnly: true);
         saveTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(600), DispatcherPriority.Background, (_, _) => FlushPendingSave(), Dispatcher.CurrentDispatcher);
