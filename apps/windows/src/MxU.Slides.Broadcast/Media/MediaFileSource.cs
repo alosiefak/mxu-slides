@@ -11,7 +11,9 @@ namespace MxU.Slides.Broadcast.Media;
 /// Media Foundation source reader) turn the file into BGRA pictures and float sound; one
 /// thread hands each picture over when it's due, another does the same for the sound, a
 /// little early (50 ms) so the encoder never runs dry. A picture more than a quarter of a
-/// second late is skipped and counted, so a slow PC catches up instead of drifting.
+/// second late is skipped and counted, so a slow PC catches up instead of drifting; on a PC
+/// that decodes slower than the file plays, <see cref="ReplayPacer"/> still shows a picture
+/// every half second and skips ahead rather than freezing.
 /// <para>
 /// When the file plays to its end (or its out point) <c>onEnded(null)</c> is called once;
 /// when it can't be read or decoding fails, <c>onEnded(reason)</c>. <see cref="Stop"/> never
@@ -21,7 +23,6 @@ namespace MxU.Slides.Broadcast.Media;
 /// </summary>
 public sealed class MediaFileSource
 {
-    private const double LateFrameThreshold = 0.25;
     private const double AudioLeadSeconds = 0.05;
     private const int WantedSampleRate = 48_000;
     private const int WantedChannels = 2;
@@ -90,6 +91,7 @@ public sealed class MediaFileSource
     private void Run()
     {
         IMFSourceReader? reader = null;
+        var opening = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             MediaFoundation.EnsureStarted();
@@ -116,6 +118,8 @@ public sealed class MediaFileSource
                 if (audioReader is not null) Marshal.FinalReleaseComObject(audioReader);
                 return;
             }
+            BroadcastLog.Info("replay", $"{System.IO.Path.GetFileName(Path)}: {format.Width}x{format.Height}, first picture at {firstPicture.Time / 10_000_000.0:0.000} s decoded in {opening.ElapsedMilliseconds} ms"
+                + (audioReader is null ? ", no sound" : $", sound {audioRate} Hz"));
             var anchor = ShowState.HostClock();
             if (audioReader is not null)
             {
@@ -202,8 +206,13 @@ public sealed class MediaFileSource
 
     private void Seek(IMFSourceReader reader)
     {
-        if (inPoint is not { } start) return;
-        var position = new PropVariant { vt = PropVariant.VT_I8, hVal = (long)Math.Round(start * 10_000_000) };
+        if (inPoint is { } start) SeekTo(reader, start);
+    }
+
+    /// <summary>Moves the reader to <paramref name="seconds"/> into the file; its next picture is the key frame at or before it.</summary>
+    private static void SeekTo(IMFSourceReader reader, double seconds)
+    {
+        var position = new PropVariant { vt = PropVariant.VT_I8, hVal = (long)Math.Round(seconds * 10_000_000) };
         reader.SetCurrentPosition(Guid.Empty, position);
     }
 
@@ -225,6 +234,7 @@ public sealed class MediaFileSource
     private void PumpVideo(IMFSourceReader reader, SampleRead? first, VideoFormat format, double anchor)
     {
         var pixels = Array.Empty<byte>();
+        var pacer = new ReplayPacer();
         while (running)
         {
             var (hr, flags, time, sample) = first ?? Read(reader, MF.MF_SOURCE_READER_FIRST_VIDEO_STREAM);
@@ -255,14 +265,24 @@ public sealed class MediaFileSource
                     {
                         var target = anchor + Math.Max(0, pts - Start0);
                         if (!WaitUntil(target)) return;
-                        if (ShowState.HostClock() - target > LateFrameThreshold)
+                        switch (pacer.Decide(ShowState.HostClock(), target, pts))
                         {
-                            Interlocked.Increment(ref dropped);
-                        }
-                        else if (CopyPicture(sample, format, ref pixels))
-                        {
-                            frameSink(new VideoFrame(format.Width, format.Height, format.Width * 4, pixels, ShowState.HostClock()));
-                            Interlocked.Increment(ref delivered);
+                            case ReplayPacer.Decision.Show:
+                                if (CopyPicture(sample, format, ref pixels))
+                                {
+                                    frameSink(new VideoFrame(format.Width, format.Height, format.Width * 4, pixels, ShowState.HostClock()));
+                                    Interlocked.Increment(ref delivered);
+                                }
+                                break;
+                            case ReplayPacer.Decision.Drop:
+                                Interlocked.Increment(ref dropped);
+                                break;
+                            case ReplayPacer.Decision.SkipAhead:
+                                Interlocked.Increment(ref dropped);
+                                if (pacer.Skips == 1)
+                                    BroadcastLog.Warning("replay", $"{System.IO.Path.GetFileName(Path)}: this PC decodes it slower than it plays, so the pictures skip ahead to stay with the sound");
+                                SeekTo(reader, pacer.SkipTo);
+                                break;
                         }
                     }
                 }

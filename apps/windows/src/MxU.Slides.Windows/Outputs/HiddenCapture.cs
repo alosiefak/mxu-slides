@@ -141,13 +141,24 @@ public sealed class HiddenCapture : IDisposable
         var started = Stopwatch.GetTimestamp();
         try
         {
-            // Draw the content stretched to exactly Width × Height pixels, whatever the screen's DPI.
+            // Draw the window's area stretched to exactly Width × Height pixels, whatever the screen's DPI.
+            // The brush must look at the window's area, not at what the content draws: by default a
+            // VisualBrush frames the drawing's bounds, and anything off screen (the next page of a lyric,
+            // an item flying in) would widen them and squash the picture into the middle.
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
                 var area = new Rect(0, 0, Width, Height);
+                var shown = content.RenderSize is { Width: > 0, Height: > 0 } size ? new Rect(size) : area;
                 dc.DrawRectangle(Brushes.Black, null, area);
-                dc.DrawRectangle(new VisualBrush(content) { Stretch = Stretch.Fill }, null, area);
+                dc.DrawRectangle(new VisualBrush(content)
+                {
+                    Stretch = Stretch.Fill,
+                    ViewboxUnits = BrushMappingMode.Absolute,
+                    Viewbox = shown,
+                    AlignmentX = AlignmentX.Left,
+                    AlignmentY = AlignmentY.Top,
+                }, null, area);
             }
             copyTarget.Clear();
             copyTarget.Render(visual);

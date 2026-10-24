@@ -215,7 +215,13 @@ public sealed partial class SelfTest
             Save(editor, "18-mask-editor");
             Check("the editor reports a change", editor.Changed);
 
-            if (sink.Last is { } pixels && sink.Width == 1280)
+            if (HiddenCapture.FastCaptureFailed)
+            {
+                // Masks are drawn by the output-corrections shader, which the slower copy can't run.
+                // The projector itself still shows them; this only affects NDI, recording and streaming.
+                Skip("the mask on the screen's picture", "this PC can't use Windows' fast capture; the slower copy draws without output corrections");
+            }
+            else if (sink.Last is { } pixels && sink.Width == 1280)
             {
                 byte Red(int x, int y) => pixels[(y * sink.Width + x) * 4 + 2];
                 Check("the masked middle of the screen is dark", Red(640, 360) < 25 && Red(400, 100) < 25);

@@ -227,8 +227,9 @@ public sealed partial class SelfTest
         var live = model.Broadcast.Streaming.Live;
         Check("a stream preset replays the newest recording", problem is null && live?.FileSource is not null && live.MediaDurationSeconds > 1);
         Check("replaying doesn't record the replay again", model.Broadcast.Recording.Sessions.All(s => s.PresetId != preset.Id));
-        await Delay(1500);
-        report.AppendLine($"      replay: {live?.FileSource?.FramesDelivered} pictures decoded, toolbar \"{model.BroadcastButtonText}\"");
+        // Up to 6 seconds: opening the file and starting Windows' decoders can take a while on a slow PC.
+        for (var i = 0; i < 60 && live?.FileSource?.FramesDelivered is not > 20; i++) await Delay(100);
+        report.AppendLine($"      replay: {live?.FileSource?.FramesDelivered} pictures decoded, {live?.FileSource?.FramesDropped} dropped, toolbar \"{model.BroadcastButtonText}\"");
         Check("the replayed file is decoded as it streams", live?.FileSource?.FramesDelivered > 20);
         model.StopBroadcast(preset.Id);
         Check("stopping the replay ends the stream", model.Broadcast.Streaming.Live is null);
