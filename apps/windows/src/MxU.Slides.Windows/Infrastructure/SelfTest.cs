@@ -24,7 +24,7 @@ namespace MxU.Slides.Windows.Infrastructure;
 /// of each step and writes report.txt with pass/fail checks, then quits.
 /// Use it to confirm a build works on a new computer.
 /// </summary>
-public sealed class SelfTest(MainWindow window, MainViewModel model, string folder)
+public sealed partial class SelfTest(MainWindow window, MainViewModel model, string folder)
 {
     private readonly StringBuilder report = new();
     private int failures;
@@ -236,6 +236,7 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
             await ApiCheck();
             await PowerPointCheck();
             await ProPresenterCheck();
+            await BroadcastExtrasCheck();
         }
         catch (Exception ex)
         {
@@ -684,7 +685,7 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
             var session = model.Broadcast.Recording.Sessions.LastOrDefault(r => r.PresetId == preset.Id);
             for (var i = 0; i < 100 && session?.Status.State.Kind is Broadcast.Recording.RecorderStateKind.Recording or Broadcast.Recording.RecorderStateKind.Finishing; i++)
                 await Delay(100);
-            var file = session?.FilePath;
+            var file = await RecordedFileAsync(session);
             var size = file is not null && File.Exists(file) ? new FileInfo(file).Length : 0;
             report.AppendLine($"      recording: {file} ({size} bytes, {session?.Status.State.Kind}, {session?.Status.DroppedFrames} dropped)");
             Check("stopping leaves a finished MP4 with pictures in it", session?.Status.State.Kind == Broadcast.Recording.RecorderStateKind.Finished

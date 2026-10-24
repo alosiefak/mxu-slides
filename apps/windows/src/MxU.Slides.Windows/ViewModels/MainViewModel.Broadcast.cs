@@ -39,6 +39,7 @@ public sealed partial class MainViewModel
     private AudioMixFeeds? mixFeeds;
     private AudioInputInventory? audioInputs;
     private DispatcherTimer? broadcastTicker;
+    private string? soundFallback;
     private static bool broadcastLogHooked;
 
     /// <summary>The toolbar chip's words ("REC 12:03", "LIVE 4:10 · REC 4:10"); empty when nothing runs.</summary>
@@ -66,6 +67,9 @@ public sealed partial class MainViewModel
 
     /// <summary>Pictures of single screens while one is being recorded or streamed (null until then). The outputs' scenes are handed to it in RenderOutputs and RenderStage.</summary>
     public ScreenFeeds? ScreenFeeds => screenFeeds;
+
+    /// <summary>The recording most recently filed into the media library (the Stream &amp; Record window mentions it).</summary>
+    public MediaItem? LastFiledRecording { get; private set; }
 
     /// <summary>The named sound inputs on this PC (kept in audio-inputs.json beside the settings).</summary>
     public AudioInputInventory AudioInputs => audioInputs ??= new AudioInputInventory(Path.Combine(AppPaths.DataRoot, "audio-inputs.json"));
@@ -99,6 +103,7 @@ public sealed partial class MainViewModel
         created.Recording.StatusChanged += _ => UpdateBroadcastStatus();
         created.RecordingFiled += item => System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
         {
+            LastFiledRecording = item;
             Notice = $"Recording saved: \"{item.Name}\" is in the Media tab.";
             BroadcastChanged?.Invoke();
         });
@@ -148,6 +153,7 @@ public sealed partial class MainViewModel
             Notice = refusal;
             return refusal;
         }
+        soundFallback = null;
         Broadcast.StartCapture(preset);
         UpdateBroadcastStatus();
         if (Broadcast.Streaming.StartNotice is { } notice)
@@ -155,7 +161,8 @@ public sealed partial class MainViewModel
             Notice = notice;
             return notice;
         }
-        Notice = preset.IsRecordOnly() ? $"Recording \"{preset.Name}\"" : $"Going live: {preset.Name}";
+        Notice = (preset.IsRecordOnly() ? $"Recording \"{preset.Name}\"" : $"Going live: {preset.Name}")
+            + (soundFallback is { } why ? $" — but {why}" : "");
         return null;
     }
 
@@ -236,6 +243,7 @@ public sealed partial class MainViewModel
         if (feed.FallbackReason is { } why)
         {
             Log.Warn($"Broadcast: {why}");
+            soundFallback = why;
             Notice = $"Recording sound: {why}";
         }
         return feed;

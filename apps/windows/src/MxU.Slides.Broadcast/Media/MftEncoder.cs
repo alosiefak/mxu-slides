@@ -144,13 +144,14 @@ internal sealed class MftEncoder : IDisposable
         else
         {
             // Feed what is still waiting, then drain and collect until the encoder says it's done.
+            // A graphics card shared with other encoders (OBS, another stream) can be slow, so it gets a few seconds.
             var clock = Stopwatch.StartNew();
-            while (waiting.Count > 0 && clock.Elapsed < TimeSpan.FromSeconds(1)) PumpEvents(outputs, TimeSpan.FromMilliseconds(5));
+            while (waiting.Count > 0 && clock.Elapsed < TimeSpan.FromSeconds(2)) PumpEvents(outputs, TimeSpan.FromMilliseconds(5));
             transform.ProcessMessage(MF.MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
             if (transform.ProcessMessage(MF.MFT_MESSAGE_COMMAND_DRAIN, 0) >= 0)
             {
                 clock.Restart();
-                while (!PumpEvents(outputs, TimeSpan.FromMilliseconds(5)) && clock.Elapsed < TimeSpan.FromSeconds(2)) { }
+                while (!PumpEvents(outputs, TimeSpan.FromMilliseconds(5)) && clock.Elapsed < TimeSpan.FromSeconds(5)) { }
             }
             // Pictures the encoder never asked for in time are lost; count them.
             DroppedInputs += waiting.Count;
@@ -159,13 +160,19 @@ internal sealed class MftEncoder : IDisposable
         return outputs;
     }
 
-    /// <summary>Reads the async encoder's pending events; true once "drain complete" is seen.</summary>
+    /// <summary>
+    /// Reads the async encoder's pending events; true once "drain complete" is seen. Every
+    /// "need input" is a promise to take one picture: a promise made while no picture was
+    /// waiting is kept for the next one, which goes in straight away. (Waiting for another event
+    /// first would stall: an encoder that asked for input sends nothing more until it gets some.)
+    /// </summary>
     private bool PumpEvents(List<IMFSample> outputs, TimeSpan wait)
     {
         var drained = false;
         var deadline = Stopwatch.StartNew();
         while (true)
         {
+            FeedWaiting();
             var hr = events!.GetEvent(MF.MF_EVENT_FLAG_NO_WAIT, out var e);
             if (hr == MF.MF_E_NO_EVENTS_AVAILABLE)
             {
@@ -185,6 +192,8 @@ internal sealed class MftEncoder : IDisposable
                         needInput++;
                         break;
                     case MF.METransformHaveOutput:
+                        // One output per event. After a format change the encoder sends a new
+                        // event for the waiting output (asking again at once is refused).
                         ProcessOneOutput(outputs);
                         break;
                     case MF.METransformDrainComplete:
@@ -196,24 +205,31 @@ internal sealed class MftEncoder : IDisposable
             {
                 MediaFoundation.Release(e);
             }
-            while (needInput > 0 && waiting.Count > 0)
-            {
-                var next = waiting.Dequeue();
-                var input = transform.ProcessInput(inputStream, next, 0);
-                MediaFoundation.Release(next);
-                MF.Check(input, $"{Name}: ProcessInput");
-                needInput--;
-            }
+        }
+    }
+
+    /// <summary>Hands the encoder as many waiting pictures as it has asked for.</summary>
+    private void FeedWaiting()
+    {
+        while (needInput > 0 && waiting.Count > 0)
+        {
+            var next = waiting.Dequeue();
+            var input = transform.ProcessInput(inputStream, next, 0);
+            MediaFoundation.Release(next);
+            MF.Check(input, $"{Name}: ProcessInput");
+            needInput--;
         }
     }
 
     private void DrainOutput(List<IMFSample> outputs)
     {
-        while (ProcessOneOutput(outputs)) { }
+        while (ProcessOneOutput(outputs) != OutputResult.NeedsInput) { }
     }
 
-    /// <summary>Asks for one output sample; false when the encoder needs more input first.</summary>
-    private bool ProcessOneOutput(List<IMFSample> outputs)
+    private enum OutputResult { Output, NeedsInput, FormatChanged }
+
+    /// <summary>Asks for one output sample: one came out, the encoder needs more input first, or it changed its output format (ask again).</summary>
+    private OutputResult ProcessOneOutput(List<IMFSample> outputs)
     {
         var providesSamples = (outputInfo.dwFlags & (MF.MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MF.MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES)) != 0;
         IMFSample? ours = null;
@@ -236,7 +252,7 @@ internal sealed class MftEncoder : IDisposable
         if (hr == MF.MF_E_TRANSFORM_NEED_MORE_INPUT)
         {
             ReleaseOutput(ours, ref buffer);
-            return false;
+            return OutputResult.NeedsInput;
         }
         if (hr == MF.MF_E_TRANSFORM_STREAM_CHANGE)
         {
@@ -247,7 +263,7 @@ internal sealed class MftEncoder : IDisposable
             try { MF.Check(transform.SetOutputType(outputStream, type, 0), $"{Name}: set new output type"); }
             finally { MediaFoundation.Release(type); }
             MF.Check(transform.GetOutputStreamInfo(outputStream, out outputInfo), "GetOutputStreamInfo");
-            return true;
+            return OutputResult.FormatChanged;
         }
         if (hr < 0)
         {
@@ -266,7 +282,7 @@ internal sealed class MftEncoder : IDisposable
             Marshal.Release(buffer.pSample);
             outputs.Add(provided);
         }
-        return true;
+        return OutputResult.Output;
     }
 
     private static void ReleaseOutput(IMFSample? ours, ref MFT_OUTPUT_DATA_BUFFER buffer)

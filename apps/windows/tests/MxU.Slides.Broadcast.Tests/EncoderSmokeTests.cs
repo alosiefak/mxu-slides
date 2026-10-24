@@ -42,7 +42,7 @@ public sealed class EncoderSmokeTests
             Thread.Sleep(33);
         }
         frames.AddRange(encoder.Drain());
-        TestContext.Current.SendDiagnosticMessage($"encoder: {encoder.Name} hardware={encoder.IsHardware} frames={frames.Count}");
+        TestContext.Current.TestOutputHelper?.WriteLine($"encoder: {encoder.Name} hardware={encoder.IsHardware} frames={frames.Count}");
         Assert.True(frames.Count >= 25, $"{encoder.Name}: only {frames.Count} frames came out");
         Assert.True(frames[0].IsKeyframe, $"{encoder.Name}: first frame isn't a keyframe");
         for (var i = 1; i < frames.Count; i++)
