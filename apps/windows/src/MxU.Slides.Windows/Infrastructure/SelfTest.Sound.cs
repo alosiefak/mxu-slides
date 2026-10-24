@@ -191,6 +191,7 @@ public sealed partial class SelfTest
         Check("video sound can play on its own output, with its delay", model.VideoSound.Routing.DelayMs == 100 && routing.MediaMixId != AudioMixInventory.MainId
             && routing.MusicRouting(null).DelayMs == 0 && model.Media.SoundStatus(key)?.State == VideoSoundState.Playing);
         routing.SetVideoOutput(null);
+        routing.Outputs.Remove(late.Id);
 
         if (!hasDevice)
         {
@@ -198,7 +199,13 @@ public sealed partial class SelfTest
         }
         else if (model.Program is not null)
         {
+            // Back near the start, and playing (on a slow PC the video may have reached its end and stopped by now).
+            var landed = model.Media.SoundStatus(key)?.Landings ?? 0;
             model.Media.Seek(key, TimeSpan.FromSeconds(1));
+            model.Media.Play(key);
+            await Until(() => model.Media.SoundStatus(key), s => s?.Landings > landed, 3000);
+            var before = await InSync(key, 4000);
+            report.AppendLine($"      before recording: {before?.State} at {before?.Position:0.00} s");
             var preset = new StreamRecordPreset
             {
                 Name = "Self-test video sound recording", PresetKind = StreamPresetKind.RecordOnly, Width = 640, Height = 360, FrameRate = 30, VideoBitrateKbps = 1500,
