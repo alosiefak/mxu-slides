@@ -97,11 +97,12 @@ public sealed class TracksPlayerTests
         var connected = new Box<bool>(false);
         client.OnStatus = _ => connected.Value = true;
         client.Reattach();
-        Assert.True(TestAudio.WaitFor(() => connected.Value));
+        // Connecting to a pipe can take a few seconds on a small CI machine.
+        Assert.True(TestAudio.WaitFor(() => connected.Value, seconds: 10));
         Thread.Sleep(500);
         Assert.Null(exited.Value);
         client.Disconnect();
-        Assert.True(TestAudio.WaitFor(() => exited.Value == 0));
+        Assert.True(TestAudio.WaitFor(() => exited.Value == 0, seconds: 10));
     }
 
     [Fact]
