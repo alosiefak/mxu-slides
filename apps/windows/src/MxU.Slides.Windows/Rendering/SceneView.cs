@@ -563,8 +563,14 @@ public sealed class SceneView : FrameworkElement
         }
 
         Geometry? matte = null;
-        if (render.MaskedBy is { } matteId && mattes.TryGetValue(matteId, out var clip))
-            matte = render.MaskOut ? new CombinedGeometry(GeometryCombineMode.Exclude, new RectangleGeometry(canvasRect), clip) : clip;
+        if (render.MaskedBy is { } matteId)
+        {
+            if (mattes.TryGetValue(matteId, out var clip))
+                matte = render.MaskOut ? new CombinedGeometry(GeometryCombineMode.Exclude, new RectangleGeometry(canvasRect), clip) : clip;
+            else if (!render.MaskOut)
+                // "Keep inside" a matte that isn't drawn (hidden): nothing shows, as on the Mac. A knockout of nothing cuts nothing.
+                matte = Geometry.Empty;
+        }
         if (!ReferenceEquals(slot.Matte, matte))
         {
             slot.Outer.Clip = matte;

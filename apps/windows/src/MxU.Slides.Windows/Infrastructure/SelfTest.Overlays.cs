@@ -281,12 +281,8 @@ public sealed partial class SelfTest
             Item("subject", full, SceneShapeKind.Rect, SceneColor.White) with { MaskedBy = "gone" },
             Item("knock", new SceneRect(0, 80, 192, 28), SceneShapeKind.Rect, new SceneColor(1, 0, 0)) with { MaskedBy = "gone", MaskOut = true }));
         Check("a knockout against a missing matte is left alone", orphan.R(96, 94) > 240 && orphan.G(96, 94) < 10);
-        // The Mac shows nothing for a mask-in whose matte is missing; this renderer draws the item unclipped.
-        // Scenes built from documents drop such masks first (SlideSceneBuilder.MaskWiring), so it only shows
-        // when a matte object is hidden. Reported, not failed, until the renderer follows the Mac.
-        report.AppendLine(orphan.R(96, 40) < 10
-            ? "PASS  a mask against a missing matte shows nothing"
-            : "NOTE  a mask against a missing matte is drawn unclipped here (the Mac hides it)");
+        // As on the Mac, an item kept inside a matte that isn't drawn (a hidden matte object) shows nothing.
+        Check("a mask against a missing matte shows nothing", orphan.R(96, 40) < 10);
     }
 
     private sealed record PixelGrid(byte[] Bgra, int Width)

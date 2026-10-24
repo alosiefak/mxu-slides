@@ -30,8 +30,8 @@ public sealed class ProWorkspacePlans
     /// <summary>Gives a screen a stage layout (screen id, layout id).</summary>
     public Action<Guid, string>? SetStageLayout { get; init; }
 
-    /// <summary>Turns a ProPresenter mask into output masks (shape outlines as path data); masks are skipped without it.</summary>
-    public Func<ProScreenPlan.MaskPlan, IReadOnlyList<OutputMask>>? MasksFromPlan { get; init; }
+    /// <summary>Turns a ProPresenter mask into output masks (default: <see cref="OutputMasks"/>; null skips masks).</summary>
+    public Func<ProScreenPlan.MaskPlan, IReadOnlyList<OutputMask>>? MasksFromPlan { get; init; } = OutputMasks;
 
     /// <summary>Where "countdown to a time" timers count to (tests pass a fixed clock).</summary>
     public TimeProvider Clock { get; init; } = TimeProvider.System;
@@ -189,6 +189,30 @@ public sealed class ProWorkspacePlans
             count++;
         }
         return count;
+    }
+
+    /// <summary>
+    /// A ProPresenter mask's shapes as output masks that black out what's inside them, off until a
+    /// look turns them on. Each shape's outline (a rectangle, an ellipse, a rounded rectangle or its
+    /// own path) becomes one closed path. Port of WorkspaceImport.outputMasks(from:).
+    /// </summary>
+    public static IReadOnlyList<OutputMask> OutputMasks(ProScreenPlan.MaskPlan plan)
+    {
+        var masks = new List<OutputMask>();
+        for (var index = 0; index < plan.Shapes.Count; index++)
+        {
+            var shape = plan.Shapes[index];
+            if (shape.Width <= 0 || shape.Height <= 0) continue;
+            var frame = new SceneRect(shape.X, shape.Y, shape.Width, shape.Height);
+            var kind = Enum.GetValues<ShapeKind>().Cast<ShapeKind?>().FirstOrDefault(k => ShapeKindJsonConverter.ToRaw(k!.Value) == shape.ShapeKind) ?? ShapeKind.Rectangle;
+            if (ShapeOutlineSvg.PathData(kind, new SceneSize(frame.Width, frame.Height), shape.CornerRadius, shape.PathData, ShapeTextPlacement.EdgeOutside) is not { } outline
+                || PathAnchorCodec.Parse(outline, frame) is not { } parsed
+                || PathAnchorCodec.EncodeAbsolute(parsed.Anchors, closed: true) is not { } path)
+                continue;
+            var name = plan.Shapes.Count > 1 ? $"{plan.Name} {index + 1}" : plan.Name;
+            masks.Add(new OutputMask(name, path, OutputMaskMode.Out, alwaysOn: false));
+        }
+        return masks;
     }
 
     /// <summary>ProPresenter's corrections as the output pass's adjustments (zero means "not set").</summary>

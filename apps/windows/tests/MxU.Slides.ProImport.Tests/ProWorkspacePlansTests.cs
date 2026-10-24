@@ -212,6 +212,29 @@ public class ProWorkspacePlansTests
     }
 
     [Fact]
+    public void MaskShapesBecomeClosedPathsThatBlackOutWhenALookTurnsThemOn()
+    {
+        var plan = new ProScreenPlan.MaskPlan("m1", "Pillars",
+        [
+            new ProScreenPlan.MaskShape(0, 0, 0.1, 1, "rectangle", 0, null),
+            new ProScreenPlan.MaskShape(0.8, 0.2, 0.2, 0.4, "ellipse", 0, null),
+            new ProScreenPlan.MaskShape(0.5, 0.5, 0, 0.3, "rectangle", 0, null),
+        ]);
+        var masks = ProWorkspacePlans.OutputMasks(plan);
+        Assert.Equal(["Pillars 1", "Pillars 2"], masks.Select(m => m.Name));
+        Assert.All(masks, m =>
+        {
+            Assert.Equal(OutputMaskMode.Out, m.Mode);
+            Assert.False(m.AlwaysOn);
+            Assert.StartsWith("M", m.PathData.TrimStart());
+            Assert.EndsWith("Z", m.PathData.TrimEnd());
+        });
+        // The rectangle's outline sits on its frame: its first point is the frame's corner.
+        Assert.Contains("0.1", masks[0].PathData);
+        Assert.Single(ProWorkspacePlans.OutputMasks(plan with { Shapes = [plan.Shapes[0]] }), m => m.Name == "Pillars");
+    }
+
+    [Fact]
     public void StageLayoutsGoToTheirScreens()
     {
         var set = new List<(Guid, string)>();

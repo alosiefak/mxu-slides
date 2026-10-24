@@ -34,6 +34,13 @@ public partial class ScreensWindow : Window
     private bool loading;
     private IReadOnlyList<DeckLinkDevice> deckLinks = [];
 
+    /// <summary>Opens the mask editor for the selected screen (and output, if one is selected).</summary>
+    private void Masks_Click(object sender, RoutedEventArgs e)
+    {
+        if (screenId is not { } id) return;
+        MaskEditorWindow.Edit(this, outputs, id, sliceId);
+    }
+
     public ScreensWindow(OutputManager outputs)
     {
         this.outputs = outputs;
