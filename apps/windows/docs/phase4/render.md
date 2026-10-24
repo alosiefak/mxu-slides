@@ -54,6 +54,14 @@ The projector, its preview and the program feed share one trail, so the work is 
 
 `Infrastructure/SelfTest.Render.cs` checks all four: two stand-in network screens show the same slide through a lower-third and a side-third look; a long lyric shows page 1 on the lower third and Next turns to page 2; a verse with its own Fade White passes through white on the program feed; and Echo and Ghost Trails show in the program feed's pictures (`20-*` to `23-*`).
 
+### Lines to change in the existing sections
+
+- **§7 Drawing:** "`Present(scene, transition)` crossfades from the old frame to the new one" → audience views now change layer by layer (§29); a whole-view cut, dissolve or fade-through is still used by the stage display.
+- **§14 Animations:** add "page turns (§28) are morph steps, so they count as clicks".
+- **§18 GPU shaders:** replace "Echo and ghost trails need the previous frame as an input, which WPF effects can't get, so they aren't drawn yet" with a pointer to §30.
+- **§19 Screens:** add "a screen can show the live slide through a look (§27)".
+- **Things to try:** "Give the stream a lower third: add a screen, set its Look to a starter theme and *Just "Lyrics (Lower Third)"*, open its Preview window, and fire a lyric. Then fire a long verse and press Next." (A folder scope picks each slide's design by name inside the folder, so a "Lyrics" slide needs a folder design called "Lyrics"; the starter folders call it "Lyrics (Lower Third)".)
+
 ---
 
 ## For PORTING.md

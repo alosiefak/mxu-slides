@@ -40,8 +40,10 @@ public readonly record struct SceneTransition(TransitionStyle Style, double Seco
 /// moves, the animation engine says where each item is, and the view moves,
 /// fades, wipes and blurs that item's cached drawing (redrawing it only when its
 /// look changes, e.g. a colour morph or letters typing on). Each item is its own
-/// visual, so shadows, blur, rotation and opacity compose on the GPU. A single
-/// bad item is skipped and logged rather than taking the frame down.
+/// visual, so shadows, blur, rotation and opacity compose on the GPU; picture
+/// effects are shader layers around it, and Echo and Ghost Trails blend in the
+/// item's trail (<see cref="TrailStore"/>). A single bad item is skipped and
+/// logged rather than taking the frame down.
 /// </summary>
 public sealed class SceneView : FrameworkElement
 {
