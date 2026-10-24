@@ -245,6 +245,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await TimelineEditorCheck();
             await OverlayEditorChecks();
             await BroadcastExtrasCheck();
+            await ShowFlowChecks();
         }
         catch (Exception ex)
         {
@@ -648,6 +649,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             stop.Cancel();
             await pump;
             model.ClearAllCommand.Execute(null);
+            model.ClearInputsCommand.Execute(null); // Clear All leaves inputs up, as on the Mac
             model.Inputs.Remove(entry.Id);
             model.RefreshInputs();
         }

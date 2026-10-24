@@ -50,7 +50,7 @@ public sealed partial class TimelineEditorViewModel
             || service.Items.FirstOrDefault(i => i.Id == item.Id) is not { } stored)
             return;
         stored.Transition = transition;
-        main.Library.Save(service);
+        main.SaveService(service);
         Player.RefreshTransition();
         Redraw?.Invoke();
         StateChanged?.Invoke();
@@ -112,7 +112,7 @@ public sealed partial class TimelineEditorViewModel
     {
         if (main.SelectedService is not { } service || ServiceItem is null) return;
         service.TimecodeByOrder = on ? true : null;
-        main.Library.Save(service);
+        main.SaveService(service);
         StateChanged?.Invoke();
     }
 

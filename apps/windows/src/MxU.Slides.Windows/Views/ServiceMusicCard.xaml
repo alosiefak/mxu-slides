@@ -1,0 +1,118 @@
+<UserControl x:Class="MxU.Slides.Windows.Views.ServiceMusicCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MxU.Slides.Windows.ViewModels"
+             xmlns:v="clr-namespace:MxU.Slides.Windows.Views">
+    <!--
+        A music row selected in the service (the Mac's AudioFireView / PlaylistFireView): the song or
+        playlist, LIVE while it plays, its songs ("play the playlist starting here") and Play / Stop.
+        It covers the slide grid while shown. The DataContext is the MainViewModel.
+    -->
+    <UserControl.Resources>
+        <v:BoolToVisibility x:Key="CardVisible" />
+        <v:BoolToVisibility x:Key="Visible" />
+        <v:NotNullToVisibility x:Key="VisibleWhenSet" />
+        <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+    </UserControl.Resources>
+    <Border Background="{StaticResource Card}" CornerRadius="6" Visibility="{Binding MusicCardVisible, Converter={StaticResource CardVisible}}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24" MaxWidth="460">
+                <TextBlock FontFamily="{StaticResource Icons}" FontSize="48" HorizontalAlignment="Center" Margin="0,8,0,12">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="&#xEC4F;" />
+                            <Setter Property="Foreground" Value="{StaticResource MutedText}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding MusicCardIsLive}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource Good}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <TextBlock Text="{Binding MusicCardTitle}" FontSize="17" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="380" />
+                    <Border Background="{StaticResource Good}" CornerRadius="3" Padding="5,1" Margin="8,0,0,0" VerticalAlignment="Center"
+                            Visibility="{Binding MusicCardIsLive, Converter={StaticResource Visible}}">
+                        <TextBlock Text="LIVE" FontSize="9" FontWeight="Bold" Foreground="#102010" />
+                    </Border>
+                </StackPanel>
+                <TextBlock Text="{Binding MusicCardDetail}" Style="{StaticResource Muted}" HorizontalAlignment="Center" Margin="0,2,0,12" />
+
+                <ItemsControl ItemsSource="{Binding MusicCardTracks}" Visibility="{Binding MusicCardIsPlaylist, Converter={StaticResource Visible}}" Margin="0,0,0,10">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:MusicTrackViewModel}">
+                            <Button Command="{Binding DataContext.MusicCardPlayTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}" HorizontalContentAlignment="Stretch" Margin="0,0,0,2" Padding="10,3"
+                                    ToolTip="Play the playlist starting here">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                <Setter Property="Background" Value="#1F7ED957" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Length}" Style="{StaticResource Muted}" FontFamily="Consolas" FontSize="11" Margin="12,0,0,0" />
+                                    <TextBlock FontFamily="{StaticResource Icons}" Text="&#xEC4F;" FontSize="10" Width="18" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource FaintText}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource Good}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                </DockPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <StackPanel Visibility="{Binding MusicCardTime, Converter={StaticResource VisibleWhenSet}}" Margin="0,0,0,12">
+                    <ProgressBar Height="3" Minimum="0" Maximum="1" Value="{Binding MusicCardProgress, Mode=OneWay}" Foreground="{StaticResource Good}"
+                                 Background="{StaticResource Raised}" BorderThickness="0" />
+                    <TextBlock Text="{Binding MusicCardTime}" Style="{StaticResource Muted}" FontFamily="Consolas" FontSize="11" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                </StackPanel>
+
+                <Button x:Name="PlayStop" Command="{Binding MusicCardPlayStopCommand}" HorizontalAlignment="Center" MinWidth="130" Padding="14,6"
+                        Style="{StaticResource AccentButton}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource Icons}" VerticalAlignment="Center" Margin="0,0,8,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="&#xE768;" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding MusicCardIsLive}" Value="True">
+                                            <Setter Property="Text" Value="&#xE71A;" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="Play" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding MusicCardIsLive}" Value="True">
+                                            <Setter Property="Text" Value="Stop" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </Button>
+                <TextBlock Text="Double-click the row, or arrive on it with Next, to play it too. F5 stops the music."
+                           Style="{StaticResource Muted}" FontSize="10" HorizontalAlignment="Center" Margin="0,10,0,0" TextWrapping="Wrap" />
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>

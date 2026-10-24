@@ -1,0 +1,43 @@
+<UserControl x:Class="MxU.Slides.Windows.Views.ServiceTrackingPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:MxU.Slides.Windows.Views">
+    <!--
+        The Service Tracking panel (the Mac's ServiceTrackingModule): the current item with its time
+        left and gone, its section and the whole service, and what's next. The DataContext is the
+        MainViewModel; the timers are the permanent service_tracking.* ones a stage layout can show.
+    -->
+    <UserControl.Resources>
+        <v:BoolToVisibility x:Key="Visible" />
+        <v:NotNullToVisibility x:Key="VisibleWhenSet" />
+    </UserControl.Resources>
+    <Border Style="{StaticResource Panel}">
+        <StackPanel>
+            <TextBlock Text="SERVICE TRACKING" Style="{StaticResource SectionLabel}" />
+            <TextBlock Text="{Binding TrackingItemName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+            <WrapPanel Margin="0,0,0,4">
+                <TextBlock Text="{Binding TrackingItemRemaining}" Foreground="{Binding TrackingItemBrush}" FontSize="26" FontWeight="SemiBold"
+                           FontFamily="Consolas" Margin="0,0,10,0" VerticalAlignment="Bottom" />
+                <TextBlock Text="{Binding TrackingItemElapsed}" Style="{StaticResource Muted}" FontFamily="Consolas" Margin="0,0,10,4" VerticalAlignment="Bottom" />
+                <TextBlock Text="{Binding TrackingLate}" Foreground="{StaticResource Live}" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,5"
+                           VerticalAlignment="Bottom" Visibility="{Binding TrackingLate, Converter={StaticResource VisibleWhenSet}}" />
+            </WrapPanel>
+            <DockPanel Margin="0,0,0,2">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding TrackingSection}" Foreground="{Binding TrackingSectionBrush}" FontFamily="Consolas" FontSize="12" />
+                <TextBlock Text="Section" Style="{StaticResource Muted}" FontSize="12" />
+            </DockPanel>
+            <DockPanel Margin="0,0,0,2">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding TrackingService}" Foreground="{Binding TrackingServiceBrush}" FontFamily="Consolas" FontSize="12" />
+                <TextBlock Text="Service" Style="{StaticResource Muted}" FontSize="12" />
+            </DockPanel>
+            <TextBlock Text="{Binding TrackingNext}" Style="{StaticResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis"
+                       Visibility="{Binding TrackingNext, Converter={StaticResource VisibleWhenSet}}" />
+            <DockPanel Margin="0,6,0,0">
+                <Button DockPanel.Dock="Right" Command="{Binding ClearServiceTrackingCommand}" Content="Clear" Padding="8,1" Margin="8,0,0,0"
+                        VerticalAlignment="Top" ToolTip="Stop these timers on this computer"
+                        Visibility="{Binding IsTrackingService, Converter={StaticResource Visible}}" />
+                <TextBlock Text="{Binding TrackingNote}" Style="{StaticResource Muted}" FontSize="10" TextWrapping="Wrap" />
+            </DockPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

@@ -465,6 +465,61 @@ public class AutoAdvanceControllerTests
         Assert.Equal(["s0"], host.Fired);
     }
 
+    /// <summary>A UI thread that's busy: posted callbacks wait until the test drains them.</summary>
+    private sealed class BusyUiThread : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback Callback, object? State)> posted = new();
+        public override void Post(SendOrPostCallback d, object? state) => posted.Enqueue((d, state));
+        public void Drain()
+        {
+            while (posted.TryDequeue(out var item)) item.Callback(item.State);
+        }
+    }
+
+    private static (AutoAdvanceController Controller, AutoAdvanceHost Host, ManualClock Clock, BusyUiThread Ui) MakeBusy()
+    {
+        var clock = new ManualClock(Start);
+        var host = new AutoAdvanceHost(clock);
+        var ui = new BusyUiThread();
+        var controller = new AutoAdvanceController(host, clock, ui);
+        host.Controller = controller;
+        return (controller, host, clock, ui);
+    }
+
+    [Fact]
+    public void HoldingAsTheTimeComesWinsOverTheTimerAlreadyOnItsWay()
+    {
+        // Found by the self-test: the timer's moment came while the UI thread was busy, then the
+        // operator held it; the old timer's callback must not advance the slide anyway.
+        var (controller, host, clock, ui) = MakeBusy();
+        Land(host, Deck(new AutoAdvance { DelaySeconds = 1 }), 0);
+        clock.Advance(1.05); // the timer elapsed: its callback is queued for the UI thread
+        controller.SetPaused(true);
+        ui.Drain();
+        Assert.Equal(["s0"], host.Fired);
+        Assert.True(controller.IsPaused);
+        controller.SetPaused(false);
+        clock.Advance(0.2);
+        ui.Drain();
+        Assert.Equal(["s0", "s1"], host.Fired);
+    }
+
+    [Fact]
+    public void AnOldSlidesPollNeverCancelsTheNextSlidesTimer()
+    {
+        var (controller, host, clock, ui) = MakeBusy();
+        host.MediaItems["clip"] = Video("clip");
+        host.Transports["clip"] = new MediaTransportState(30, 0, true, false, clock.Now);
+        Land(host, VideoDeck(new AutoAdvance { DelaySeconds = 0, AfterPlayback = true }), 0);
+        clock.Advance(0.3); // a poll tick is queued
+        Land(host, Deck(new AutoAdvance { DelaySeconds = 2 }), 1); // the operator moved on
+        ui.Drain();
+        Assert.NotNull(controller.Pending?.FiresAt);
+        clock.Advance(2.1);
+        ui.Drain();
+        Assert.Equal(["s0", "s1", "s2"], host.Fired);
+    }
+
     [Fact]
     public void ChangedIsRaisedWhenTheChipShouldRedraw()
     {

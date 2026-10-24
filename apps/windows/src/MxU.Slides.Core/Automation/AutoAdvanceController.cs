@@ -215,7 +215,7 @@ public sealed class AutoAdvanceController(IAutoAdvanceHost host, TimeProvider? c
         }
         // The last build is still playing: start counting once it has finished.
         var slideId = live.Slide.Id;
-        autoAdvanceArmTimer = ShowTimer.After(clock, ui, TimeSpan.FromSeconds(remaining), () =>
+        autoAdvanceArmTimer = After(TimeSpan.FromSeconds(remaining), () => autoAdvanceArmTimer, () =>
         {
             if (host.Show.Live is not { } now || now.Slide.Id != slideId || host.Show.SlideStepsCompletedAt() is null) return;
             autoAdvanceArmTimer = null;
@@ -256,7 +256,7 @@ public sealed class AutoAdvanceController(IAutoAdvanceHost host, TimeProvider? c
             Pending = slidePending = new AutoAdvancePending(MediaId: mediaId, DelaySeconds: advance.DelaySeconds);
             slideTimedContext = null;
             Stop(ref autoAdvancePoll);
-            autoAdvancePoll = ShowTimer.Every(clock, ui, PollInterval, AutoAdvancePollTick);
+            autoAdvancePoll = Every(PollInterval, () => autoAdvancePoll, AutoAdvancePollTick);
             Note("autoAdvance.watch", $"{slide.Name}: after {mediaId}, {advance.DelaySeconds:F1}s");
             Publish();
             return;
@@ -270,7 +270,8 @@ public sealed class AutoAdvanceController(IAutoAdvanceHost host, TimeProvider? c
         var delay = Math.Max(seconds, 0.1);
         Stop(ref autoAdvanceTimer);
         autoAdvanceFiresAt = Now.AddSeconds(delay);
-        autoAdvanceTimer = ShowTimer.After(clock, ui, TimeSpan.FromSeconds(delay), () => FireAutoAdvance(slideId));
+        autoAdvanceTimer = After(TimeSpan.FromSeconds(delay), () => autoAdvanceTimer, () => FireAutoAdvance(slideId));
+        Note("autoAdvance.arm", $"{slideId}: {delay:F1}s");
         Pending = slidePending = new AutoAdvancePending(FiresAt: autoAdvanceFiresAt);
         advanceTimedContext = slideTimedContext = new SlideContext(slideId);
         Publish();
@@ -382,7 +383,7 @@ public sealed class AutoAdvanceController(IAutoAdvanceHost host, TimeProvider? c
             Pending = new AutoAdvancePending(MediaId: item.Id, DelaySeconds: advance.DelaySeconds);
             advanceTimedContext = new MediaItemContext(serviceItemId, item.Id);
             Stop(ref mediaAdvancePoll);
-            mediaAdvancePoll = ShowTimer.Every(clock, ui, PollInterval, MediaAdvancePollTick);
+            mediaAdvancePoll = Every(PollInterval, () => mediaAdvancePoll, MediaAdvancePollTick);
             Note("mediaAdvance.watch", $"{item.Name}, {advance.DelaySeconds:F1}s");
             Publish();
             return;
@@ -402,7 +403,7 @@ public sealed class AutoAdvanceController(IAutoAdvanceHost host, TimeProvider? c
         var delay = Math.Max(seconds, 0.1);
         Stop(ref mediaAdvanceTimer);
         mediaAdvanceFiresAt = Now.AddSeconds(delay);
-        mediaAdvanceTimer = ShowTimer.After(clock, ui, TimeSpan.FromSeconds(delay), () => FireMediaAdvance(serviceItemId, mediaId));
+        mediaAdvanceTimer = After(TimeSpan.FromSeconds(delay), () => mediaAdvanceTimer, () => FireMediaAdvance(serviceItemId, mediaId));
         Pending = new AutoAdvancePending(FiresAt: mediaAdvanceFiresAt);
         advanceTimedContext = new MediaItemContext(serviceItemId, mediaId);
         Publish();
@@ -506,5 +507,31 @@ public sealed class AutoAdvanceController(IAutoAdvanceHost host, TimeProvider? c
     {
         timer?.Dispose();
         timer = null;
+    }
+
+    /// <summary>
+    /// A one-shot that only acts while it's still the timer in its slot (<paramref name="current"/>).
+    /// A timer stopped just as its time came already has its callback on the way to the UI thread;
+    /// without this, a hold or the next slide could be overtaken by the old slide's timer.
+    /// </summary>
+    private ShowTimer After(TimeSpan delay, Func<ShowTimer?> current, Action callback)
+    {
+        ShowTimer? made = null;
+        made = ShowTimer.After(clock, ui, delay, () =>
+        {
+            if (ReferenceEquals(current(), made)) callback();
+        });
+        return made;
+    }
+
+    /// <summary>A repeating poll that likewise stops acting the moment it's replaced or stopped.</summary>
+    private ShowTimer Every(TimeSpan period, Func<ShowTimer?> current, Action callback)
+    {
+        ShowTimer? made = null;
+        made = ShowTimer.Every(clock, ui, period, () =>
+        {
+            if (ReferenceEquals(current(), made)) callback();
+        });
+        return made;
     }
 }

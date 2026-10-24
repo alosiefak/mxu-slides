@@ -79,15 +79,22 @@ public sealed partial class MainViewModel
         if (!IsEditing) FireMedia(tile.Item);
     }
 
-    /// <summary>Fires media onto its layer: background loops on Background Media, images on Still Graphics, videos on Foreground Videos.</summary>
-    public void FireMedia(MediaItem item)
+    /// <summary>
+    /// Fires media onto its layer: background loops on Background Media, images on Still Graphics,
+    /// videos on Foreground Videos. From a service row (<paramref name="serviceItemId"/>), the row's
+    /// output preset applies and the item's own auto-advance starts; fired any other way (the bin,
+    /// an action), a media row's auto-advance stops, as on the Mac.
+    /// </summary>
+    public void FireMedia(MediaItem item, string? serviceItemId = null)
     {
         var cue = MediaCueRouting.Dropped(item);
         var layer = SlideSceneBuilder.LayerKindOf(cue.Layer);
-        Actions.ApplyPresetSwitches(item, null);
+        Actions.ApplyPresetSwitches(item, serviceItemId);
         Show.Fire(cue, layer);
         RenderOutputs(DefaultTransition());
         Actions.MediaDidFire(item, layer);
+        if (serviceItemId is null) AutoAdvance.CancelMedia();
+        else AutoAdvance.MediaFired(item, serviceItemId);
         if (Show.Live is null)
         {
             LiveTitle = item.Name;
