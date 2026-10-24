@@ -1,5 +1,6 @@
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Stage;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Core.Automation;
 
@@ -99,7 +100,7 @@ public sealed class TimecodeFollower
         this.inputs = inputs;
         Timeline = timeline;
         settings = saved ?? new TimecodeSettings();
-        this.clock = clock ?? TimeProvider.System;
+        this.clock = clock ?? ShowTimeProvider.Shared;
         this.ui = ui;
         if (timeline is not null) timeline.Timecode = this;
     }

@@ -587,7 +587,7 @@ public sealed class AudioEngine : IDisposable, IAudioRenderSource
         if (wantsFill) fillWake.Set();
         if (ended is not null)
             foreach (var (deck, generation) in ended)
-                ThreadPool.QueueUserWorkItem(_ => PlayedToEnd(deck, generation));
+                AudioThreads.Events.Async(() => PlayedToEnd(deck, generation));
     }
 
     private void Grow(int frames)
@@ -686,7 +686,7 @@ public sealed class AudioEngine : IDisposable, IAudioRenderSource
     private static void Retire(AudioDeck.Stream? stream)
     {
         if (stream is null) return;
-        ThreadPool.QueueUserWorkItem(_ => stream.Dispose());
+        AudioThreads.Chores.Async(stream.Dispose);
     }
 
     private void FillLoop()

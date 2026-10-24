@@ -305,7 +305,7 @@ public sealed class AudioInputHub : IDisposable
     private void CaptureStopped(WasapiCapture source, Exception? error)
     {
         // A device pulled out stops the capture with an error; wait for it to come back.
-        ThreadPool.QueueUserWorkItem(_ => Lock.WithLock(() =>
+        AudioThreads.Chores.Async(() => Lock.WithLock(() =>
         {
             if (capture != source) return;
             capture = null;
@@ -317,7 +317,7 @@ public sealed class AudioInputHub : IDisposable
     /// <summary>Windows reported a device change: restart a capture whose device is back. Never blocks the caller.</summary>
     internal void OnDeviceConfigurationChanged()
     {
-        ThreadPool.QueueUserWorkItem(_ => Lock.WithLock(() =>
+        AudioThreads.Chores.Async(() => Lock.WithLock(() =>
         {
             if (!running || disposed || external || capture is not null) return;
             if (InputHotplug.Decide(AudioDeviceList.InputDevice(DeviceUid) is not null, captureLive: false) != InputHotplug.Action.Start) return;

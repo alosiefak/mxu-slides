@@ -1,5 +1,6 @@
 using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Scene;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Audio.Multitrack;
 
@@ -50,7 +51,10 @@ public sealed class MultitrackEngine : IDisposable
     private readonly Lock queue = new();
     private readonly Lock preloadQueue = new();
     private MultitrackRenderer renderer;
-    private Timer? timer;
+    private ITimer? timer;
+
+    // The 20 ms tick decodes stems into the rings: real work, so it gets a clock of its own.
+    private ShowTimeProvider? tickClock;
     private AudioOutputHost? output;
     private MultitrackSong? song;
     private MultitrackRouting routing = new();
@@ -287,7 +291,7 @@ public sealed class MultitrackEngine : IDisposable
             rate = SampleRate;
         }
         var wanted = songs.TakeLast(PreloadLimit).ToList();
-        ThreadPool.QueueUserWorkItem(_ =>
+        AudioThreads.Preload.Async(() =>
         {
             lock (preloadQueue)
             {
@@ -485,12 +489,13 @@ public sealed class MultitrackEngine : IDisposable
 
     private void StartTimer()
     {
-        timer ??= new Timer(_ =>
+        tickClock ??= new ShowTimeProvider("MxU multitrack");
+        timer ??= tickClock.CreateTimer(_ =>
         {
             if (!queue.TryEnter()) return;
             try { Tick(); }
             finally { queue.Exit(); }
-        }, null, 0, 20);
+        }, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(20));
     }
 
     // Every 20 ms: notice handovers, forget programs the audio thread is done with, top up the rings.
@@ -562,7 +567,7 @@ public sealed class MultitrackEngine : IDisposable
             Publish(session);
         }
         var handover = OnHandover;
-        if (handover is not null) ThreadPool.QueueUserWorkItem(_ => handover());
+        if (handover is not null) AudioThreads.Events.Async(handover);
     }
 
     private StemReader[]? TakePreloaded(MultitrackSong next, double seconds)
@@ -602,6 +607,8 @@ public sealed class MultitrackEngine : IDisposable
         {
             timer?.Dispose();
             timer = null;
+            tickClock?.Dispose();
+            tickClock = null;
             output?.Dispose();
             output = null;
             foreach (var group in readers.Values) Dispose(group);

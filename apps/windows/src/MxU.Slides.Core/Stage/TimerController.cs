@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Core.Stage;
 
@@ -28,7 +29,7 @@ public sealed class TimerController(TimeProvider? clock = null)
 
     private readonly List<TimerSnapshot> timers = [];
 
-    public TimeProvider Clock { get; } = clock ?? TimeProvider.System;
+    public TimeProvider Clock { get; } = clock ?? ShowTimeProvider.Shared;
 
     public IReadOnlyList<TimerSnapshot> Timers => timers;
 

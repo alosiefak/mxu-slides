@@ -1,6 +1,7 @@
 using System.Globalization;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Core.Automation;
 
@@ -83,7 +84,7 @@ public sealed class TimelinePlayer
         this.show = show;
         this.library = library;
         this.tracks = tracks;
-        this.clock = clock ?? TimeProvider.System;
+        this.clock = clock ?? ShowTimeProvider.Shared;
         this.ui = ui;
     }
 

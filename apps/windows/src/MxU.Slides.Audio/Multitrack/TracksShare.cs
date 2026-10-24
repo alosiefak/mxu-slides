@@ -1,5 +1,6 @@
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Audio.Multitrack;
 
@@ -216,7 +217,7 @@ public sealed class TracksShareFeeder : IDisposable
     private readonly Lock gate = new();
     private readonly Dictionary<int, long> positions = [];
     private readonly Dictionary<int, Decoding.SincResampler> converters = [];
-    private Timer? timer;
+    private ITimer? timer;
     private double rate;
     private long droppedFrames;
 
@@ -225,7 +226,7 @@ public sealed class TracksShareFeeder : IDisposable
     {
         this.share = share;
         this.sink = sink;
-        if (startsClock) timer = new Timer(_ => TryDrain(), null, 0, 10);
+        if (startsClock) timer = ShowTimeProvider.Shared.CreateTimer(_ => TryDrain(), null, TimeSpan.Zero, TimeSpan.FromMilliseconds(10));
     }
 
     /// <summary>Frames skipped because the reader fell behind (diagnostics).</summary>

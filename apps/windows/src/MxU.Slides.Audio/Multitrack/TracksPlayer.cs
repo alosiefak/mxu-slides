@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using MxU.Slides.Core.Scene;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Audio.Multitrack;
 
@@ -190,12 +191,12 @@ internal sealed class TracksPlayerMessageConverter : JsonConverter<TracksPlayerM
 internal sealed class TracksPlayerConnection
 {
     private readonly PipeStream stream;
-    private readonly SerialQueue queue;
+    private readonly WorkQueue queue;
     private readonly Action<TracksPlayerMessage> onMessage;
     private readonly Action<TracksPlayerConnection, string> onClose;
     private bool closed;
 
-    public TracksPlayerConnection(PipeStream stream, SerialQueue queue, Action<TracksPlayerMessage> onMessage,
+    public TracksPlayerConnection(PipeStream stream, WorkQueue queue, Action<TracksPlayerMessage> onMessage,
         Action<TracksPlayerConnection, string> onClose)
     {
         this.stream = stream;
@@ -288,12 +289,12 @@ public sealed class TracksPlayerServer
 {
     private readonly string path;
     private readonly MultitrackEngine engine;
-    private readonly SerialQueue queue = new("MxU tracks player server");
+    private readonly WorkQueue queue = new("MxU tracks player server");
     private readonly Action<int> exit;
     private readonly List<TracksPlayerConnection> pending = [];
     private TracksPlayerConnection? client;
     private TracksShare? share;
-    private Timer? statusTimer;
+    private ITimer? statusTimer;
     private CancellationTokenSource? listening;
     private double? alone = ShowState.HostClock();
     private string? lastError;
@@ -331,7 +332,7 @@ public sealed class TracksPlayerServer
             var first = TracksPlayerWire.Listen(path);
             _ = Task.Run(() => AcceptLoop(first, token));
         }
-        statusTimer = new Timer(_ => queue.Async(Beat), null, 0, 66);
+        statusTimer = ShowTimeProvider.Shared.CreateTimer(_ => queue.Async(Beat), null, TimeSpan.Zero, TimeSpan.FromMilliseconds(66));
         return true;
     }
 
@@ -502,7 +503,7 @@ public sealed class TracksPlayerClient
 {
     private readonly string path;
     private readonly Action launch;
-    private readonly SerialQueue queue = new("MxU tracks player client");
+    private readonly WorkQueue queue = new("MxU tracks player client");
     private readonly List<TracksPlayerMessage> backlog = [];
     private TracksPlayerConnection? connection;
     private bool connecting;

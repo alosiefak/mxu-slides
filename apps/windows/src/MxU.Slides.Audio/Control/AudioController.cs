@@ -1,6 +1,7 @@
 using MxU.Slides.Core.Automation;
 using MxU.Slides.Audio.Library;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Audio.Control;
 
@@ -43,7 +44,8 @@ public sealed class AudioController : IDisposable
     private readonly SynchronizationContext? context;
     private readonly Func<string, AudioEngine> makeEngine;
     private readonly List<AudioPlayer> players = [];
-    private readonly Timer? poll;
+    private readonly ITimer? poll;
+    private int pollQueued;
     private float masterVolume = 1;
     private bool muted;
     private double crossfadeSeconds = PlaylistCrossfade.DefaultSeconds;
@@ -57,7 +59,17 @@ public sealed class AudioController : IDisposable
         this.library = library;
         this.context = context ?? SynchronizationContext.Current;
         makeEngine = engineFactory ?? (key => new AudioEngine($"Audio {key}"));
-        if (startsPolling) poll = new Timer(_ => PollNow(), null, 250, 250);
+        // Polls run with the engines' notifications (in order with a track ending), never piling up.
+        if (startsPolling)
+            poll = ShowTimeProvider.Shared.CreateTimer(_ =>
+            {
+                if (Interlocked.Exchange(ref pollQueued, 1) == 1) return;
+                AudioThreads.Events.Async(() =>
+                {
+                    Volatile.Write(ref pollQueued, 0);
+                    PollNow();
+                });
+            }, null, TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(250));
     }
 
     /// <summary>Where a playlist plays (null = a single item or clip). Default: the main mix on the default device.</summary>
@@ -401,7 +413,7 @@ public sealed class AudioController : IDisposable
     {
         if (handlers is null) return;
         if (context is not null) context.Post(_ => handlers(), null);
-        else ThreadPool.QueueUserWorkItem(_ => handlers());
+        else AudioThreads.Events.Async(handlers);
     }
 
     private void ApplyLevels(AudioPlayer player)

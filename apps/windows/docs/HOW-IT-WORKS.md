@@ -353,6 +353,10 @@ Not on Windows (yet): SRT, HDR/HEVC streaming, ProRes recording, streaming a med
 ## 26. Keeping it running
 
 - `App.xaml.cs` catches unexpected errors, logs them (`Infrastructure/Log.cs`) and keeps going.
+- **Show timing never waits for spare threads.** .NET has a shared "thread pool" that runs small background jobs and timer callbacks. If something ties it up (a big import, a slow disk, a busy PC), jobs on it run late. So anything a service depends on has its own threads, in `src/MxU.Slides.Core/Threading/`:
+  - `ShowTimeProvider.Shared` is the show clock: one dedicated thread that fires the timers for timelines, delayed slide actions, the scheduler, timecode and the audio feeds.
+  - A `WorkQueue` runs jobs in order on its own thread. The music engine has four (`MxU.Slides.Audio/AudioThreads.cs`): events (a song ended, so the playlist moves on), chores, stem preloading, and Windows' audio-device calls.
+  - `BusyThreadPoolTests` and `BusyPoolThreadingTests` tie up every pool thread on purpose and check a song still ends on time, the next song still loads and the clock still ticks.
 - A `running.marker` file shows when the last session crashed.
 - `Infrastructure/SelfTest.cs` drives the real app through a service and checks what's on screen. It covers lyrics, builds, overlays, video, the Local API (over real HTTP and a WebSocket), both importers, the program feed, screens, NDI, music, live inputs, actions, timelines and recording. Run `scripts/self-test.ps1` after any change. Checks that need hardware this PC doesn't have (a graphics card, NDI Tools) report SKIP, not FAIL.
 

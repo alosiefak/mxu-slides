@@ -2,6 +2,7 @@ using MxU.Slides.Broadcast.Library;
 using MxU.Slides.Broadcast.Recording;
 using MxU.Slides.Broadcast.Streaming;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Broadcast.Control;
 
@@ -59,7 +60,7 @@ public sealed class StreamingController : IDisposable
     private readonly RecordingController recording;
     private readonly StreamSessionOptions? sessionOptions;
     private readonly SynchronizationContext? context;
-    private readonly Timer heartbeat;
+    private readonly ITimer heartbeat;
     private LiveStream? live;
 
     public StreamingController(IProgramSource program, RecordingController recording, StreamSessionOptions? sessionOptions = null)
@@ -68,7 +69,7 @@ public sealed class StreamingController : IDisposable
         this.recording = recording;
         this.sessionOptions = sessionOptions;
         context = SynchronizationContext.Current;
-        heartbeat = new Timer(_ => Post(Heartbeat), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        heartbeat = ShowTimeProvider.Shared.CreateTimer(_ => Post(Heartbeat), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     public LiveStream? Live

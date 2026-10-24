@@ -1,4 +1,5 @@
 using MxU.Slides.Core.Scene;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Audio;
 
@@ -102,7 +103,7 @@ public sealed class AudioMixFeed : IDisposable
     private readonly Lock gate = new();
     private readonly Dictionary<string, Ring> rings = new(StringComparer.Ordinal);
     private readonly Consumer consumer;
-    private readonly Timer? timer;
+    private readonly ITimer? timer;
     private int ticking;
     private (string Member, Consumer Consumer)? partial;
     private double? clockStart;
@@ -114,7 +115,7 @@ public sealed class AudioMixFeed : IDisposable
     public AudioMixFeed(Consumer consumer, bool startsClock = true)
     {
         this.consumer = consumer;
-        if (startsClock) timer = new Timer(_ => TimerFired(), null, 0, 10);
+        if (startsClock) timer = ShowTimeProvider.Shared.CreateTimer(_ => TimerFired(), null, TimeSpan.Zero, TimeSpan.FromMilliseconds(10));
     }
 
     public void Dispose() => timer?.Dispose();

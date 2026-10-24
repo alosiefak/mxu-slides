@@ -5,6 +5,22 @@ using NAudio.Wave;
 
 namespace MxU.Slides.Audio.Tests;
 
+internal static class TestThreads
+{
+    /// <summary>
+    /// Many tests here wait by blocking (<see cref="TestAudio.WaitFor"/>), which ties up
+    /// thread-pool threads; on a small CI machine that starves the pool, and the tracks
+    /// player's pipes (async I/O, which rightly uses the pool) then answer late. The engines
+    /// themselves don't use the pool: <see cref="BusyThreadPoolTests"/> checks that.
+    /// </summary>
+    [System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void RoomForBlockingTests()
+    {
+        ThreadPool.GetMinThreads(out var workers, out var io);
+        ThreadPool.SetMinThreads(Math.Max(workers, 64), Math.Max(io, 64));
+    }
+}
+
 /// <summary>
 /// The test tones live in a folder for this run, removed afterwards; anything an earlier
 /// run couldn't remove (a file still open when it ended) is swept up at the start.

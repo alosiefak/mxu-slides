@@ -1,6 +1,7 @@
 using System.Globalization;
 using MxU.Slides.Broadcast.Library;
 using MxU.Slides.Broadcast.Recording;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Broadcast.Control;
 
@@ -63,14 +64,14 @@ public sealed class RecordingController : IDisposable
     private readonly SynchronizationContext? context;
     private readonly List<RecordingSession> sessions = [];
     private readonly HashSet<Guid> adoptedSessions = [];
-    private readonly Timer heartbeat;
+    private readonly ITimer heartbeat;
 
     public RecordingController(IProgramSource program, string? recordingsFolder = null)
     {
         this.program = program;
         context = SynchronizationContext.Current;
         RecordingsFolder = recordingsFolder ?? DefaultRecordingsFolder;
-        heartbeat = new Timer(_ => Post(Heartbeat), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        heartbeat = ShowTimeProvider.Shared.CreateTimer(_ => Post(Heartbeat), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     /// <summary>Videos\MxU Slides: where recordings go when the library doesn't take them.</summary>

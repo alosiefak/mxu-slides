@@ -1,6 +1,7 @@
 using MxU.Slides.Audio.Multitrack;
 using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Scene;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Audio.Control;
 
@@ -51,7 +52,7 @@ public sealed class TimelineMusic(AudioController audio) : ITimelineMusic
 /// </summary>
 public sealed class LocalTracksPlayer(MultitrackEngine engine) : ITracksPlayer, IDisposable
 {
-    private readonly SerialQueue commands = new("MxU tracks commands");
+    private readonly WorkQueue commands = new("MxU tracks commands");
     private readonly Lock gate = new();
     private IReadOnlyList<MultitrackSong> preloaded = [];
 

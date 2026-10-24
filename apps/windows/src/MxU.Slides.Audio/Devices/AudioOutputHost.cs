@@ -504,7 +504,7 @@ internal sealed class AudioOutputHost : IDisposable
             status = next;
         }
         var handlers = StatusChanged;
-        if (handlers is not null) ThreadPool.QueueUserWorkItem(_ => handlers(next));
+        if (handlers is not null) AudioThreads.Events.Async(() => handlers(next));
     }
 }
 

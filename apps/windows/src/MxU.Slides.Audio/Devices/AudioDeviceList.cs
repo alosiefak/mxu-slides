@@ -1,5 +1,6 @@
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Audio;
 
@@ -150,7 +151,7 @@ internal sealed class AudioDeviceWatcher : IMMNotificationClient
 
     private readonly Lock gate = new();
     private MMDeviceEnumerator? enumerator;
-    private Timer? debounce;
+    private ITimer? debounce;
     private Action? changed;
 
     private AudioDeviceWatcher() { }
@@ -188,8 +189,9 @@ internal sealed class AudioDeviceWatcher : IMMNotificationClient
     {
         lock (gate)
         {
-            debounce ??= new Timer(_ => Fire(), null, Timeout.Infinite, Timeout.Infinite);
-            debounce.Change(150, Timeout.Infinite);
+            // Listeners may look the devices up again, which is slow: not on the show clock's thread.
+            debounce ??= ShowTimeProvider.Shared.CreateTimer(_ => AudioThreads.Events.Async(Fire), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            debounce.Change(TimeSpan.FromMilliseconds(150), Timeout.InfiniteTimeSpan);
         }
     }
 
@@ -229,7 +231,7 @@ internal static class Mta
         try
         {
             if (Thread.CurrentThread.GetApartmentState() == ApartmentState.MTA) return work();
-            return Task.Run(work).GetAwaiter().GetResult();
+            return AudioThreads.Devices.Sync(work);
         }
         catch
         {

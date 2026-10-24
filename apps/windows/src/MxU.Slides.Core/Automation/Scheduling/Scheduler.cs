@@ -1,5 +1,6 @@
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Stage;
+using MxU.Slides.Core.Threading;
 
 namespace MxU.Slides.Core.Automation;
 
@@ -84,7 +85,7 @@ public sealed class Scheduler
     public Scheduler(ISchedulerHost host, SchedulerMemory? saved = null, TimeProvider? clock = null, TimeZoneInfo? zone = null, SynchronizationContext? ui = null)
     {
         this.host = host;
-        this.clock = clock ?? TimeProvider.System;
+        this.clock = clock ?? ShowTimeProvider.Shared;
         this.zone = zone;
         this.ui = ui;
         enabled = saved?.Enabled ?? true;
