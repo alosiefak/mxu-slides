@@ -92,6 +92,8 @@ public sealed partial class MediaHub
             ApplyRate(player);
             pass.EndRaised = false;
             pass.Seeking = true;
+            // Its sound, played by our engine, goes back with it (MediaHub.Sound.cs).
+            SoundJumped(playbackKey, TimeSpan.FromSeconds(pass.Start));
         }
         else
         {
@@ -99,6 +101,7 @@ public sealed partial class MediaHub
             mp.Pause();
             player.Playing = false;
             pass.EndRaised = true;
+            SoundTransportChanged(playbackKey);
         }
         VideoEnded?.Invoke(playbackKey);
     }

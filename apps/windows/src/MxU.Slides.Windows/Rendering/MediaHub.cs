@@ -265,14 +265,20 @@ public sealed partial class MediaHub
 
         var player = new Player { MediaPlayer = new MediaPlayer(), MediaId = mediaId, Loops = loops };
         var mp = player.MediaPlayer;
-        mp.Volume = audible ? VideoVolume : 0;
-        mp.IsMuted = !audible;
+        // A video with sound plays its sound through our engine (MediaHub.Sound.cs), on the video sound's
+        // device, over the same trim and at the same speed as the picture (MediaHub.Trim.cs).
+        var trim = TrimOf?.Invoke(mediaId);
+        var ownSound = audible && TakeSound(playbackKey, player, media.Path,
+            trim?.InPoint, trim?.OutPoint, Math.Clamp(trim?.Rate ?? 1, Core.Media.PlaybackOptions.MinimumRate, Core.Media.PlaybackOptions.MaximumRate));
+        mp.Volume = audible && !ownSound ? VideoVolume : 0;
+        mp.IsMuted = !audible || ownSound;
         mp.ScrubbingEnabled = false;
         mp.MediaOpened += (_, _) =>
         {
             player.Opened = true;
             naturalSizes[mediaId] = new Size(mp.NaturalVideoWidth, mp.NaturalVideoHeight);
             StartPass(player); // the in point and play rate (MediaHub.Trim.cs)
+            SoundJumped(playbackKey, PassStart(player)); // the picture may have jumped to its in point
             MediaReady?.Invoke(mediaId);
         };
         mp.MediaFailed += (_, e) =>
@@ -295,7 +301,7 @@ public sealed partial class MediaHub
             Log.Warn($"Video failed to play ({media.Name}): {player.FailureReason}");
             MediaReady?.Invoke(mediaId);
         };
-        // The end of a pass: loop back to the in point, or stop (MediaHub.Trim.cs).
+        // The end of a pass: loop back to the in point, or stop (MediaHub.Trim.cs, which also moves its own sound).
         mp.MediaEnded += (_, _) => PassEnded(player, playbackKey);
         players[playbackKey] = player;
         BeginPass(player);
@@ -338,6 +344,7 @@ public sealed partial class MediaHub
             if (player.References > 0) return;
             player.CloseTimer?.Stop();
             players.Remove(playbackKey);
+            ReleaseSound(playbackKey);
             try
             {
                 player.MediaPlayer.Stop();
@@ -368,6 +375,7 @@ public sealed partial class MediaHub
         if (!players.TryGetValue(playbackKey, out var p)) return;
         p.MediaPlayer.Pause();
         p.Playing = false;
+        SoundTransportChanged(playbackKey);
     }
 
     public void Play(string playbackKey)
@@ -376,6 +384,7 @@ public sealed partial class MediaHub
         p.MediaPlayer.Play();
         ApplyRate(p);
         p.Playing = true;
+        SoundTransportChanged(playbackKey);
     }
 
     public void Restart(string playbackKey)
@@ -385,6 +394,7 @@ public sealed partial class MediaHub
         p.MediaPlayer.Play();
         ApplyRate(p);
         p.Playing = true;
+        SoundJumped(playbackKey, PassStart(p));
     }
 
     /// <summary>
@@ -398,12 +408,14 @@ public sealed partial class MediaHub
         position = InWindow(p, position < TimeSpan.Zero ? TimeSpan.Zero : position);
         if (mp.NaturalDuration.HasTimeSpan && position > mp.NaturalDuration.TimeSpan) position = mp.NaturalDuration.TimeSpan;
         mp.Position = position < TimeSpan.Zero ? TimeSpan.Zero : position;
+        SoundJumped(playbackKey, position < TimeSpan.Zero ? TimeSpan.Zero : position);
     }
 
     public void ApplyVolume()
     {
         foreach (var p in players.Values)
             if (!p.MediaPlayer.IsMuted) p.MediaPlayer.Volume = VideoVolume;
+        ApplySoundVolume();
     }
 
     /// <summary>Forgets cached decodes for a media item (after it is replaced or relinked).</summary>

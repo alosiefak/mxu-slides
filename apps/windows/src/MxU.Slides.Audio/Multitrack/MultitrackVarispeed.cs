@@ -98,6 +98,14 @@ internal sealed class MultitrackVarispeed
         primed = true;
     }
 
+    /// <summary>Forgets the history, as if new: the next output sits on the next sample read (after a jump).</summary>
+    public void Reset()
+    {
+        Array.Clear(windows);
+        fraction = 0;
+        primed = false;
+    }
+
     private void Convolve(int window, float[] output, int count)
     {
         for (var j = 0; j < count; j++)

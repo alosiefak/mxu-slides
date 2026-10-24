@@ -814,34 +814,8 @@
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
-                <!-- Music -->
-                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
-                              Visibility="{Binding ShowingMusic, Converter={StaticResource Visible}}">
-                    <ItemsControl ItemsSource="{Binding AudioTiles}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="{x:Type vm:AudioTileViewModel}">
-                                <Border x:Name="Frame" Width="170" Height="92" Margin="0,0,8,0" CornerRadius="5" BorderThickness="2" BorderBrush="Transparent"
-                                        Background="#1A2233" Cursor="Hand" MouseLeftButtonUp="AudioTile_Click" ToolTip="{Binding Name}">
-                                    <DockPanel Margin="10,8">
-                                        <TextBlock DockPanel.Dock="Bottom" Text="{Binding Detail}" FontSize="11" Foreground="{StaticResource MutedText}" />
-                                        <TextBlock DockPanel.Dock="Left" FontFamily="{StaticResource Icons}" Text="&#xEC4F;" FontSize="18" Margin="0,0,8,0" VerticalAlignment="Top" />
-                                        <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" />
-                                    </DockPanel>
-                                </Border>
-                                <DataTemplate.Triggers>
-                                    <DataTrigger Binding="{Binding IsPlaying}" Value="True">
-                                        <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Live}" />
-                                    </DataTrigger>
-                                </DataTemplate.Triggers>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <!-- Music: songs, playlists and the playing playlist's songs (Views/MusicBin.xaml) -->
+                <v:MusicBin Visibility="{Binding ShowingMusic, Converter={StaticResource Visible}}" />
                 <!-- Combos -->
                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
                               Visibility="{Binding ShowingCombos, Converter={StaticResource Visible}}">

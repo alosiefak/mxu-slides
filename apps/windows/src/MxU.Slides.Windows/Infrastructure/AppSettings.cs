@@ -90,6 +90,9 @@ public sealed partial class AppSettings
     [JsonPropertyName("preview.screenTarget")]
     public string? PreviewTarget { get; set; }
 
+    /// <summary>This PC's audio outputs, where music and video sound play, and the music's fades.</summary>
+    public SoundSettings Sound { get; set; } = new();
+
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,

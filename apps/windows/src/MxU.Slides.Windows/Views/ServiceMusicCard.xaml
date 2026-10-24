@@ -41,7 +41,7 @@
 
                 <ItemsControl ItemsSource="{Binding MusicCardTracks}" Visibility="{Binding MusicCardIsPlaylist, Converter={StaticResource Visible}}" Margin="0,0,0,10">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="{x:Type vm:MusicTrackViewModel}">
+                        <DataTemplate DataType="{x:Type vm:MusicCardTrackViewModel}">
                             <Button Command="{Binding DataContext.MusicCardPlayTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                     CommandParameter="{Binding}" HorizontalContentAlignment="Stretch" Margin="0,0,0,2" Padding="10,3"
                                     ToolTip="Play the playlist starting here">

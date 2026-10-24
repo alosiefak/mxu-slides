@@ -7,7 +7,7 @@ using MxU.Slides.Core.Scene;
 namespace MxU.Slides.Windows.ViewModels;
 
 /// <summary>One song in a playlist row's card ("Play the playlist starting here").</summary>
-public sealed partial class MusicTrackViewModel(string entryId, string name, string? length) : ObservableObject
+public sealed partial class MusicCardTrackViewModel(string entryId, string name, string? length) : ObservableObject
 {
     public string EntryId { get; } = entryId;
     public string Name { get; } = name;
@@ -122,7 +122,7 @@ public sealed partial class MainViewModel
     [ObservableProperty]
     public partial double MusicCardProgress { get; set; }
 
-    public ObservableCollection<MusicTrackViewModel> MusicCardTracks { get; } = [];
+    public ObservableCollection<MusicCardTrackViewModel> MusicCardTracks { get; } = [];
 
     private string? musicCardItemId;
 
@@ -147,7 +147,7 @@ public sealed partial class MainViewModel
 
     /// <summary>"Play the playlist starting here."</summary>
     [RelayCommand]
-    private void MusicCardPlayTrack(MusicTrackViewModel? track)
+    private void MusicCardPlayTrack(MusicCardTrackViewModel? track)
     {
         if (track is null || SelectedServiceItem?.Item is not { ItemKind: ServiceItemKind.Playlist } item) return;
         PlayServiceMusic(item, track.EntryId);
@@ -177,7 +177,7 @@ public sealed partial class MainViewModel
             {
                 var name = entry.RefKind == PlaylistRefKind.Audio ? Library.Get<AudioItem>(entry.RefId)?.Name : Library.Get<MediaItem>(entry.RefId)?.Name;
                 var seconds = entry.RefKind == PlaylistRefKind.Audio ? Library.Get<AudioItem>(entry.RefId)?.DurationSeconds : Library.Get<MediaItem>(entry.RefId)?.DurationSeconds;
-                MusicCardTracks.Add(new MusicTrackViewModel(entry.Id, name ?? entry.RefId, Length(seconds)));
+                MusicCardTracks.Add(new MusicCardTrackViewModel(entry.Id, name ?? entry.RefId, Length(seconds)));
             }
         }
         MusicCardIsLive = IsMusicLive(item);

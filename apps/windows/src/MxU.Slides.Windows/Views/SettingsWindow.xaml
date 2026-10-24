@@ -86,6 +86,7 @@
             <Slider x:Name="Volume" Grid.Column="1" Minimum="0" Maximum="1" VerticalAlignment="Center" />
         </Grid>
         <TextBlock Style="{StaticResource Muted}" Margin="90,4,0,0" FontSize="11" Text="Background loops are always silent; foreground videos play their sound." />
+        <v:SoundSettingsPanel xmlns:v="clr-namespace:MxU.Slides.Windows.Views" x:Name="SoundPanel" Margin="0,12,0,0" />
 
         <TextBlock Text="MIDI CONTROL" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
         <DockPanel>

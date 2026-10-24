@@ -27,6 +27,7 @@ public sealed partial class MainViewModel : ObservableObject
         Media.TrimOf = TrimFor; // each video's in point, out point and play rate (MainViewModel.Rendering.cs)
         SceneView.DefaultMedia = Media;
         Library.Changed += OnLibraryChanged;
+        InitializeSound();
 
         RefreshThemes();
         RefreshLibrary();
