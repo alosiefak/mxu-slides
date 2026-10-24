@@ -220,6 +220,7 @@ public static class OutputPresets
         var routing = Routing(preset, themeExists);
         outputs.SetLayerRouting(routing.Layers);
         outputs.SetSlideThemeRouting(routing.SlideThemes);
+        outputs.SetPresetLooks(routing.Looks);
         foreach (var screen in outputs.Screens)
             outputs.SetActiveMaskIds(screen.Id, routing.ActiveMasks.GetValueOrDefault(screen.Id) ?? new HashSet<Guid>());
         return routing;

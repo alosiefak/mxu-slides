@@ -61,6 +61,21 @@ public sealed class PlaceholderScreenConfig
     /// <summary>The default slice's placement in its device's frame.</summary>
     [JsonPropertyName("placement"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public OutputPlacement? Placement { get; set; }
+
+    // Windows only: the screen's own look. The names are the Mac's output-preset names for the
+    // same thing (OutputAssignment.slideThemeId/Folder/SlideId); the Mac ignores them when it reads this.
+
+    /// <summary>The theme this screen shows the live slide through, or null for the slide as designed.</summary>
+    [JsonPropertyName("slideThemeId"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SlideThemeId { get; set; }
+
+    /// <summary>Only that theme's designs in this folder (a lower-thirds folder, say).</summary>
+    [JsonPropertyName("slideThemeFolder"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SlideThemeFolder { get; set; }
+
+    /// <summary>Only this one design of the theme.</summary>
+    [JsonPropertyName("slideThemeSlideId"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SlideThemeSlideId { get; set; }
 }
 
 /// <summary>One saved extra slice: its region of the canvas (unit coordinates) and its own settings.</summary>
@@ -144,6 +159,9 @@ public static class ScreenSetup
                 }).ToList()
                 : null,
             Placement = outputs.Placement(screen.Id),
+            SlideThemeId = outputs.ScreenLook(screen.Id)?.ThemeId,
+            SlideThemeFolder = outputs.ScreenLook(screen.Id)?.Folder,
+            SlideThemeSlideId = outputs.ScreenLook(screen.Id)?.SlideId,
         }).ToList();
 
     /// <summary>
@@ -174,6 +192,8 @@ public static class ScreenSetup
             if (config.Masks is { } masks) outputs.SetMasks(config.Id, masks);
             if (config.Placement is { } placement) outputs.SetPlacement(config.Id, placement);
             if (config.VideoDelayFrames is { } delay) outputs.SetVideoDelay(config.Id, delay);
+            if (config.SlideThemeId is { Length: > 0 } themeId)
+                outputs.SetScreenLook(config.Id, new SlideThemeLook(themeId, config.SlideThemeFolder, config.SlideThemeSlideId));
             // Restored claims were all valid when saved, so restore them alongside each other: a frame
             // packed with several outputs comes back packed. (The Mac restores exclusively, which
             // keeps only the last output on a shared device.)

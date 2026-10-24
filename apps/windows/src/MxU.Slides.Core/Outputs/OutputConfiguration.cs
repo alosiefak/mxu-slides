@@ -174,6 +174,7 @@ public sealed partial class OutputConfiguration
         adjustments = adjustments.Remove(id);
         masks = masks.Remove(id);
         activeMaskIds = activeMaskIds.Remove(id);
+        screenLooks = screenLooks.Remove(id);
         foreach (var slice in ExtraSlices(id)) ClearSliceState(slice.Id);
         screenSlices = screenSlices.Remove(id);
         placements = placements.Remove(id);

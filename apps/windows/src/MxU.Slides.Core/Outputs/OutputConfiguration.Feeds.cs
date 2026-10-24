@@ -118,7 +118,9 @@ public sealed partial class OutputConfiguration
             else if (canvas is not null && syncTestScreens.Contains(s)) kind = OutputFeedKind.SyncTest;
             else if (Role(s) == ScreenRole.Confidence) kind = OutputFeedKind.Confidence;
         }
-        return new OutputFeed(kind, screenId, routingKey, canvas, slideThemeRouting.GetValueOrDefault(routingKey));
+        // The look: the active preset's slide theme for this output, else the screen's own look.
+        var look = slideThemeRouting.GetValueOrDefault(routingKey) ?? (screenId is { } owner ? ScreenLook(owner)?.Key : null);
+        return new OutputFeed(kind, screenId, routingKey, canvas, look);
     }
 
     /// <summary>

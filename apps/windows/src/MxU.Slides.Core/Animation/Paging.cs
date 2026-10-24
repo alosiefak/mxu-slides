@@ -89,7 +89,8 @@ public static class Paging
         {
             var o = objects[index];
             if (o.ObjectKind != SlideObjectKind.Text || o.Hidden == true || o.Text.Length == 0
-                || !assignments.TryGetValue(o.Id, out var placeholder) || placeholder.TextStyle?.PageOnClick != true)
+                || !assignments.TryGetValue(o.Id, out var placeholder) || placeholder.TextStyle?.PageOnClick != true
+                || MovesOnItsOwn(o, placeholder))
                 continue;
             var styled = SlideSceneBuilder.StyledTextFor(o, theme, placeholder);
             var frame = SlideSceneBuilder.Frame(o, placeholder, canvas);
@@ -97,6 +98,20 @@ public static class Paging
             if (pages.Count > 1) result[index] = pages;
         }
         return result;
+    }
+
+    /// <summary>
+    /// Text on a path, a ticker or a block scroll shows its whole text its own way, so it never pages
+    /// (TextRasterizer.pages returns such text as one page on the Mac).
+    /// </summary>
+    private static bool MovesOnItsOwn(SlideObject o, SlideObject placeholder)
+    {
+        var own = o.TextStyle;
+        var design = placeholder.Id == o.Id ? null : placeholder.TextStyle;
+        var path = own?.PathData ?? design?.PathData;
+        var ticker = own?.TickerSpeed ?? design?.TickerSpeed ?? 0;
+        var scroll = own?.Scroll ?? design?.Scroll;
+        return path is not null || ticker != 0 || scroll is { Speed: > 0 };
     }
 
     /// <summary>The page turns go after the build-in and before the leave (the first dismiss step, or a clicked Out).</summary>

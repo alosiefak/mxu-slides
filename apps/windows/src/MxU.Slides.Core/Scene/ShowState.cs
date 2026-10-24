@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using MxU.Slides.Core.Animation;
+using MxU.Slides.Core.Json;
 using MxU.Slides.Core.Model;
 
 namespace MxU.Slides.Core.Scene;
@@ -12,7 +13,14 @@ public enum ShowFunction { Slides, Media, Overlays, Audio, Alerts, Inputs }
 /// overlays and the alert, plus where the slide's animation builds are (clicks
 /// used, exit pressed, a clear waiting for its Outs). Pure state; the app fires
 /// cues into it and renders <see cref="AnimatedScene"/>. Port of
-/// SlideScene/ShowState.swift without theme-override looks.
+/// SlideScene/ShowState.swift.
+/// <para>
+/// Looks: an output can show the live slide through a different theme (a lower third
+/// on the stream while the projector shows the full-screen lyric). The app lists the
+/// looks some output shows in <see cref="SlideThemeOverrides"/> and builds one scene
+/// per look with <c>AnimatedScene(slideThemeOverride: look)</c>. Every look shares the
+/// slide's clock, so a click plays the builds of every look at once.
+/// </para>
 /// </summary>
 public sealed class ShowState
 {
@@ -33,6 +41,15 @@ public sealed class ShowState
     private double? slideDismissAt;
     private bool slideArrivedSettled;
 
+    // The slide that was live before this one, if it was still up (not cleared, not
+    // exited): a look whose design didn't change "holds" across the two (see HoldsLook).
+    private LiveSlide? heldFrom;
+    private int heldFromClicks;
+    private HashSet<string> heldFromDismissedLooks = [];
+
+    // Looks taken down early (their Outs playing) while the slide stays live elsewhere, by LookKey.
+    private readonly Dictionary<string, double> lookDismissAt = new(StringComparer.Ordinal);
+
     public LiveSlide? Live { get; private set; }
     public LiveSlide? Last { get; private set; }
     public IReadOnlyDictionary<LayerKind, CueMedia> LiveMedia => liveMedia;
@@ -47,7 +64,21 @@ public sealed class ShowState
     public void Fire(Slide slide, Presentation? presentation = null, Theme? theme = null, string? arrangementId = null,
         DateTimeOffset? at = null, double? atHostTime = null, bool arrivesSettled = false)
     {
-        if (Live is { } outgoing && outgoing.Slide.Id != slide.Id) Last = outgoing;
+        if (Live is { } outgoing && outgoing.Slide.Id != slide.Id)
+        {
+            Last = outgoing;
+            // Remember the outgoing slide so a look that keeps its design can hold (no rebuild).
+            heldFrom = slideDismissAt is null && slideExitAt is null ? outgoing : null;
+            heldFromClicks = slideAdvanceClicks.Count;
+            heldFromDismissedLooks = [.. lookDismissAt.Keys];
+        }
+        else
+        {
+            heldFrom = null;
+            heldFromClicks = 0;
+            heldFromDismissedLooks = [];
+        }
+        lookDismissAt.Clear();
         Live = new LiveSlide(slide, presentation, theme, arrangementId, at ?? DateTimeOffset.Now, atHostTime ?? HostClock());
         slideAdvanceClicks.Clear();
         slideExitAt = null;
@@ -155,10 +186,156 @@ public sealed class ShowState
     /// <summary>True while an overlay plays its Outs on the way off.</summary>
     public bool IsLeaving(string overlayId) => overlayDismissAt.ContainsKey(overlayId);
 
+    // MARK: Looks (theme overrides per output)
+
+    /// <summary>
+    /// The looks some output shows the live slide through, besides the slide's own theme
+    /// (sorted by look key, as the Mac sorts them). Clicks, exits and clears count the
+    /// builds of every look, so the slide only moves on when every output has played its.
+    /// </summary>
+    public IReadOnlyList<Theme> SlideThemeOverrides { get; set; } = [];
+
+    /// <summary>How text pages turn: the way the slide transition looks (<see cref="Paging.Turn.Following"/>).</summary>
+    public Paging.Turn PageTurn { get; set; } = Paging.Turn.Cut;
+
+    /// <summary>
+    /// Measures text, so a long lyric on a "page on click" placeholder becomes click pages.
+    /// The app supplies its text layout here; without one nothing pages (the text shrinks to fit instead).
+    /// </summary>
+    public TextPager? Pager { get; set; }
+
+    /// <summary>Looks taken down early with <see cref="DismissLooks"/>, by <see cref="LookKey"/> (their Outs are playing).</summary>
+    public IReadOnlyDictionary<string, double> LookDismissAt => lookDismissAt;
+
+    /// <summary>When the live slide's clear was pressed (its Outs are playing), or null.</summary>
+    public double? SlideDismissAt => slideDismissAt;
+
+    /// <summary>When the live slide's exit group was pressed, or null.</summary>
+    public double? SlideExitAt => slideExitAt;
+
+    /// <summary>How long a held look's words fade in over the design that stays up.</summary>
+    public const double HoldFadeSeconds = 0.3;
+
+    /// <summary>The design a slide uses through a look (its override design for that theme, else by name).</summary>
+    private static string? TemplateId(Slide slide, Theme theme) =>
+        SlideSceneBuilder.ThemeSlide(PlaceholderAnimations.RenderedThroughOverride(slide, theme), theme)?.Id;
+
+    /// <summary>Two slides use the same design through a look (an empty slide never matches: it takes the look down).</summary>
+    private static bool SameTemplate(Slide a, Slide b, Theme theme) =>
+        a.Objects.Count > 0 && b.Objects.Count > 0 && TemplateId(a, theme) == TemplateId(b, theme);
+
+    /// <summary>The same look: the same theme scoped to the same designs.</summary>
+    public static bool SameLook(Theme a, Theme b) =>
+        a.Id == b.Id && (a.Slides is null) == (b.Slides is null)
+        && (a.Slides ?? []).Select(s => s.Id).SequenceEqual((b.Slides ?? []).Select(s => s.Id));
+
+    /// <summary>A look's identity: its theme id and the designs it is scoped to.</summary>
+    public static string LookKey(Theme theme) =>
+        theme.Id + "|" + (theme.Slides is { } slides ? string.Join(",", slides.Select(s => s.Id)) : "");
+
+    /// <summary>
+    /// True when the live slide arrived on a look that was already up with the same design
+    /// (verse 2 after verse 1 on the stream's lower third): that output keeps its plate and
+    /// bands where they are and only fades the new words in, instead of building in again.
+    /// A look that was taken down, cleared or exited, or whose Outs were all clicked off, doesn't hold.
+    /// </summary>
+    public bool HoldsLook(Theme theme) =>
+        Live is { } live && heldFrom is { } previous
+        && !heldFromDismissedLooks.Contains(LookKey(theme))
+        && LookStands(previous, theme, heldFromClicks)
+        && SameTemplate(previous.Slide, live.Slide, theme);
+
+    // A look is still standing unless its Outs have all been clicked off already.
+    private bool LookStands(LiveSlide live, Theme theme, int consumedClicks)
+    {
+        var composition = PlaceholderAnimations.StackComposition(PlaceholderAnimations.RenderedThroughOverride(live.Slide, theme), theme, Pager);
+        var hasOuts = AnimationSequence.SceneSteps(composition.Objects, composition.Order).Values
+            .SelectMany(steps => steps).Any(step => step.Kind == SceneAnimationKind.Exit);
+        return !hasOuts || LookExitDuration(live, theme, consumedClicks) > 0;
+    }
+
+    private double LookExitDuration(LiveSlide live, Theme theme, int consumedClicks)
+    {
+        var composition = PlaceholderAnimations.StackComposition(PlaceholderAnimations.RenderedThroughOverride(live.Slide, theme), theme, Pager);
+        return AnimationSequence.ExitDuration(composition.Objects, composition.Order, consumedClicks);
+    }
+
+    /// <summary>
+    /// Before <paramref name="slide"/> fires with <paramref name="incomingOverrides"/> as the looks then
+    /// shown: the looks that must play their Outs first (the look goes away, changes design, or the new
+    /// slide is blank) and how long to wait for them. Nothing waits when nothing is live, the slide is
+    /// already leaving, or it is a re-fire of the live slide.
+    /// </summary>
+    public (double Wait, IReadOnlyList<Theme> Leaving) Handoff(Slide slide, IReadOnlyList<Theme> incomingOverrides)
+    {
+        if (Live is not { } live || slideDismissAt is not null || slideExitAt is not null || live.Slide.Id == slide.Id) return (0, []);
+        var leaving = new List<Theme>();
+        var wait = 0.0;
+        foreach (var theme in SlideThemeOverrides.Where(t => !lookDismissAt.ContainsKey(LookKey(t))))
+        {
+            var stays = incomingOverrides.Any(t => SameLook(t, theme));
+            if (stays && SameTemplate(live.Slide, slide, theme)) continue;
+            var outDuration = LookExitDuration(live, theme, slideAdvanceClicks.Count);
+            if (outDuration <= 0) continue;
+            leaving.Add(theme);
+            wait = Math.Max(wait, outDuration);
+        }
+        return (wait, leaving);
+    }
+
+    public double HandoffWait(Slide slide, IReadOnlyList<Theme> incomingOverrides) => Handoff(slide, incomingOverrides).Wait;
+
+    /// <summary>Switching to <paramref name="incomingOverrides"/> (an output preset change) while the slide stays live: the looks that go, and how long their Outs take.</summary>
+    public (double Wait, IReadOnlyList<Theme> Leaving) LookSwitch(IReadOnlyList<Theme> incomingOverrides)
+    {
+        if (Live is not { } live || slideDismissAt is not null || slideExitAt is not null) return (0, []);
+        var leaving = new List<Theme>();
+        var wait = 0.0;
+        foreach (var theme in SlideThemeOverrides.Where(t => !lookDismissAt.ContainsKey(LookKey(t))))
+        {
+            if (incomingOverrides.Any(t => SameLook(t, theme))) continue;
+            var outDuration = LookExitDuration(live, theme, slideAdvanceClicks.Count);
+            if (outDuration <= 0) continue;
+            leaving.Add(theme);
+            wait = Math.Max(wait, outDuration);
+        }
+        return (wait, leaving);
+    }
+
+    /// <summary>Plays these looks' Outs now, while the slide stays live on the other outputs (a hand-off or a look switch).</summary>
+    public void DismissLooks(IEnumerable<Theme> themes, double atHostTime)
+    {
+        if (Live is null) return;
+        foreach (var theme in themes) lookDismissAt[LookKey(theme)] = atHostTime;
+        Changed?.Invoke();
+    }
+
+    /// <summary>A held look's entrances become a quick fade in place (its Outs stay the design's).</summary>
+    private static AnimationStep HoldFade(AnimationStep step)
+    {
+        if (step.Kind != AnimationKind.In || step.Trigger is not (AnimationTrigger.WithPrevious or AnimationTrigger.AfterPrevious)) return step;
+        var fade = MxuJson.Clone(step);
+        fade.Animation = StepAnimation.Fade;
+        fade.Trigger = AnimationTrigger.WithPrevious;
+        fade.DelaySeconds = null;
+        fade.DurationSeconds = HoldFadeSeconds;
+        fade.Edge = null;
+        fade.OffsetX = null;
+        fade.OffsetY = null;
+        fade.FromScale = null;
+        fade.WithFade = null;
+        return fade;
+    }
+
+    /// <summary>The object's steps all came from its placeholder (every id is <c>objectId::stepId</c>).</summary>
+    private static bool IsDonated(SlideObject o) =>
+        o.AnimationSteps is { Count: > 0 } steps && steps.All(s => s.Id.Contains("::", StringComparison.Ordinal));
+
     // MARK: Animation builds (clicks)
 
-    private static List<PlaceholderAnimations.Composition> Compositions(LiveSlide live) =>
-        PlaceholderAnimations.Compositions(live.Slide, [live.Theme]);
+    /// <summary>One composition per look: the slide's own theme first, then each override.</summary>
+    private List<PlaceholderAnimations.Composition> Compositions(LiveSlide live) =>
+        PlaceholderAnimations.Compositions(live.Slide, [live.Theme, .. SlideThemeOverrides], Pager);
 
     /// <summary>Click groups on the live slide.</summary>
     public int SlideClickCount => Live is { } live
@@ -375,6 +552,10 @@ public sealed class ShowState
     {
         if (Live is not null) Last = Live;
         Live = null;
+        heldFrom = null;
+        heldFromClicks = 0;
+        heldFromDismissedLooks = [];
+        lookDismissAt.Clear();
         slideAdvanceClicks.Clear();
         slideExitAt = null;
         slideDismissAt = null;
@@ -384,9 +565,10 @@ public sealed class ShowState
     // MARK: Rendering
 
     /// <summary>The audience scene with everything at rest (no animation), for pictures, checks and text.</summary>
-    public RenderScene Scene(SceneSize? canvasSize = null, Func<IReadOnlyList<SlideObject>, List<SlideObject>>? resolveLinkedText = null)
+    public RenderScene Scene(SceneSize? canvasSize = null, Func<IReadOnlyList<SlideObject>, List<SlideObject>>? resolveLinkedText = null,
+        Theme? slideThemeOverride = null)
     {
-        var animated = AnimatedScene(canvasSize, resolveLinkedText);
+        var animated = AnimatedScene(canvasSize, resolveLinkedText, slideThemeOverride);
         var scene = new RenderScene(animated.CanvasSize) { Background = animated.Background };
         foreach (var layer in animated.Layers)
             foreach (var item in layer.Items)
@@ -400,38 +582,20 @@ public sealed class ShowState
     /// and the alert band. <paramref name="resolveLinkedText"/> fills in clock, timer and
     /// slide-linked text objects. Port of ShowState.scene.
     /// </summary>
-    public AnimatedScene AnimatedScene(SceneSize? canvasSize = null, Func<IReadOnlyList<SlideObject>, List<SlideObject>>? resolveLinkedText = null)
+    /// <param name="slideThemeOverride">
+    /// A look: the live slide drawn through this theme instead of its own (its text takes the look's
+    /// placeholders, keeping only the emphasis the look allows), with the look's builds. Everything
+    /// else (media, overlays, the alert) is the same as the plain scene.
+    /// </param>
+    public AnimatedScene AnimatedScene(SceneSize? canvasSize = null, Func<IReadOnlyList<SlideObject>, List<SlideObject>>? resolveLinkedText = null,
+        Theme? slideThemeOverride = null)
     {
         var canvas = canvasSize ?? SlideSceneBuilder.CanvasSizeFor(Live?.Presentation);
         var scene = new AnimatedScene(canvas);
         foreach (var (layer, media) in liveMedia)
             scene.AddItem(SlideSceneBuilder.MediaItem($"live-media-{layer.Raw()}", media, canvas), layer);
 
-        if (Live is { } live)
-        {
-            if ((live.Slide.BackgroundFill ?? live.Presentation?.BackgroundFill) is { } fill
-                && SlideSceneBuilder.BackdropItem(fill, canvas, $"{live.Slide.Id}-backdrop") is { } backdrop)
-                scene.AddItem(backdrop, LayerKind.Slide);
-
-            IReadOnlyList<SlideObject> objects = live.Slide.Objects;
-            if (resolveLinkedText is not null) objects = resolveLinkedText(objects);
-            var template = SlideSceneBuilder.ThemeSlide(live.Slide, live.Theme);
-            var composition = AnimatedItems.Compose(objects, template, live.Theme, live.Slide.AnimationOrder, canvas);
-            var wiring = SlideSceneBuilder.MaskWiring(composition.Stack.Select(e => e.Object).ToList());
-            var context = SlideAnimationContext;
-            foreach (var entry in composition.Stack)
-            {
-                var source = entry.FromTheme && resolveLinkedText is not null && entry.Object.TextLink is not null
-                    ? resolveLinkedText([entry.Object])[0]
-                    : entry.Object;
-                var placeholder = entry.FromTheme ? null : composition.Placeholders.GetValueOrDefault(entry.Object.Id);
-                var items = SlideSceneBuilder.RenderItems(source, live.Theme, placeholder, canvas, entry.FromTheme ? entry.Id : null,
-                    wiring.MaskedBy.GetValueOrDefault(entry.Object.Id), wiring.Mattes.Contains(entry.Object.Id) ? entry.Object.Id : null);
-                foreach (var item in AnimatedItems.For(source, items, composition.StepsFor(entry.Object.Id), live.Theme, placeholder, canvas,
-                             context, live.FiredAtHostTime))
-                    scene.AddItem(item, LayerKind.Slide);
-            }
-        }
+        if (Live is { } live) AddSlide(scene, live, canvas, resolveLinkedText, slideThemeOverride);
 
         foreach (var overlay in liveOverlays)
         {
@@ -456,6 +620,68 @@ public sealed class ShowState
             foreach (var item in AlertBanner.Items(message, canvas, "audience"))
                 scene.AddItem(item, LayerKind.Alerts);
         return scene;
+    }
+
+    /// <summary>
+    /// The live slide on the slide layer, through its own theme or a look. In order, as on the Mac:
+    /// linked text filled in, the slide's text restyled for the look, placeholder steps donated (a held
+    /// look's entrances turned into a quick fade), long text paged, the design's stack composed, and
+    /// each piece given its steps and the slide's clock (a look being taken down plays its Outs from then).
+    /// </summary>
+    private void AddSlide(AnimatedScene scene, LiveSlide live, SceneSize canvas,
+        Func<IReadOnlyList<SlideObject>, List<SlideObject>>? resolveLinkedText, Theme? look)
+    {
+        if ((live.Slide.BackgroundFill ?? live.Presentation?.BackgroundFill) is { } fill
+            && SlideSceneBuilder.BackdropItem(fill, canvas, $"{live.Slide.Id}-backdrop") is { } backdrop)
+            scene.AddItem(backdrop, LayerKind.Slide);
+
+        var theme = look ?? live.Theme;
+        // Through a look, the slide uses the design it chose for that theme (if it chose one).
+        var renderedSlide = look is null ? live.Slide : PlaceholderAnimations.RenderedThroughOverride(live.Slide, look);
+        IReadOnlyList<SlideObject> objects = live.Slide.Objects;
+        if (resolveLinkedText is not null) objects = resolveLinkedText(objects);
+        if (look is not null) objects = PlaceholderAnimations.OverrideObjects(renderedSlide, objects, live.Theme, look);
+        var template = SlideSceneBuilder.ThemeSlide(renderedSlide, theme);
+
+        var donated = PlaceholderAnimations.Compose(objects, template, live.Slide.AnimationOrder);
+        var slideObjects = donated.Objects;
+        var held = look is not null && HoldsLook(look);
+        if (held)
+        {
+            slideObjects = slideObjects.Select(o =>
+            {
+                if (!IsDonated(o)) return o;
+                var copy = MxuJson.Clone(o);
+                copy.AnimationSteps = [.. o.AnimationSteps!.Select(HoldFade)];
+                return copy;
+            }).ToList();
+        }
+
+        var paged = Paging.Paged(slideObjects, template, theme, donated.Order, canvas, Pager, PageTurn);
+        var placeholders = SlideSceneBuilder.PlaceholderAssignments(paged.Objects, template);
+        var stack = SlideSceneBuilder.ComposedStack(paged.Objects, template);
+        var wiring = SlideSceneBuilder.MaskWiring(stack.Select(e => e.Object).ToList());
+        var steps = AnimationSequence.SceneSteps(stack.Select(e => e.Object).ToList(), paged.Order);
+
+        var lookContext = SlideAnimationContext;
+        if (look is not null && lookContext is not null && lookDismissAt.TryGetValue(LookKey(look), out var dismissedAt))
+            lookContext = lookContext with { DismissHostTime = dismissedAt };
+        // A held look's design (plate, bands) counts as already built in: it stays where it is.
+        var heldContext = lookContext is null ? null : lookContext with { AutoSettled = true };
+
+        foreach (var entry in stack)
+        {
+            var source = entry.FromTheme && resolveLinkedText is not null && entry.Object.TextLink is not null
+                ? resolveLinkedText([entry.Object])[0]
+                : entry.Object;
+            var placeholder = entry.FromTheme ? null : placeholders.GetValueOrDefault(entry.Object.Id);
+            var items = SlideSceneBuilder.RenderItems(source, theme, placeholder, canvas, entry.FromTheme ? entry.Id : null,
+                wiring.MaskedBy.GetValueOrDefault(entry.Object.Id), wiring.Mattes.Contains(entry.Object.Id) ? entry.Object.Id : null);
+            var context = held && entry.FromTheme ? heldContext : lookContext;
+            foreach (var item in AnimatedItems.For(source, items, steps.GetValueOrDefault(entry.Object.Id) ?? [], theme, placeholder, canvas,
+                         context, live.FiredAtHostTime))
+                scene.AddItem(item, LayerKind.Slide);
+        }
     }
 }
 
