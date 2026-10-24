@@ -33,5 +33,11 @@ public sealed partial class SchedulerBoard : ILibraryDocument
     string ILibraryDocument.Name { get => "Schedule"; set { } }
 }
 
+/// <summary>Section names with their colours and hot keys (one document, id "group-palette"; see <see cref="GroupPalettes"/>).</summary>
+public sealed partial class GroupPalette : ILibraryDocument
+{
+    string ILibraryDocument.Name { get => "Groups"; set { } }
+}
+
 /// <summary>A streaming destination. Its stream key is a secret, kept out of the JSON (see the Broadcast project).</summary>
 public sealed partial class StreamDestination : ILibraryDocument;

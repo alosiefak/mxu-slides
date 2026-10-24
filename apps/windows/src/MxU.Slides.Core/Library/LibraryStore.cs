@@ -33,6 +33,7 @@ public sealed class LibraryStore
         [typeof(StreamDestination)] = "StreamDestinations",
         [typeof(ControlBoard)] = "ComboBoard",
         [typeof(SchedulerBoard)] = "SchedulerBoard",
+        [typeof(GroupPalette)] = "GroupPalette",
     };
 
     private readonly object gate = new();

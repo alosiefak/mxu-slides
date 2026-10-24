@@ -69,6 +69,7 @@ public sealed partial class MainViewModel
             RefreshThemes();
             RefreshMedia();
             var documents = result.Documents.Concat(result.Playlists.SelectMany(p => p.Documents)).ToList();
+            ApplyGroupHotKeys(ProGroupHotKeys.Merged(new Dictionary<string, string>(), documents), ImportConflictPolicy.UpdateUnedited);
             foreach (var warning in documents.SelectMany(d => d.Warnings.Select(w => $"{Path.GetFileName(d.SourcePath)}: {w}"))
                          .Concat(result.Playlists.SelectMany(p => p.Warnings)).Concat(result.Themes.SelectMany(t => t.Warnings)))
                 Log.Info($"ProPresenter import: {warning}");
@@ -121,10 +122,15 @@ public sealed partial class MainViewModel
             + (p.Total is { } total ? $" ({p.Completed} of {total})" : "") + "…");
         try
         {
-            var result = await new ProWorkspaceImporter(Library).ImportWorkspaceAsync(showDirectory,
-                new WorkspaceImportOptions { Policy = ImportConflictPolicy.UpdateUnedited }, progress: progress);
+            var options = new WorkspaceImportOptions { Policy = ImportConflictPolicy.UpdateUnedited };
+            var result = await new ProWorkspaceImporter(Library).ImportWorkspaceAsync(showDirectory, options,
+                existingTimers: [.. Timers.Timers.Select(t => new ProTimerSeed(t.Id, t.Name))],
+                existingInputs: [.. Inputs.Entries.Select(e => new ProInputSeed(e.Id, e.Name, e.SourceId))],
+                progress: progress);
             foreach (var warning in result.Warnings) Log.Info($"ProPresenter library import: {warning}");
             SaveProPresenterExtras(result);
+            var applied = ApplyProPresenterPlans(result, options);
+            var hotKeys = options.GroupHotKeys ? ApplyGroupHotKeys(ProGroupHotKeys.Merged(result.GroupHotKeys, result.Presentations), options.Policy) : 0;
             RefreshLibrary();
             RefreshServices(keepSelection: true);
             RefreshThemes();
@@ -142,6 +148,11 @@ public sealed partial class MainViewModel
             if (result.LayoutsImported.Count > 0) parts.Add($"{result.LayoutsImported.Count} stage layouts");
             if (result.Combos.Count > 0) parts.Add($"{result.Combos.Count} macros");
             if (result.ScheduleTriggers.Count > 0) parts.Add($"{result.ScheduleTriggers.Count} calendar events");
+            if (applied?.ScreensAdded > 0) parts.Add($"{applied.ScreensAdded} screens");
+            if (applied?.LooksImported > 0) parts.Add($"{applied.LooksImported} looks as output presets");
+            if (applied?.TimersImported > 0) parts.Add($"{applied.TimersImported} timers");
+            if (applied?.InputsImported > 0) parts.Add($"{applied.InputsImported} video inputs");
+            if (hotKeys > 0) parts.Add($"{hotKeys} group hot keys");
             Notice = $"Imported {string.Join(", ", parts)} from ProPresenter"
                 + (result.SkippedEdited.Count > 0 ? $"; kept {result.SkippedEdited.Count} you've changed here" : "")
                 + (result.Warnings.Count > 0 ? ". Details are in the log." : ".");
@@ -182,6 +193,52 @@ public sealed partial class MainViewModel
         foreach (var trigger in result.ScheduleTriggers.Where(t => Library.Get<ScheduleTrigger>(t.Id) is null)) Library.Save(trigger);
         if (result.Combos.Count + result.ScheduleTriggers.Count > 0)
             Log.Info($"ProPresenter library import: {result.Combos.Count} macros as action combos, {result.ScheduleTriggers.Count} calendar events as schedule triggers");
+    }
+
+    /// <summary>
+    /// The workspace's timers, video inputs, screens (corrections, slices, stage layouts) and
+    /// looks (as output presets), applied on the UI thread. See ProWorkspacePlans.
+    /// </summary>
+    private ProWorkspacePlans.Summary? ApplyProPresenterPlans(ProWorkspaceImportResult result, WorkspaceImportOptions options)
+    {
+        if (Outputs is not { } outputs) return null;
+        string? stageLayout = null;
+        var plans = new ProWorkspacePlans
+        {
+            Library = Library,
+            Outputs = outputs.Config,
+            Timers = Timers,
+            ImportInput = plan => Inputs.ImportEntry(plan.NewId, plan.Name, plan.Kind, plan.SourceId),
+            // This app has one stage layout for every confidence screen: the first one ProPresenter assigns.
+            SetStageLayout = (_, layoutId) => stageLayout ??= layoutId,
+        };
+        try
+        {
+            var summary = plans.Apply(result, options);
+            if (stageLayout is not null && StageLayouts.FirstOrDefault(l => l.Id == stageLayout) is { } layout) SelectedStageLayout = layout;
+            RefreshInputs();
+            Log.Info($"ProPresenter library import: {summary}");
+            return summary;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Applying ProPresenter screens, looks, timers and inputs failed", ex);
+            return null;
+        }
+    }
+
+    /// <summary>ProPresenter's group hot keys into the library's group palette; how many changed.</summary>
+    private int ApplyGroupHotKeys(IReadOnlyDictionary<string, string> imported, ImportConflictPolicy policy)
+    {
+        try
+        {
+            return ProGroupHotKeys.Apply(Library, imported, policy);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Applying ProPresenter group hot keys failed", ex);
+            return 0;
+        }
     }
 
     /// <summary>Called on the import's worker thread; the question is asked on the UI thread.</summary>

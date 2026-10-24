@@ -9,12 +9,18 @@ namespace MxU.Slides.Windows.ViewModels;
 /// <summary>Keyboard jumps: group hot keys (C = Chorus…) and typing a slide number then Enter.</summary>
 public sealed partial class MainViewModel
 {
-    private readonly Dictionary<string, List<string>> hotKeyTargets = HotKeyJump.HotKeyTargets(StarterContent.GroupPalette);
+    private Dictionary<string, List<string>>? hotKeyTargets;
+
+    /// <summary>Letter → section names, from the library's group palette (rebuilt when the palette changes).</summary>
+    private Dictionary<string, List<string>> HotKeyTargets => hotKeyTargets ??= HotKeyJump.HotKeyTargets(GroupPalettes.Current(Library).Groups);
+
+    /// <summary>The palette changed (an import, or an edit): look the hot keys up again next time.</summary>
+    private void RefreshHotKeys() => hotKeyTargets = null;
 
     /// <summary>Jumps the live song (or the open one) to the next block of the section on this key. False when nothing matches.</summary>
     public bool FireHotKey(string letter)
     {
-        if (!hotKeyTargets.TryGetValue(letter.ToLowerInvariant(), out var names)) return false;
+        if (!HotKeyTargets.TryGetValue(letter.ToLowerInvariant(), out var names)) return false;
         var (presentation, arrangementId, live, itemId) = Show.Live?.Presentation is { } livePresentation && Live is not null
             ? (livePresentation, Live.ArrangementId, (int?)Live.Occurrence, Live.ItemId)
             : (CurrentPresentation, SelectedArrangement?.Id, null, CurrentContextItemId);

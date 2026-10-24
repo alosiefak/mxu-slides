@@ -127,6 +127,7 @@ public sealed partial class MainViewModel : ObservableObject
         else if (type == typeof(ConfidenceLayout)) RefreshStageLayouts();
         else if (type == typeof(AudioItem) || type == typeof(Playlist)) RefreshAudio();
         else if (type == typeof(ActionCombo)) RefreshCombos();
+        else if (type == typeof(GroupPalette)) RefreshHotKeys();
         else if (type == typeof(Overlay) && !suppressOverlayRefresh) RefreshOverlays();
     }
 
