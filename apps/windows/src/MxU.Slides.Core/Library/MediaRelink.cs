@@ -107,6 +107,21 @@ public static class MissingMedia
 
     public static bool IsFileMissing(LibraryStore library, MediaItem item) => library.BlobPath(item) is null;
 
+    /// <summary>
+    /// The ids among these that ought to be a picture or video but have no item: deleted, or
+    /// never imported here. Music is left out (a timeline's music clip keeps its song's id in the
+    /// same field as a video's), and so are built-in sources ("input::item::…").
+    /// </summary>
+    public static IEnumerable<string> UnknownIds(LibraryStore library, IEnumerable<string> ids) =>
+        ids.Where(id => !id.Contains("::", StringComparison.Ordinal) && library.Get<MediaItem>(id) is null && library.Get<AudioItem>(id) is null);
+
+    /// <summary>How many of the media a document uses have no file here, deleted items included.</summary>
+    public static int MissingCount(LibraryStore library, IReadOnlySet<string> ids)
+    {
+        var present = ids.Select(library.Get<MediaItem>).OfType<MediaItem>().ToList();
+        return UnknownIds(library, ids).Count() + MissingIds(library, present).Count;
+    }
+
     /// <summary>Which of these items' files are missing, from one look at the Blobs folder.</summary>
     public static HashSet<string> MissingIds(LibraryStore library, IEnumerable<MediaItem> items)
     {
@@ -125,15 +140,10 @@ public static class MissingMedia
         var missingIds = MissingIds(library, items);
         var missing = items.Where(m => missingIds.Contains(m.Id)).ToList();
         var referenced = MediaUsage.Documents(library).SelectMany(d => d.MediaIds).ToHashSet(StringComparer.Ordinal);
-        var known = items.Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
         var trashed = TrashedItems(library);
-        var tombstones = new List<MediaItem>();
-        foreach (var id in referenced.Where(id => !known.Contains(id)).Order(StringComparer.Ordinal))
-        {
-            // Live inputs and other built-in sources ("input::item::…") aren't library media.
-            if (id.Contains("::", StringComparison.Ordinal)) continue;
-            tombstones.Add(trashed.GetValueOrDefault(id) ?? MediaRelink.PlaceholderTombstone(id, null));
-        }
+        var tombstones = UnknownIds(library, referenced).Order(StringComparer.Ordinal)
+            .Select(id => trashed.GetValueOrDefault(id) ?? MediaRelink.PlaceholderTombstone(id, null))
+            .ToList();
         return new Targets(missing, tombstones);
     }
 

@@ -6,11 +6,19 @@ using MxU.Slides.Core.Model;
 namespace MxU.Slides.Broadcast.Tests;
 
 /// <summary>
+/// Transcoding keeps every core busy, which would make the real-time recorder and replay tests
+/// miss their timing, so these run on their own rather than beside them.
+/// </summary>
+[CollectionDefinition("Transcoding", DisableParallelization = true)]
+public sealed class TranscodingCollection;
+
+/// <summary>
 /// Looking inside imported files with Windows' own decoders, and transcoding the ones flagged.
 /// Port of MediaImportTests.swift (fiftyMixedFilesImportOrganizedAndFlagged and friends), with
 /// files Windows can make: PNGs, H.264 MP4s from the app's recorder, and uncompressed AVIs
 /// standing in for the Mac's Motion JPEG movies.
 /// </summary>
+[Collection("Transcoding")]
 public sealed class MediaImportProbeTests : IDisposable
 {
     private readonly string scratch = Path.Combine(Path.GetTempPath(), "MediaImportProbe-" + Guid.NewGuid().ToString("N"));

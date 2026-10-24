@@ -111,6 +111,20 @@ public sealed class MediaRelinkTests : ScratchFolderTest
         Assert.DoesNotContain(tombstones, t => t.Id == unused.Id); // nothing uses it
     }
 
+    /// <summary>A timeline's music clip keeps its song's id where a video's would be: it isn't missing media.</summary>
+    [Fact]
+    public void MusicOnATimelineIsNotMissingMedia()
+    {
+        var library = NewLibrary();
+        library.Save(Audio("song", "h", "Walk-in"));
+        var presentation = Opener("gone-video");
+        presentation.Timelines = [new PresentationTimeline { Id = "t", Cues = [new TimelineCue { Id = "c", Lane = "audio", MediaId = "song" }] }];
+        library.Save(presentation);
+        Assert.Equal(["gone-video"], MissingMedia.Find(library).Tombstones.Select(t => t.Id));
+        Assert.Equal(1, MissingMedia.MissingCount(library, MediaReferences.Ids(presentation)));
+        Assert.Equal(["gone-video"], MissingMedia.UnknownIds(library, ["song", "gone-video", "input::item::cam"]));
+    }
+
     [Fact]
     public void MissingFilesAreFoundAndAFolderScanRelinksThemByContent()
     {

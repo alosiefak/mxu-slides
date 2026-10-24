@@ -31,6 +31,7 @@ public sealed partial class MainViewModel
                      .OrderByDescending(m => m.ImportedAt ?? 0))
             MediaItems.Add(new MediaTileViewModel(item, MediaTileViewModel.PreviewScene(item)));
         SelectedMedia = MediaItems.FirstOrDefault(m => m.Item.Id == selectedId);
+        MarkMediaFiles();
         MarkLiveTiles();
     }
 
@@ -44,7 +45,7 @@ public sealed partial class MainViewModel
             Multiselect = true,
             Filter = $"Images and videos|{extensions}|All files|*.*",
         };
-        if (dialog.ShowDialog() == true) ImportMediaFiles(dialog.FileNames);
+        if (dialog.ShowDialog() == true) _ = ImportMediaFilesAsync(dialog.FileNames);
     }
 
     /// <summary>Copies files into the library (from the dialog or a drag and drop). Returns what was imported.</summary>
@@ -156,9 +157,8 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private void DeleteMedia(MediaTileViewModel? tile)
     {
-        if ((tile ?? SelectedMedia) is not { } media) return;
-        Library.Delete<MediaItem>(media.Item.Id);
-        Notice = $"Moved \"{media.Name}\" to the library's Trash folder. The file itself is kept.";
+        // Says first where it's still used, if anywhere (MainViewModel.MissingMedia.cs).
+        if ((tile ?? SelectedMedia) is { } media) _ = DeleteMediaAsync(media.Item);
     }
 
     public void RenameMedia(MediaTileViewModel tile, string name)

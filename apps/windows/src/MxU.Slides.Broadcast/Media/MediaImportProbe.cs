@@ -40,9 +40,11 @@ public sealed class MediaImportProbe : IMediaProber
         catch (Exception e)
         {
             var heic = Path.GetExtension(path).ToLowerInvariant() is ".heic" or ".heif";
+            // Windows' imaging errors often come without a message, only a code.
+            var why = e.Message.Trim().TrimEnd('.');
             var reason = heic
                 ? "Windows can't read this HEIC photo. Install “HEIF Image Extensions” from the Microsoft Store, or export it as JPEG"
-                : $"Windows can't read this picture ({e.Message.Trim().TrimEnd('.')})";
+                : $"Windows can't read this picture: it's damaged, or in a format Windows has no codec for ({(why.Length > 0 ? why : $"0x{e.HResult:X8}")})";
             return new MediaProbe(MediaKind.Image, MediaFileStatus.NeedsTranscode, reason, null, null, null) { SkipReason = reason };
         }
     }

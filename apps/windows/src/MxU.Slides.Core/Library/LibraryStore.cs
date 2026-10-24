@@ -58,6 +58,7 @@ public sealed class LibraryStore
 
     /// <summary>Looks inside imported media (set by the app; null in tests that don't need it). See MediaImporting.cs.</summary>
     public IMediaProber? Prober { get; set; }
+
     public string TrashDirectory => Path.Combine(Root, "Trash");
     public string QuarantineDirectory => Path.Combine(Root, "Quarantine");
     public string BackupDirectory => Path.Combine(Root, "Backups");

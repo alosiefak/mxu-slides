@@ -59,6 +59,7 @@ public static class MediaTranscoder
             bool videoDone = false, audioDone = audio is null;
             var frameTicks = 10_000_000L / frameRate;
             long writtenAudioFrames = 0;
+            double reported = 0;
             while (!videoDone || !audioDone)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -86,7 +87,16 @@ public static class MediaTranscoder
                             var length = sample.GetSampleDuration(out var ticks) >= 0 && ticks > 0 ? ticks : frameTicks;
                             writer.WriteVideo(nv12, videoAt, length);
                         }
-                        if (duration > 0) progress?.Report(Math.Clamp(videoAt / 10_000_000.0 / duration, 0, 1));
+                        // Every whole percent, not every picture: the progress goes to the notice bar.
+                        if (duration > 0 && progress is not null)
+                        {
+                            var done = Math.Clamp(videoAt / 10_000_000.0 / duration, 0, 0.99);
+                            if (done - reported >= 0.01)
+                            {
+                                reported = done;
+                                progress.Report(done);
+                            }
+                        }
                     }
                     else if (sample is not null)
                     {

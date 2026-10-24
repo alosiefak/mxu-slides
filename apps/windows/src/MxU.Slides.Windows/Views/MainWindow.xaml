@@ -20,8 +20,11 @@
                     Cursor="Hand" ToolTip="{Binding NotesTooltip}"
                     MouseLeftButtonUp="SlideTile_Click" MouseRightButtonUp="SlideTile_RightClick">
                 <StackPanel>
-                    <r:SceneView StaticScene="{Binding Scene}" Letterbox="#000000"
-                                 Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource SixteenByNine}}" />
+                    <Grid>
+                        <r:SceneView StaticScene="{Binding Scene}" Letterbox="#000000"
+                                     Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource SixteenByNine}}" />
+                        <v:MediaBadge Compact="True" Text="{Binding MissingMedia}" Detail="{Binding MissingMedia}" />
+                    </Grid>
                     <Grid Background="{Binding GroupBrush}" Height="22">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -265,7 +268,7 @@
                         </StackPanel>
                         <ListBox x:Name="LibraryList" ItemsSource="{Binding LibraryItems}" SelectedItem="{Binding SelectedLibraryEntry}"
                                  PreviewMouseLeftButtonDown="LibraryList_PreviewMouseDown" PreviewMouseMove="LibraryList_PreviewMouseMove"
-                                 MouseDoubleClick="LibraryList_DoubleClick">
+                                 MouseDoubleClick="LibraryList_DoubleClick" AllowDrop="True" DragOver="LibraryList_DragOver" Drop="LibraryList_Drop">
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:LibraryEntryViewModel}">
                                     <DockPanel>
@@ -284,6 +287,7 @@
                                     <MenuItem Header="Edit lyrics…" Click="EditLyrics_Click" />
                                     <MenuItem Header="Rename…" Click="RenamePresentation_Click" />
                                     <MenuItem Header="Duplicate" Command="{Binding DuplicatePresentationCommand}" />
+                                    <MenuItem Header="Export as .mxuslides (for a Mac or another PC)…" Click="ExportPresentation_Click" />
                                     <Separator />
                                     <MenuItem Header="Move to Trash" Click="DeletePresentation_Click" />
                                 </ContextMenu>
@@ -991,11 +995,16 @@
                                             <MenuItem Header="Rename…" Click="MediaRename_Click" />
                                             <MenuItem Header="Actions…" Click="MediaActions_Click" />
                                             <Separator />
+                                            <MenuItem Header="Locate missing file…" Click="MediaLocate_Click" Visibility="{Binding IsFileMissing, Converter={StaticResource Visible}}" />
+                                            <MenuItem Header="Replace file everywhere…" Click="MediaReplace_Click" />
+                                            <MenuItem Header="Transcode now (make an H.264 copy)" Click="MediaTranscode_Click" Visibility="{Binding CanTranscode, Converter={StaticResource Visible}}" />
+                                            <Separator />
                                             <MenuItem Header="Move to Trash" Click="MediaDelete_Click" />
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <Grid>
                                         <r:SceneView StaticScene="{Binding Preview}" PlaysVideo="False" Height="92" />
+                                        <v:MediaBadge Text="{Binding Badge}" Detail="{Binding BadgeDetail}" />
                                         <Border VerticalAlignment="Bottom" Background="#B0000000" Padding="5,2">
                                             <DockPanel>
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding Kind}" FontSize="10" Foreground="{StaticResource MutedText}" Margin="4,0,0,0" />

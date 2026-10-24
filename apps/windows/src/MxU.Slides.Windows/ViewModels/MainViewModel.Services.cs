@@ -95,8 +95,10 @@ public sealed partial class MainViewModel
                         detail = m is null ? null : m.MediaKind == MediaKind.Video ? "Video" : "Image";
                         break;
                 }
+                // "File missing" / "2 media files missing" when its media has no file on this PC (MainViewModel.MissingMedia.cs).
+                var note = missing ? null : MissingMediaNote(item);
                 if (item.ItemKind != ServiceItemKind.Header) number++;
-                ServiceItems.Add(new ServiceItemViewModel(item, number, missing ? "Missing from library" : detail, missing));
+                ServiceItems.Add(new ServiceItemViewModel(item, number, missing ? "Missing from library" : note ?? detail, missing || note is not null));
             }
         }
         SelectedServiceItem = ServiceItems.FirstOrDefault(r => r.Item.Id == selectedId);
