@@ -112,7 +112,7 @@ Because this is just data, the stage display, the slide thumbnails, the audience
 
 - It scales the 1920×1080 canvas to fit any window, letterboxing the rest.
 - Each item becomes its own `DrawingVisual`, so WPF can apply shadows, blur, rotation and skew on the GPU.
-- `Present(scene, transition)` crossfades from the old frame to the new one. `Update(scene)` redraws in place without a transition, which is used every second for clocks and timers, and when a click plays a build.
+- `Present(scene, transition)` changes the picture: audience views change layer by layer, as on the Mac (section 29), and the stage display still uses one whole-view cut, dissolve or fade. `Update(scene)` redraws in place without a transition, which is used every second for clocks and timers, and when a click plays a build.
 - While anything moves, it asks the animation engine where every item is on each screen refresh (`OnFrame` → `Render`). It reuses each item's drawing and only changes its position, opacity, wipe or blur. It stops asking as soon as nothing is moving (`AnimationTimeline.IsAnimating`), so a still slide costs nothing.
 - Text is laid out by `TextLayout.cs`, which copies the Mac's `TextRasterizer` rules:
   - insets, then word wrap;
@@ -185,6 +185,14 @@ A text box on a themed slide has no position of its own; it sits where its place
 - `Control/MidiControl.cs` maps MIDI note-on messages to commands with the same notes as the Mac and ProPresenter. For "select by index" commands, the velocity is the number: Trigger Slide with velocity 3 takes slide 3 live. It also parses raw MIDI bytes, including running status and SysEx.
 - `Infrastructure/MidiInputService.cs` listens through Windows' own MIDI API (`Windows.Devices.Midi`). MIDI control is off until you switch it on in Settings.
 
+**MIDI devices (Phase 4).** The Mac keeps a list of named MIDI devices ("Lighting desk", "Keys") in the library. Windows now does too (`MIDIDevice` documents, folder `MidiDevices`):
+
+- Each device is on or off, In, Out or In + Out, and listens on one channel or all of them.
+- On this PC each device is tied to the ports whose names match (`Core/Control/MidiDevices.cs`, a port of `MIDIDeviceResolver`), or to ports you picked (kept in `settings.json`, because port ids belong to this PC).
+- MIDI control listens only to devices that are on, on their channel, once any listed device takes input. With no devices listed, it listens to every input, as before.
+- A slide action's MIDI Out goes to its device's port. A device that's off, input-only or unplugged is skipped with a reason, and never sent to every port by mistake.
+- Set them up in **Screens & Settings › MIDI › MIDI devices**. `GET /v1/midi/devices` lists them and `PUT …/enabled` switches one on or off.
+
 ## 14. Animations and builds (Phase 2)
 
 Slides, theme designs and overlays can animate: text rising in, a plate wiping across, words appearing one by one. `src/MxU.Slides.Core/Animation/` is a line-for-line port of the Mac's engine.
@@ -204,6 +212,7 @@ What **Next** does depends on the slide, as on the Mac:
 The starter lyric designs put the words' Out on a click, so the first Next plays the Out and the second moves on. **Alt+→** goes straight to the next slide, skipping any builds left (Option+→ on the Mac). The live label shows "build 1 of 1". Previous takes builds back.
 
 What `SceneView` draws: moves, scales, rotation, fades, wipes with soft edges, blur, typewriter and word-by-word reveals, and line drawing. The 3-D tilt and swing are flattened into a squash. Keystone, burn, glitch and tint need GPU shaders and aren't drawn yet.
+- Page turns (section 28) are morph steps, so they count as clicks: the stage display's "build 2 of 4" counts them.
 
 ## 15. Remote control: the Local API (Phase 2)
 
@@ -232,6 +241,15 @@ Both importers are ports of the Mac's and save straight into the `LibraryStore`.
 - **`.pro`** is also ChordPro's extension. `MainViewModel.IsProPresenterFile` tells them apart: ProPresenter's is binary, ChordPro's is text.
 - **A whole ProPresenter library**: **Screens & Settings › Import ProPresenter library…** opens at `Documents\ProPresenter`. Run it again later to pick up changes; anything you've edited here is kept.
 
+**Everything else a ProPresenter workspace holds (Phase 4).** A ProPresenter library import used to bring in presentations, media, themes, props, messages, stage layouts, playlists, macros and calendar events. It now also brings in:
+
+- **Screens:** ProPresenter's screens become screens here (by name; a screen you already have is reused), with their role, colour and keystone corrections, slices and edge blends. `src/MxU.Slides.ProImport/ProWorkspacePlans.cs` does this; it is a port of the second half of the Mac's `WorkspaceImport.swift`. "Update unedited" never reconfigures a screen you already had; "Replace" does.
+- **Looks** become **output presets** (each screen's layers, theme and mask), so switching a preset switches the look.
+- **Timers** and **video inputs** join the timer list and the input inventory.
+- **Stage layouts:** the first one ProPresenter assigns becomes the stage layout (this app has one stage layout for every confidence screen).
+- **Group hot keys:** ProPresenter lets you change which key jumps to which group. The library now keeps a **group palette** (`Core/Library/GroupPalettes.cs`, one document, id `group-palette`, as on the Mac) and the hot keys come from it. `ProImport/ProGroupHotKeys.cs` applies imported letters under the import policy. The import ledger (`ImportLedger.json`) remembers each letter an import set, so "Update unedited" can tell your change from an untouched import.
+- **MIDI devices** (below).
+
 ## 17. The program feed (Phase 3)
 
 Recording, streaming, NDI and DeckLink all need the audience picture as a stream of frames, not just a window. `Outputs/ProgramFeed.cs` makes that stream, the way the Mac's OutputMirror does.
@@ -247,6 +265,12 @@ Two things learnt the hard way, both checked by the self-test:
 - **WPF's own `RenderTargetBitmap` draws on the CPU.** It managed 13 frames a second at 1080p and stalled the operator screen. Capturing a real window uses the GPU and holds 30.
 - **Windows doesn't draw windows that are entirely off-screen.** So the program window sits at the top-left of the main screen, behind everything, fully transparent (alpha 0) and click-through. You never see it, but Windows keeps its picture current.
 
+**On a PC that can't capture (Phase 4).** Some PCs (virtual machines like the CI runner, some remote sessions) start Windows' capture but never get a picture from it. Two seconds without one, `HiddenCapture` switches to a **software copy**: WPF draws the program into a bitmap on the UI thread. It runs as often as it can without taking more than about a third of that thread's time, and later captures start on it straight away.
+
+- Recordings, streams and NDI still work, at a lower frame rate.
+- The copy can't draw pixel shader 3.0 effects, so GPU effects and output corrections are missing from those frames.
+- `MXU_SLIDES_CAPTURE=software` forces it, to test it or on a PC whose capture misbehaves.
+
 ## 18. GPU shaders (Phase 3)
 
 Some looks can only be drawn pixel by pixel on the graphics card: keystone correction, edge blending, and effects like pixelate or stained glass. WPF allows that through a `ShaderEffect` with an HLSL pixel shader.
@@ -255,7 +279,7 @@ Some looks can only be drawn pixel by pixel on the graphics card: keystone corre
 - `Rendering/ItemEffect.cs` holds all of an object's picture effects in one shader: colour adjust, hue rotate, invert, posterize, pixelate, vignette, warp, scatter, stained glass and grain, plus the animation passes glitch, burn and tint. Each is a line-for-line port of the Mac's Metal shader in `RenderEngine/ShaderSource.swift`.
 - `SceneView` gives each item one layer per effect, first effect innermost. Effects that move (warp, scatter, grain, stained glass) keep the frame loop running.
 - `Rendering/OutputAdjustEffect.cs` is the per-screen correction pass: corner-pin keystone, brightness, contrast, gamma, black level, RGB levels, edge-blend ramps and masks. It's a port of `output_adjust_fragment`.
-- Echo and ghost trails need the previous frame as an input, which WPF effects can't get, so they aren't drawn yet.
+- Echo and ghost trails need what the item looked like a moment ago, which a WPF shader can't read; section 30 explains how they're drawn.
 - On a PC without a graphics card that supports pixel shader 3.0, effects and corrections are skipped; the picture still shows.
 
 ## 19. Screens (Phase 3)
@@ -271,6 +295,7 @@ The Windows app used to have exactly two outputs, Audience and Stage. It now has
 - Each slice is **carried** by a device id: `display:\\.\DISPLAY2`, `ndi:MxU Slides Stage`, or `decklink:<card>`.
 - Each slice can be **corrected**: corner-pin keystone, rotation, brightness, contrast, gamma, black level, red/green/blue, edge-blend ramps and masks.
 - `ScreenSetup` saves the whole thing in `settings.json` in the Mac's own JSON shape. On first run your old Audience and Stage display choices become two screens.
+- A screen can show the live slide through a **look**: a theme it restyles the slide with (section 27).
 
 The WPF half is in `src/MxU.Slides.Windows/Outputs/`:
 
@@ -294,7 +319,7 @@ The WPF half is in `src/MxU.Slides.Windows/Outputs/`:
 - `AudioController` is the Audio function: playlists with crossfades, single songs, fades when stopping, next/previous/seek. The **Music** tab in the bottom bin plays them, and F5 stops them.
 - Each output runs on its own sound device stream. With **no** sound device (a server, or speakers unplugged) the engine keeps time anyway, so playlists still advance and streams still get sound. It recovers when the device comes back.
 - `ProgramAudioTap` records *this app's* sound only, through Windows' "process loopback". That includes video sound and music, but not system sounds or other apps. It's what recordings and streams hear.
-- Multitrack (stems and click tracks) is ported too: `MultitrackEngine`, and a separate tracks-player process so heavy decoding can't stall the show. The timeline UI that drives it is still to come.
+- Multitrack (stems and click tracks) is ported too: `MultitrackEngine`, and a separate tracks-player process so heavy decoding can't stall the show. The timeline editor (section 32) makes and edits them.
 
 ## 22. Live video inputs (Phase 3)
 
@@ -323,7 +348,7 @@ A **timeline** belongs to a song (one per arrangement). It is a list of cues at 
 - **Music:** **⋯ › Play this music with the timeline** puts a song from the Music tab on the timeline's music lane, so pressing ▶ starts the music and the slides together. The music plays through the same `AudioController` as the Music tab (`TimelineMusic` in the Audio project is the adapter).
 - **Where a slide cue points:** not at "slide 7" but at "the 2nd time the chorus plays, its first slide" (`TimelineSlideAnchor`). So changing the arrangement doesn't move cues onto the wrong words.
 - **The app's half** is `ViewModels/MainViewModel.Timeline.cs`. It implements `ITimelineHost` (find a presentation, fire a slide, run actions, what's live) and draws the bar. A presentation opened from the library rather than a service gets an item id of `presentation:<id>`, so it can still have a timeline.
-- **Stems (multitrack):** a timeline can carry stems (click, guide, pads). They play on a separate `MultitrackEngine`, made only the first time a song has stems (`LazyTracksPlayer`). The Mac's editor makes them; Windows plays them.
+- **Stems (multitrack):** a timeline can carry stems (click, guide, pads). They play on a separate `MultitrackEngine`, made only the first time a song has stems (`LazyTracksPlayer`). The timeline editor (section 32) adds them on Windows too.
 
 **Timecode in.** A playback rig (Ableton, QLab, a video playback machine) can send timecode, and the app follows it: each song whose timeline has **⋯ › Follow timecode** on, and a start time (**⋯ › Timecode start**, e.g. `01:00:00:00`), plays when the timecode reaches it.
 
@@ -360,6 +385,244 @@ Not on Windows (yet): SRT, HDR/HEVC streaming, ProRes recording, streaming a med
 - A `running.marker` file shows when the last session crashed.
 - `Infrastructure/SelfTest.cs` drives the real app through a service and checks what's on screen. It covers lyrics, builds, overlays, video, the Local API (over real HTTP and a WebSocket), both importers, the program feed, screens, NDI, music, live inputs, actions, timelines and recording. Run `scripts/self-test.ps1` after any change. Checks that need hardware this PC doesn't have (a graphics card, NDI Tools) report SKIP, not FAIL.
 
+## 27. Looks: one slide, a different design on each screen (Phase 4)
+
+A church often wants the projector to show the lyric full screen while the livestream shows the same words as a lower third over the camera. ProPresenter calls this *Looks*. Here a screen's look is a theme it shows the live slide through, while every other screen shows the slide as designed.
+
+- **Setting one:** **Screens & Settings › More screens…**, pick the screen, then **Look**. Choose a theme, and in the second box which of its designs to use: all of them, one folder (*Only its "Lower Thirds" designs*), or one design (*Just "Lyrics (Lower Third)"*). The choice is saved with the screen in `settings.json` (`slideThemeId`, `slideThemeFolder`, `slideThemeSlideId`: the same names the Mac uses for this in output presets).
+- **Output presets can switch looks too**, as on the Mac. A preset's *slide theme* for a screen beats the screen's own look while the preset is active. Switching presets (a slide action, a combo, the Local API) changes looks live. The active preset is now applied at launch, as on the Mac.
+- **How a look restyles a slide:** `Scene/ShowState.cs` → `AddSlide`. The slide's text loses its own font, size and position and takes the look's placeholder instead, keeping only the emphasis the look allows (bold words stay bold, a bigger word stays bigger in proportion: `PlaceholderAnimations.OverrideObjects`). A slide can also choose which design it uses in a given theme (`OverrideDesigns`).
+- **One scene per look:** `RenderOutputs` in `ViewModels/MainViewModel.Live.cs` builds the audience scene once as designed and once per look some screen shows (`Show.AnimatedScene(slideThemeOverride: look)`). `OutputManager.SceneFor` gives each screen the one for its look. The program feed (recording, streaming) and the operator preview show the slide as designed.
+- **Builds count across looks:** every look shares the slide's clock. If only the stream's lower third has a click-off Out, the first Next plays it on the stream and the second moves on, everywhere. `ShowState.SlideClickCount` takes the most clicks any look needs.
+- **Holding a look:** going from verse 1 to verse 2 on the same lower-third design, the stream doesn't rebuild the plate; it keeps it up and fades the new words in (`HoldsLook`, `HoldFade`).
+- **Hand-offs:** when the next slide makes a look go away (its preset drops it, the slide needs another design, or the slide is blank), that look plays its Outs first, then the slide lands everywhere (`ShowState.Handoff`, `MainViewModel.Fire`). The wait is timed on the show clock, and pressing anything else meanwhile cuts straight through.
+
+## 28. Long lyrics turn pages (Phase 4)
+
+A lower third has room for two lines. Put a long verse on it and the text would shrink to nothing, so designs mark their text box *page on click*: text that doesn't fit becomes pages, and Next turns to the next page before the slide moves on.
+
+- `Rendering/TextLayout.cs` → `Pages` measures it, the way the Mac's `TextRasterizer.pages` does: shrink as far as the minimum size allows, then cut into runs of whole lines that fit. Text on a path, a ticker and a block scroll never page.
+- `Core/Animation/Paging.cs` turns the pages into click steps: the text box shows page 1 and each further page is a *morph* step that swaps in the next page's text, placed after the build-in and before the design's Out.
+- `ShowState.Pager` is set to `TextLayout.Pager` the first time the outputs are drawn. Without it nothing pages, which is how the unit tests can count clicks without fonts.
+- Pages turn the way slides change (Settings › Transitions › Slides): a cut, or a fade of the same length (`ShowState.PageTurn`).
+- The stage display's "build 2 of 4" counts page turns, because they are clicks.
+
+## 29. Each layer changes its own way (Phase 4)
+
+Until now every change on the outputs used one app-wide cut or dissolve. Now each layer changes on its own, decided exactly as the Mac decides it (`Core/Animation/LiveTransitions.cs`):
+
+- A slide comes in with **its own transition**, else **its presentation's**, else the **room default** (Settings › Transitions › Slides).
+- A background a slide brings uses the **media item's own transition**, else the presentation's. Media fired on its own uses its own transition, and so does media cleared off. Otherwise media follows **Settings › Transitions › Media** (a 0.7 s dissolve unless you change it), and slides follow **Slides**: the Mac's two room defaults.
+- Overlays, alerts and live cameras cut: overlays play their own In and Out animations.
+- Only layers whose items actually change transition. A clock ticking, a build playing or a page turning never fades.
+
+The transitions are Cut, Dissolve, Fade Black/White/Colour, Blur Dissolve and Film Burn (the Mac has no push or wipe). `Core/Animation/SceneTransitionEngine.cs` composites them: leaving items get `::leaving` ids and fade, blur or burn out while arriving ones come in, and a fade puts a coloured plate over the layer. `SceneView.PresentLayered` runs one engine per view and draws its result every frame until the transition lands. A video fading out keeps its player (`PlaybackId`), and players nothing draws any more are let go every frame (`ReleaseUnusedPlayers`).
+
+## 30. Echo and ghost trails (Phase 4)
+
+These two effects need what the item looked like a moment ago, which a WPF shader can't read. So:
+
+1. Each frame, `Rendering/TrailStore.cs` takes a small picture of the item (at most 384 pixels across) with `RenderTargetBitmap`.
+2. `Core/Animation/EffectTrail.cs` keeps the history and works out the *trail*: Echo fades the old picture (to a tenth after the effect's fade time), Ghost Trails also pushes it about with slow noise. It's plain arithmetic on pixels, so it has unit tests.
+3. `Rendering/TrailEffect.cs`, a small shader, combines the live picture with the trail: the brighter of the two for Echo, a mix for Ghost Trails.
+4. Without pixel shader 3.0 the trail is drawn under the item instead. It never stops the frame: a failure shows the item without its trail.
+
+The projector, its preview and the program feed share one trail, so the work is done once a frame. As on the Mac, the trail follows the item: moving an item doesn't smear it, but anything changing inside it (a video, a colour, words swapping) leaves a trail. Trails only run on live views; thumbnails and the editor show the item as it is.
+
+**Self-test.** `Infrastructure/SelfTest.Render.cs` checks all four: two stand-in network screens show the same slide through a lower-third and a side-third look; a long lyric shows page 1 on the lower third and Next turns to page 2; a verse with its own Fade White passes through white on the program feed; and Echo and Ghost Trails show in the program feed's pictures (`20-*` to `23-*`).
+
+## 31. Editing show automation (Phase 4)
+
+Section 23 explains how actions, combos and schedule triggers *run*. Phase 4 adds the windows that *make and change* them. There are three, and they share one piece:
+
+- **The action list** (`Views/ActionListEditor.cs`) edits a list of steps. Each step is a card: its kind at the top ("FIRE MEDIA"), its settings, and a Delay box. ↑ ↓ move it, ✕ removes it, **+ Add action** opens the Add Action menu (Clear ›, Alert ›, Timer › Start › Sermon …). The same control sits in all three windows, because a combo, a slide, a media item and a trigger all hold the same kind of list.
+- **Action Combos** (`Views/ActionCombosWindow.cs`): every combo on the left, in folders and in your order; the selected combo on the right with its name, colour, icon, "Run when MxU Slides starts" and its steps. Ctrl+click or Shift+click picks several to colour, move or delete at once.
+- **Slide Actions** (`Views/SlideActionsWindow.cs`): the steps a slide runs each time it goes live, or a media item runs each time it's fired.
+- **Scheduler** (`Views/SchedulerWindow.cs`): every trigger, in folders, with when it fires next ("Sun 09:00"), an On/Paused chip, and the selected trigger's conditions and steps. Right-click a trigger to skip its next fire, pause it until a moment, or give it an end date. **History…** shows every run on this PC and one-time triggers that have finished.
+
+**Where the rules live.** The windows only draw things. What each kind of step lets you set, its defaults and its limits (MIDI channel 1–16, a delay of 0–3600 seconds in tenths), what the Add Action menu holds, how a trigger's summary reads, what the On/Paused chip does: all of that is in Core, ported from the Mac, with unit tests:
+
+- `Core/Automation/Actions/ActionEditing.cs`: each step kind's settings (`Fields`), what its pickers list (`Entries`), the Add Action menu (`AddMenu`) and reading a typed delay. The window turns each setting into a control: a picker becomes a drop-down (or, for media, songs and music, a search window: `Views/LibraryPickerWindow.cs`), a number becomes a box with − and +.
+- `Core/Automation/Scheduling/ScheduleEditing.cs` and `ScheduleConditionFormat.cs`: new conditions (Sundays at 9:00; an hour from now; the first timer at 0:00), the summaries, what a row shows on its right, the chip, and reading typed dates and times ("25/10/2026", "tomorrow", "9:30 pm").
+- `Core/Automation/AutomationLibrary.cs`: making, changing, duplicating and deleting combos and triggers, keeping their **boards** (the folders and order) in step. It always changes a *copy* of a document and saves the copy, so nobody else holding the old one (the scheduler, for instance) sees a half-made change. On the Mac documents are Swift values, which gives the same safety for free.
+- `Core/Automation/BoardSteps.cs` (Windows-only): Move up / Move down and the Folder picker. The Mac reorders by dragging.
+
+**Saving.** Every change saves straight away, as on the Mac: there is no Save button, only Done. Text boxes (names, delays, times) save when you press Enter or click elsewhere, not on every key, so a half-typed name never fires anything. Esc puts the old text back.
+
+**Keeping up.** Each window listens to `LibraryStore.Changed`. Its own saves just redraw the list; a change from somewhere else (an import, the Local API) redraws everything. The Scheduler window also listens to `Scheduler.Changed`, which fires after each sweep, so the "next" times move on by themselves. Saving a trigger makes the scheduler sweep again (`MainViewModel.Scheduler.cs`), which is how a new trigger's next time appears a moment after you make it.
+
+**Try it.** Make a combo with two steps, an alert and then an overlay with a 2-second delay, and press Run: the message comes up at once, the overlay two seconds later. Then open `ActionCombos/` in your *test* library and find the combo's JSON: the delay is stored as `"delaySeconds": 2`, and a zero delay isn't stored at all.
+
+The self-test (`Infrastructure/SelfTest.Editors.cs`) drives all three windows: it makes a two-step combo and runs it, gives a slide a background and a timer and fires it, and makes a trigger and checks its next time is listed. Pictures: `30-editor-combos-window`, `30b`/`30c` (the Add Action menu and a submenu), `31-editor-slide-actions-window`, `32-editor-scheduler-window`.
+
+Open them from the **Combos** tab (**Edit combos…**, **Scheduler…**), a slide's right-click menu (**Actions: N**), and **Actions…** on a media tile or a service item.
+
+## 32. Editing a timeline (Phase 4)
+
+Section 24 is how a timeline *plays*. This is how you *edit* one: the Mac's timeline card,
+as a window. Open a song, then **Timeline › ⋯ › Edit timeline…**. The window follows the
+song open in the main window, so you can leave it open and pick another song.
+
+### What you see
+
+- **Lanes**, one row each: Slides, Background Media, Music always; Alerts, Overlays, Foreground
+  Videos, Still Graphics, Video Input and Actions once they hold a cue (or **+ Add a layer**).
+- **Track rows** for the song's stems (click, guide, keys…), folded into one bar
+  ("12 stems") or one row per track (click **▸ Tracks**).
+- A **ruler** along the top (click or drag it to move the playhead) and the song's
+  **sections** as a coloured line under it.
+- A **slide cue** is a pin with the slide's first words; a **block** (an overlay, a video,
+  a music clip, a stem) spans its length. Music clips and stems show their **waveform**.
+- The song's **transition** to the next service item (**Song › Transition to the Next
+  Item**) is drawn as curves on the music: drag the blue dot to change how long it takes.
+
+### What you can do
+
+| Do this | And |
+|---|---|
+| **+** beside a lane | adds at the playhead: a slide, a background or video, an overlay, an alert, a video input, a music clip, an action |
+| Drag a cue | moves it, on the 30 fps grid, snapping to other cues' edges and the playhead (hold **Alt** to drag freely) |
+| Drag a block's right edge | changes how long it runs |
+| Drag a block's left edge | trims its start (a music clip keeps its audio where it was: it reads further into the file) |
+| Ctrl-click or Shift-click | picks several; drag one and they move together |
+| Drag across empty lane | picks a stretch of time: **Copy** it, or **Ripple Delete** it (everything after moves up) |
+| **←** **→** (Shift: a second) | nudges a frame; or type a time in the box |
+| **Delete**, **Ctrl+B**, **Ctrl+C**, **Ctrl+V** | remove, split at the playhead, copy, paste at the playhead |
+| **Ctrl+Z**, **Ctrl+Y** | undo and redo every edit |
+| Right-click a music clip | fades (five curve shapes), crossfades where clips overlap or butt together, edge fades |
+| Drag a fade's square handle / round handle | its length / how its curve bends |
+| **Ctrl+wheel**, wheel, Shift+wheel | zoom, scroll along, scroll up and down |
+| Space, Home | play/pause, go to the start |
+
+### Stems (multitrack)
+
+**+ beside Tracks › Import Audio Files…** (or **a Song's Folder…**, or drop files on the
+track rows) copies the files into the library and puts each one on the track its name
+matches: "EG 2.wav" goes on *Electric Guitar 2*, "Click.wav" on *Click*. Tracks are made
+for names nothing matches; with tracks already set up, a dialog asks first. The files of
+one download become a **track set**, so dropping the same folder again reuses them and the
+stems remember their tracks. A MultiTracks.com download's `MultiTrack.als` becomes the
+song's **section map** (**Song › Section Map…**): where each section is in the recording, so
+every arrangement lays its audio out in its order.
+
+**Song › Track Outputs and Interface…** says where this computer plays them: the audio
+interface, how many of its outputs go to the sound board (each family, click, guide, drums,
+keys…, then gets its own) and each track's **M**ute and **S**olo. Click and guide never go
+to the house. This is per computer, kept in `tracks-setup.json` next to `settings.json`.
+
+### How it's built
+
+- **The rules are Core's**, pure functions you can test without a window:
+  - `Automation/Timelines/TimelineEditing.cs`: which lanes show, what moves together, what a
+    drag, nudge, delete, split, copy or paste does, fades and crossfades, snapping, new cues.
+    Every edit returns a *new* list of cues, so the old one can be kept for undo.
+  - `TimelineEditorLayout.cs`: the rows and cards in points, and **hit-testing** (which card
+    and which edge is under the pointer). `TimelineCardDrag` is one press: it becomes a drag
+    after three points, the edge grabbed picks move/stretch/trim, and the distance snaps.
+  - `TimelineEditHistory.cs`: undo and redo. Before each edit the song's timelines and
+    section map are copied; Undo puts the copy back. One history per song.
+- **The Audio project** adds what needs it: cue labels (`Timeline/TimelineLabels.cs`), fade
+  handles (`ClipFadeGeometry.cs`), the tracks' mixer (`TrackRouting.cs`), importing stems
+  (`StemImport.cs`) and waveforms (`TimelineWaveformStore.cs`).
+- **The window** is `Views/TimelineEditorWindow.cs` (+ `.Menus.cs`, `TimelineEditorDialogs.cs`).
+  `Views/TimelineLanesView.cs` draws the lanes straight onto a `DrawingContext`, only the part
+  in view, and turns the mouse into `PointerPressed/Moved/Released` on the view model; the
+  playhead is a separate layer (`TimelinePlayheadLayer`) so it can move 30 times a second
+  without redrawing everything under it.
+- **The view model** `ViewModels/TimelineEditorViewModel.cs` (+ `.Input.cs`, `.Tracks.cs`)
+  applies the rules to the library. Every edit goes through `EditTimeline`: copy for undo,
+  change a copy of the timeline, save it through the `TimelinePlayer`. Edits wait while a take
+  is recording (the take is writing the timeline as it plays).
+- **Waveforms never block the screen.** The editor asks for a clip's waveform while drawing;
+  the first time it gets nothing and the store works it out on its own thread, then the
+  lanes draw again. Each file's peaks are kept on disk (`Waveforms` in the local folder).
+
+Two things learnt while building it:
+
+- **Starting music used to hold the slides up.** A new music engine opens the sound device on
+  the thread that plays it: for a timeline that's the UI thread, and it took up to 0.8 s, so
+  the slide cue just after the music fired late. Now the main mix's engine is opened in the
+  background (`AudioController.Warm`) as soon as a song with music on its timeline is opened
+  or played. The self-test checks the slides still fire on time with music.
+- **Stems were silent on Windows** until now: the stems player had no mixer settings, so every
+  track went nowhere. `TrackRouting` builds the mixer from the track list, and the tracks
+  player gets it before each song.
+
+The self-test (`Infrastructure/SelfTest.Timeline.cs`) opens the editor on the sample song,
+adds a music clip and two slide cues, drags one, trims the clip, undoes and redoes, adds a
+fade, plays and checks the slides fire at their new times, imports two stems, sets and drags
+a transition, makes a section map and pictures every dialog (`20-…` to `31-…`).
+
+### Things to try
+
+1. **Drag a slide cue onto another.** It steps a frame at a time until it's clear: slide cues
+   can't share a frame (`SteppingSlideCuesApart`). Then Ctrl+Z.
+2. **Trim a music clip and watch its waveform.** The audio stays where it was; only where it
+   starts changes (`TimelineClips.TrimmedStart`). Open the song's JSON in your *test* library:
+   the cue gained an `inPoint`.
+3. **Make two stems from any audio file.** Copy one file as `Click.wav` and `Keys.wav`, drop
+   both on the track rows. `TimelineTracks.Plan` decides where each goes; read its tests.
+
+## 33. Designing overlays (Phase 4)
+
+Section 11 explains what an overlay is: a lower third, a scripture plate, a ticker, sitting on its own layer above the slides. Until now you could only put the starter ones up and type into their fields. The **overlay editor** lets you make your own and change any of them.
+
+Open it with **Edit…** in the Overlays bin. It has three parts:
+
+- **Left: the overlays, by pack.** A *pack* is just the first part of an overlay's folder: "Clean Geometric" in "Clean Geometric/Lower Thirds" (the rest, "Lower Thirds", is its *category*). So a pack exists while something is filed in it, and renaming a pack re-files every overlay in it. You can make, duplicate, rename and delete overlays and packs here.
+- **Middle: the canvas.** It is the slide editor's canvas (`Views/SlideCanvasEditor.cs`, section 12), so moving, resizing, snapping, the arrow keys, Delete and Ctrl+D all work the same way. Below it, ▶ plays the overlay going up, a short hold, then coming down; the slider lets you stop it at any moment. **Go live** puts it on the program for real.
+- **Right: three tabs.**
+  - *Object*: the slide editor's inspector (font, colour, size, position), plus the label, what a text box shows (typed text, or the clock, the current slide…), and its **mask**.
+  - *Animation*: add an effect to the selected objects, and see every step in the order it plays.
+  - *Overlay*: its name, pack, category and layer, and its **fields**: the text boxes the operator types into in the bin.
+
+**How editing works.** The editor changes the overlay itself: the library's own copy, the same one the bin and the program use. The Mac edits an overlay in its slide editor as a "one-slide composition"; Windows does the same trick. `OverlayEditorViewModel` makes a stand-in `Slide` (the *mirror*) whose object list *is* the overlay's object list, and gives that to the canvas. When the canvas moves an object, it is moving the overlay's object.
+
+The canvas doesn't draw the mirror the way it draws a slide. `SlideCanvasEditor.SceneBuilder` lets the overlay editor supply the picture: `OverlayPreview.Still` (in `Core/Animation/OverlayPreview.cs`) draws the overlay exactly as the overlay layer does. It also adds pale blue "ghosts" of the *mattes*, because a matte is never drawn on an output and would otherwise be invisible while you design.
+
+After every change, `MainViewModel.OverlayChanged` does three things:
+
+1. It redraws the overlay's thumbnail in the bin.
+2. If the overlay is up, it calls `ShowState.OverlayEdited`, which swaps the edited overlay in without replaying its entrance. A typo fixed while a lower third is up is fixed on the screen straight away.
+3. It saves the file 600 ms after the changes stop, as the slide editor does.
+
+**Masks inside an overlay.** An object can be *masked* by another (section 11): "Mask with" names the matte, and "Keep" chooses inside or cut out. `Core/Scene/ObjectMasks.cs` holds the rules from the Mac's inspector. For example, it won't offer a matte whose own mask leads back to this object, because that would be a loop.
+
+**Animations.** Each object carries its own steps, and the overlay's `AnimationOrder` says what order they play in (section 14). `Core/Animation/AnimationEditing.cs` is the non-UI half of the Mac's animation editor: add a step, swap its effect, re-time, reorder or remove it, and the words for each ("Name · Slides in from bottom", "After · 0.5s").
+
+The list shows the steps grouped by when they run (`AnimationSequence.Groups`):
+
+- **When it goes up**: everything that plays as soon as it is fired.
+- **When it's taken down**: the exit, which plays when you take it down or press F4.
+
+An overlay never gets a click. So an In step left waiting for a click would never play, and the editor flags it. That is also why the editor's **Bring in** effects go into "when it goes up" (the Mac starts them on a click).
+
+**The preview** is built the same way as the program. `OverlayPreview.PlayThrough` makes the overlay's items with `AnimationSequence.PreviewContext` as their clock, just as `ShowState` makes a live overlay's items with the time it was fired. So what you preview is what the audience will see. Dragging the slider freezes that clock at one moment.
+
+**Starter overlays** are the ones the app ships (their ids start with `pack.`). The app puts them back when they're missing and refreshes them when its starter packs change (`LibrarySeeder.RefreshStarterPacks`). So the editor says so, and offers **Make my copy**.
+
+## 34. Output masks (Phase 4)
+
+An **output mask** blacks out part of a screen: the pillar in front of the projection, the stage wings, or everything except a window in an LED wall. Section 19's screens already applied masks imported from ProPresenter. The **mask editor** (`Views/MaskEditorWindow.cs`) is where you draw your own. The Screens window opens it for a screen (**Masks…** under Corrections).
+
+- A mask is a shape stored as SVG path data in the screen's *unit square*: 0 to 1 across and down, whatever the screen's size. So "M 0.25 0 L 0.75 0 L 0.75 1 L 0.25 1 Z" is the middle half.
+- **Draw a mask**: click to place points. Drag while placing one to pull out a curve. Click the first point again, double-click, or press Enter to close the shape; Esc gives up.
+- **Edit points**: drag a square point to move it, or a round handle to bend the curve. Right-click a point to remove it.
+- **+ Rectangle** drops in a rectangle to drag into place.
+- Each mask can **black out what's inside** or **show only what's inside**. **Feather** softens its edge. **Always on** means it's part of the room; turn it off and an output preset switches it on when needed. On a screen with several outputs (edge blend, mirrors), **On** picks which output it darkens.
+
+The pen's rules are in Core, so they are tested without a window. `Core/Outputs/OutputMaskEditing.cs` holds `OutputMaskPen` (what each click, drag and key does) and `OutputMaskLibrary` (adding, changing and removing masks). `Core/Scene/PathAnchors.cs` holds `PathAnchorCodec`, which reads and writes the path data as a list of points with Bézier handles.
+
+Every change goes to `OutputConfiguration.SetMasks`, which saves the setup. The mask raster is rebuilt and the outputs' correction shader multiplies the picture by it (section 18), so the real screens change as you edit.
+
+The editor draws over the screen's live picture (`OutputManager.Picture`), or over the alignment grid. It darkens the parts the mask will black out, using the same coverage raster the outputs use.
+
+### Things to try
+
+- **Make a lower third from nothing.** Open Overlays › Edit…, press + New, add a Box and a Text. Select the box, pick *Slide* under Bring in; select the text, pick *Fade*, then set its Plays to *After previous*. Press ▶. Then Go live, and type a new name in the bin while it's up.
+- **Hide a pillar.** In Screens, open a screen's masks, press + Rectangle, and drag its corners over where the pillar is. Turn up Feather so the edge isn't harsh.
+- **Read the pen.** Open `OutputMaskPen.Press` and follow what a click does while drawing, then while editing. The tests in `OutputMaskEditingTests.cs` do exactly what a user does with the mouse.
+
 ## Things to try, to learn by doing
 
 1. **Add a section name.** Make "Spontaneous" a recognised label. In `Lyrics/Reflow.cs`, add it to the list of names just above `LabelPattern`, then add a test in `ReflowTests.cs` and run `dotnet test`.
@@ -369,4 +632,5 @@ Not on Windows (yet): SRT, HDR/HEVC streaming, ProRes recording, streaming a med
 5. **Script the show.** Turn on the Local API, then write a PowerShell loop that calls `POST /v1/show/advance` with `{"steps":1,"settled":true}` every 5 seconds: an instant announcement loop.
 6. **Slow an animation down.** In `Library/StarterPacks.cs`, find `TextIn` and double its duration. Delete `starter-revision.txt` in your *test* library so the themes are rebuilt, then fire a lyric slide.
 7. **Record a timeline.** Open a song, press **Timeline › Record**, and click through the slides while you sing it in your head. Press ▶ and watch it run itself. Then look at the cues it wrote: open the song's JSON in your *test* library and find `timelines`.
-8. **Follow an upstream change.** When MxU changes a Swift file, find its C# twin in [PORTING.md](PORTING.md), compare the two, and port the change.
+8. **Give the stream a lower third.** Give the stream a lower third: add a screen, set its Look to a starter theme and *Just 
+9. **Follow an upstream change.** When MxU changes a Swift file, find its C# twin in [PORTING.md](PORTING.md), compare the two, and port the change.

@@ -68,6 +68,13 @@ GitHub Actions (`.github/workflows/windows.yml`) runs all of this on every push,
 | Action combos | Bottom bin › **Combos**: click one to run its actions (ProPresenter macros import as combos) |
 | Slides that change by themselves | Open a song › **Timeline** › **Record**, click each slide as the song plays, **Finish**. ▶ plays it back. **⋯** adds the song's music or follows timecode |
 | Timecode | **Screens & Settings › Timecode in**: LTC from a sound input or MTC from MIDI |
+| A different look on each screen | **Screens & Settings › More screens…**, pick a screen, then **Look**: e.g. the stream shows the lyric as a lower third while the projector shows it full screen |
+| Design overlays | Bottom bin › **Overlays › Edit…**: make lower thirds and plates, their fields, masks and animations |
+| Black out part of a screen | **Screens & Settings › More screens…** › **Masks…**: draw over a pillar or a speaker stack |
+| Action combos and slide actions | **Combos › Edit combos…**; right-click a slide › **Actions** |
+| Things that happen by themselves | **Combos › Scheduler…**: on chosen days at a time, once on a date, or when a timer reaches a value |
+| Edit a song's timeline | **Timeline › ⋯ › Edit timeline…**: drag cues, trim and fade the music, add stems |
+| MIDI devices | **Screens & Settings › MIDI › MIDI devices**: name the devices the show talks to |
 | Record or stream | **Stream & Record** in the toolbar: pick a preset and press **Start recording** or **Go live**. Add YouTube, Facebook or any RTMP server with its stream key |
 
 **On a laptop with one screen**, click **Audience** or **Stage** in the toolbar to open that output as a normal window. It shows exactly what the projector would. When you plug in a projector, choose it under **Screens & Settings**. The output then goes full screen there, stays on top, hides the mouse and never steals the keyboard.
@@ -118,7 +125,15 @@ Phase 3 adds:
 - slide actions, action combos, the scheduler and MIDI out;
 - GPU effects (colour, hue, pixelate, vignette, warp, glitch, burn, tint…).
 
-Still to come: theme-override looks, text paging, per-item transitions, echo and ghost trails, and editors for overlays, combos, schedules and timelines. See [docs/PORTING.md](docs/PORTING.md).
+Phase 4 adds:
+
+- looks: each screen can restyle the live slide through its own theme;
+- long lyrics that turn pages, transitions per slide and per layer, echo and ghost trails;
+- editors for action combos, slide actions, the scheduler, overlays, output masks and song timelines (with stems);
+- the rest of a ProPresenter workspace: screens, looks, masks, timers, video inputs, MIDI devices and group hot keys;
+- show timing that never waits for spare threads, and recording on PCs whose screen capture doesn't work.
+
+Still to come: see "Not ported yet" in [docs/PORTING.md](docs/PORTING.md).
 
 See [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) to learn the code, and [docs/PORTING.md](docs/PORTING.md) for which Swift file each C# file comes from.
 
