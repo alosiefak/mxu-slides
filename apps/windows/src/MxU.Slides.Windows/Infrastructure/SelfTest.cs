@@ -238,6 +238,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await PowerPointCheck();
             await ProPresenterCheck();
             await RenderCheck();
+            await EditorsCheck();
         }
         catch (Exception ex)
         {
