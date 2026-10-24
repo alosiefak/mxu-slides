@@ -1,10 +1,13 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using MxU.Slides.Core.Media;
+using MxU.Slides.Core.Outputs;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Windows.Infrastructure;
 
@@ -17,7 +20,9 @@ namespace MxU.Slides.Windows.Outputs;
 /// <item>The content is shown in a borderless window of exactly Width × Height pixels, so WPF
 /// draws it on the graphics card like any window. Windows only draws windows that are on a
 /// screen, so it sits at the top-left of the main screen, behind everything, fully transparent
-/// and click-through: you never see it, but Windows keeps its picture up to date.</item>
+/// and click-through: you never see it, but Windows keeps its picture up to date. A picture
+/// bigger than the main screen is drawn as several screen-sized windows, one piece each
+/// (<see cref="CaptureTiles"/>), put back together as they're captured.</item>
 /// <item><see cref="WindowCapture"/> copies each new picture of that window into memory.</item>
 /// <item>A pacing thread hands the latest picture to the destinations <c>frameRate</c> times
 /// a second, repeating it when nothing changed (encoders want a steady rate).</item>
@@ -36,18 +41,17 @@ public sealed class HiddenCapture : IDisposable
 {
     private readonly Func<IProgramSink[]> sinks;
     private readonly Lock frameGate = new();
-    private readonly Window window;
-    private readonly FrameworkElement content;
+    private readonly List<(CaptureTiles.Tile Tile, HwndSource Window, VisualBrush? Piece)> tiles = [];
+    private readonly Border stage;
     private readonly string title;
     private readonly DispatcherTimer watchdog;
-    private WindowCapture? capture;
+    private readonly List<WindowCapture> captures = [];
     private DispatcherTimer? softwareCopy;
     private RenderTargetBitmap? copyTarget;
     private byte[] copyPixels = [];
     private readonly Thread pacer;
     private volatile bool running = true;
     private byte[] latest = [];
-    private int latestWidth, latestHeight;
     private long captured;
     private long delivered;
     private long late;
@@ -55,38 +59,35 @@ public sealed class HiddenCapture : IDisposable
     public HiddenCapture(FrameworkElement content, int width, int height, int frameRate, Func<IProgramSink[]> sinks, string title)
     {
         this.sinks = sinks;
-        this.content = content;
         this.title = title;
         Width = width;
         Height = height;
         FrameRate = frameRate;
-        window = new Window
+        // The content sits on a stage the size of the whole picture. WPF only draws the part of a
+        // window that's on a screen, so a picture bigger than the main screen (a 1080p stream from
+        // a 1366 × 768 laptop, 4K NDI from a 1080p one) is shown as several screen-sized windows:
+        // the first holds the stage, each other one shows its own piece of it through a brush, and
+        // the pieces are put back together as they're captured. One window when the picture fits.
+        stage = new Border { Background = Brushes.Black, Child = content };
+        var screen = Displays.All().FirstOrDefault(d => d.IsPrimary);
+        foreach (var tile in CaptureTiles.Plan(width, height, screen?.Width ?? 0, screen?.Height ?? 0))
         {
-            Title = title,
-            WindowStyle = WindowStyle.None,
-            ResizeMode = ResizeMode.NoResize,
-            ShowInTaskbar = false,
-            ShowActivated = false,
-            Background = Brushes.Black,
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = 0,
-            Top = 0,
-            Width = width,
-            Height = height,
-            Content = content,
-        };
-        window.SourceInitialized += (_, _) =>
-        {
-            // Exactly Width × Height pixels whatever the DPI; never focused, not in Alt+Tab,
-            // clicks pass through, invisible (alpha 0 of 255), and at the bottom of the window stack.
-            var hwnd = new WindowInteropHelper(window).Handle;
-            var style = (long)NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE);
-            NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(style | NativeMethods.WS_EX_NOACTIVATE
-                | NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_LAYERED | NativeMethods.WS_EX_TRANSPARENT));
-            NativeMethods.SetLayeredWindowAttributes(hwnd, 0, 0, NativeMethods.LWA_ALPHA);
-            NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_BOTTOM, 0, 0, width, height, NativeMethods.SWP_NOACTIVATE);
-        };
-        window.Show();
+            VisualBrush? piece = null;
+            Visual root;
+            if (tiles.Count == 0)
+            {
+                // A Canvas lets the stage be bigger than this first window (it shows the top-left piece).
+                root = new Canvas { Background = Brushes.Black, Children = { stage } };
+            }
+            else
+            {
+                piece = new VisualBrush(stage) { Stretch = Stretch.Fill, ViewboxUnits = BrushMappingMode.Absolute };
+                root = new Border { Background = piece };
+            }
+            tiles.Add((tile, HiddenWindow($"{title} ({tiles.Count + 1})", tile, root), piece));
+        }
+        FitStageToDpi();
+        tiles[0].Window.DpiChanged += (_, _) => FitStageToDpi();
         watchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         watchdog.Tick += (_, _) =>
         {
@@ -100,7 +101,8 @@ public sealed class HiddenCapture : IDisposable
                 throw new InvalidOperationException("MXU_SLIDES_CAPTURE is set to software");
             // Once Windows' capture has failed on this PC, later captures (the next recording) start on the copy straight away.
             if (FastCaptureFailed) throw new InvalidOperationException("it delivered nothing earlier");
-            capture = new WindowCapture(new WindowInteropHelper(window).Handle, OnCaptured);
+            foreach (var (tile, window, _) in tiles)
+                captures.Add(new WindowCapture(window.Handle, (pixels, w, h) => OnCaptured(tile, pixels, w, h)));
             watchdog.Start();
         }
         catch (Exception ex)
@@ -111,6 +113,52 @@ public sealed class HiddenCapture : IDisposable
         pacer = new Thread(Pace) { IsBackground = true, Name = title, Priority = ThreadPriority.AboveNormal };
         pacer.Start();
     }
+
+    /// <summary>
+    /// A bare WPF window (an HwndSource) of exactly the tile's size in pixels, whatever the DPI:
+    /// never focused, not in Alt+Tab, clicks pass through, invisible (alpha 0 of 255), at the
+    /// top-left of the main screen and the bottom of the window stack. It's shown only once
+    /// invisible, so it never flashes. (A WPF Window would also cap its layout at the screen's size.)
+    /// </summary>
+    private HwndSource HiddenWindow(string name, CaptureTiles.Tile tile, Visual root)
+    {
+        var source = new HwndSource(new HwndSourceParameters(name, tile.Width, tile.Height)
+        {
+            WindowStyle = NativeMethods.WS_POPUP,
+            PositionX = 0,
+            PositionY = 0,
+            HwndSourceHook = AllowFullSize,
+        })
+        {
+            SizeToContent = SizeToContent.Manual,
+            RootVisual = root,
+        };
+        var hwnd = source.Handle;
+        var style = (long)NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE);
+        NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(style | NativeMethods.WS_EX_NOACTIVATE
+            | NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_LAYERED | NativeMethods.WS_EX_TRANSPARENT));
+        NativeMethods.SetLayeredWindowAttributes(hwnd, 0, 0, NativeMethods.LWA_ALPHA);
+        NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_BOTTOM, 0, 0, tile.Width, tile.Height, NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+        return source;
+    }
+
+    /// <summary>The stage in DPI-independent units (WPF's), so it covers Width × Height pixels; each piece frames its part.</summary>
+    private void FitStageToDpi()
+    {
+        var fromDevice = tiles[0].Window.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        stage.Width = Width * fromDevice.M11;
+        stage.Height = Height * fromDevice.M22;
+        foreach (var (tile, _, piece) in tiles)
+            if (piece is not null)
+                piece.Viewbox = new Rect(tile.X * fromDevice.M11, tile.Y * fromDevice.M22, tile.Width * fromDevice.M11, tile.Height * fromDevice.M22);
+    }
+
+    /// <summary>How many screen-sized windows draw the picture (1 unless it's bigger than the main screen).</summary>
+    public int Tiles => tiles.Count;
+
+    /// <summary>True when every window really has its planned size (Windows didn't cap one at the screen's).</summary>
+    public bool WindowsAsPlanned => tiles.All(t =>
+        NativeMethods.GetClientRect(t.Window.Handle, out var area) && area.Width == t.Tile.Width && area.Height == t.Tile.Height);
 
     /// <summary>
     /// Windows' capture failed on this PC (this run of the app), so captures use the slower copy.
@@ -124,8 +172,8 @@ public sealed class HiddenCapture : IDisposable
     {
         if (softwareCopy is not null) return;
         FastCaptureFailed = true;
-        capture?.Dispose();
-        capture = null;
+        foreach (var capture in captures) capture.Dispose();
+        captures.Clear();
         Problem = $"This PC can't use Windows' fast capture ({reason}), so recording, streaming and NDI use a slower copy.";
         Log.Warn($"{title}: {Problem}");
         copyTarget = new RenderTargetBitmap(Width, Height, 96, 96, PixelFormats.Pbgra32);
@@ -141,17 +189,17 @@ public sealed class HiddenCapture : IDisposable
         var started = Stopwatch.GetTimestamp();
         try
         {
-            // Draw the window's area stretched to exactly Width × Height pixels, whatever the screen's DPI.
-            // The brush must look at the window's area, not at what the content draws: by default a
+            // Draw the whole stage stretched to exactly Width × Height pixels, whatever the screen's DPI.
+            // The brush must look at the stage's area, not at what the content draws: by default a
             // VisualBrush frames the drawing's bounds, and anything off screen (the next page of a lyric,
             // an item flying in) would widen them and squash the picture into the middle.
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
                 var area = new Rect(0, 0, Width, Height);
-                var shown = content.RenderSize is { Width: > 0, Height: > 0 } size ? new Rect(size) : area;
+                var shown = stage.RenderSize is { Width: > 0, Height: > 0 } size ? new Rect(size) : area;
                 dc.DrawRectangle(Brushes.Black, null, area);
-                dc.DrawRectangle(new VisualBrush(content)
+                dc.DrawRectangle(new VisualBrush(stage)
                 {
                     Stretch = Stretch.Fill,
                     ViewboxUnits = BrushMappingMode.Absolute,
@@ -163,7 +211,7 @@ public sealed class HiddenCapture : IDisposable
             copyTarget.Clear();
             copyTarget.Render(visual);
             copyTarget.CopyPixels(copyPixels, Width * 4, 0);
-            OnCaptured(copyPixels, Width, Height);
+            OnCaptured(new CaptureTiles.Tile(0, 0, Width, Height), copyPixels, Width, Height);
         }
         catch (Exception ex)
         {
@@ -194,14 +242,16 @@ public sealed class HiddenCapture : IDisposable
     /// <summary>Frame slots missed because the destinations were still busy with the last one.</summary>
     public long FramesLate => Interlocked.Read(ref late);
 
-    private void OnCaptured(byte[] pixels, int width, int height)
+    /// <summary>Copies one window's new picture (<paramref name="width"/> × <paramref name="height"/>, BGRA) into its place in the whole picture.</summary>
+    private void OnCaptured(CaptureTiles.Tile tile, byte[] pixels, int width, int height)
     {
         lock (frameGate)
         {
-            if (latest.Length != pixels.Length) latest = new byte[pixels.Length];
-            Buffer.BlockCopy(pixels, 0, latest, 0, pixels.Length);
-            latestWidth = width;
-            latestHeight = height;
+            // Until every piece has arrived once, the rest of the picture is black.
+            if (latest.Length != Width * Height * 4) latest = new byte[Width * Height * 4];
+            var rowBytes = Math.Min(width, tile.Width) * 4;
+            for (var row = 0; row < Math.Min(height, tile.Height); row++)
+                Buffer.BlockCopy(pixels, row * width * 4, latest, ((tile.Y + row) * Width + tile.X) * 4, rowBytes);
         }
         Interlocked.Increment(ref captured);
     }
@@ -229,15 +279,13 @@ public sealed class HiddenCapture : IDisposable
                 next = Stopwatch.GetTimestamp() + interval;
             }
 
-            int width, height;
             lock (frameGate)
             {
                 if (latest.Length == 0) continue;
                 if (outgoing.Length != latest.Length) outgoing = new byte[latest.Length];
                 Buffer.BlockCopy(latest, 0, outgoing, 0, latest.Length);
-                (width, height) = (latestWidth, latestHeight);
             }
-            var frame = new VideoFrame(width, height, width * 4, outgoing, ShowState.HostClock());
+            var frame = new VideoFrame(Width, Height, Width * 4, outgoing, ShowState.HostClock());
             foreach (var sink in sinks())
             {
                 try { sink.WriteVideo(frame); }
@@ -253,8 +301,28 @@ public sealed class HiddenCapture : IDisposable
         watchdog.Stop();
         softwareCopy?.Stop();
         pacer.Join(1000);
-        capture?.Dispose();
-        window.Content = null;
-        window.Close();
+        foreach (var capture in captures) capture.Dispose();
+        captures.Clear();
+        // Hand the content back (the caller may show it somewhere else), then close the windows.
+        stage.Child = null;
+        foreach (var (_, window, _) in tiles)
+        {
+            if (window.RootVisual is Canvas canvas) canvas.Children.Clear();
+            window.RootVisual = null;
+            window.Dispose();
+        }
+    }
+
+    // Answers "how big may this window be?" with at least its own size (Windows' default is the screens' size).
+    private IntPtr AllowFullSize(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (message != NativeMethods.WM_GETMINMAXINFO) return IntPtr.Zero;
+        var info = Marshal.PtrToStructure<NativeMethods.MINMAXINFO>(lParam);
+        info.MaxTrackSize.X = Math.Max(info.MaxTrackSize.X, Width);
+        info.MaxTrackSize.Y = Math.Max(info.MaxTrackSize.Y, Height);
+        info.MaxSize = info.MaxTrackSize;
+        Marshal.StructureToPtr(info, lParam, false);
+        handled = true;
+        return IntPtr.Zero;
     }
 }

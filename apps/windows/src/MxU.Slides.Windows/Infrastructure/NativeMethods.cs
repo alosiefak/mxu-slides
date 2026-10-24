@@ -147,6 +147,33 @@ internal static partial class NativeMethods
     public const uint SWP_SHOWWINDOW = 0x0040;
     public const uint SWP_FRAMECHANGED = 0x0020;
 
+    // A borderless window, and the message Windows sends to ask how big a window may be
+    // (by default no bigger than the screens).
+
+    public const int WS_POPUP = unchecked((int)0x80000000);
+    public const int WM_GETMINMAXINFO = 0x0024;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetClientRect(IntPtr hwnd, out RECT rect);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MINMAXINFO
+    {
+        public POINT Reserved;
+        public POINT MaxSize;
+        public POINT MaxPosition;
+        public POINT MinTrackSize;
+        public POINT MaxTrackSize;
+    }
+
     // Keep the machine awake during a show.
 
     [Flags]

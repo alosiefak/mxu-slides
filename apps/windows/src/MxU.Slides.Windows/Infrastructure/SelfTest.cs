@@ -114,6 +114,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             }
 
             await ProgramFeedCheck();
+            await BiggerThanTheScreenCheck();
             await VideoCheck();
 
             await Step("04-overlays", () => model.ShowingOverlays = true, settle: 800);
@@ -767,12 +768,18 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             Check("recording a timeline starts and shows the timeline bar", model.TimelineRecording && model.ShowsTimelineBar);
             await Delay(400);
             model.GoLiveCommand.Execute(model.Slides[1]);
+            var between = System.Diagnostics.Stopwatch.StartNew();
             await Delay(700);
             model.GoLiveCommand.Execute(model.Slides[2]);
+            var clicked = between.Elapsed.TotalSeconds;
             await Delay(300);
             model.TimelineRecordCommand.Execute(null);
             var cues = model.CurrentTimeline?.Cues.Where(c => c.Lane == "slide").OrderBy(c => c.At).ToList() ?? [];
-            Check("the take recorded the two clicks as cues", cues.Count == 2 && cues[1].At - cues[0].At is > 0.4 and < 1.2);
+            // The cues must be as far apart as the clicks really were. (A busy PC can take longer
+            // than the 0.7 s asked for between them, so the measured gap is the yardstick.)
+            var recorded = cues.Count == 2 ? cues[1].At - cues[0].At : double.NaN;
+            report.AppendLine($"      take: {cues.Count} cues, {recorded:0.00} s apart; the clicks were {clicked:0.00} s apart");
+            Check("the take recorded the two clicks as cues", cues.Count == 2 && Math.Abs(recorded - clicked) < 0.25);
 
             model.ClearAllCommand.Execute(null);
             model.TimelineRewindCommand.Execute(null);

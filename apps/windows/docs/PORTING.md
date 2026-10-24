@@ -139,7 +139,8 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
 - `Core/Automation/BoardSteps.cs` (Move up / Move down, the Folder picker) and the typed dates and times in `ScheduleEditing.cs` (the Mac uses date pickers); `ScheduleEditing.NextFireLine`.
 - `Core/Automation/Timelines/TimelineEditHistory.cs` (the timeline editor's own undo; the Mac uses the app's undo manager), and `AudioController.Warm` / `AudioEngine.Prepare` (opening the sound device before the music starts).
 - `Core/Threading/` (`WorkQueue`, `ShowTimeProvider`) and `MxU.Slides.Audio/AudioThreads.cs`: show timing off .NET's shared thread pool.
-- The software copy in `Outputs/HiddenCapture.cs` for PCs where Windows' capture delivers nothing.
+- The software copy in `Outputs/HiddenCapture.cs` for PCs where Windows' capture delivers nothing, and `Core/Outputs/CaptureTiles.cs` (a capture bigger than the main screen is drawn in screen-sized pieces).
+- `Broadcast/Media/ReplayPacer.cs`: a replay keeps showing pictures on a PC that decodes slower than the file plays (the Mac only drops late pictures).
 - `Infrastructure/SelfTest.{Render,Editors,Timeline,Overlays}.cs`.
 
 ## Not ported yet
