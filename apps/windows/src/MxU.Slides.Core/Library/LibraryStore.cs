@@ -47,10 +47,17 @@ public sealed class LibraryStore
     {
         Root = root;
         foreach (var type in Folders.Keys) documents[type] = new(StringComparer.Ordinal);
+        Blobs = new BlobStore(BlobDirectory);
     }
 
     public string Root { get; }
     public string BlobDirectory => Path.Combine(Root, "Blobs");
+
+    /// <summary>The media files, by hash (see BlobStore.cs).</summary>
+    public BlobStore Blobs { get; }
+
+    /// <summary>Looks inside imported media (set by the app; null in tests that don't need it). See MediaImporting.cs.</summary>
+    public IMediaProber? Prober { get; set; }
     public string TrashDirectory => Path.Combine(Root, "Trash");
     public string QuarantineDirectory => Path.Combine(Root, "Quarantine");
     public string BackupDirectory => Path.Combine(Root, "Backups");
@@ -247,48 +254,21 @@ public sealed class LibraryStore
     /// <summary>
     /// Copies a media file into the library (deduplicated by content hash) and
     /// records a <see cref="MediaItem"/> for it. Returns null for unsupported files.
+    /// The same file imported again returns the item already made for it (and puts its
+    /// file back if it had gone missing). The app's own import asks first: see MediaImporting.
     /// </summary>
     public MediaItem? ImportMedia(string sourcePath, MediaClassification? classification = null)
     {
-        if (MediaKindOf(sourcePath) is not { } kind) return null;
+        if (MediaKindOf(sourcePath) is null) return null;
         var hash = HashFile(sourcePath);
-        var blob = Path.Combine(BlobDirectory, hash + Path.GetExtension(sourcePath).ToLowerInvariant());
-        Directory.CreateDirectory(BlobDirectory);
-        if (!File.Exists(blob))
-        {
-            var temp = blob + ".tmp";
-            File.Copy(sourcePath, temp, overwrite: true);
-            File.Move(temp, blob, overwrite: true);
-        }
-
         var existing = All<MediaItem>().FirstOrDefault(m => m.FileHash == hash);
-        if (existing is not null) return existing;
-
-        var item = new MediaItem
-        {
-            Id = NewId(),
-            Name = Path.GetFileNameWithoutExtension(sourcePath),
-            MediaKind = kind,
-            Classification = classification ?? (kind == MediaKind.Video ? MediaClassification.Background : MediaClassification.Foreground),
-            FileHash = hash,
-            FileName = Path.GetFileName(sourcePath),
-            FileStatus = MediaFileStatus.Ready,
-            StatusDetail = "",
-            Loops = kind == MediaKind.Video,
-            ImportedAt = DateTimeOffset.Now.ToUnixTimeMilliseconds() / 1000.0,
-        };
-        Save(item);
-        return item;
+        if (existing is null) return MediaImporting.AddMedia(this, sourcePath, classification: classification, knownHash: hash);
+        Blobs.Store(sourcePath, hash);
+        return existing;
     }
 
-    /// <summary>The library copy of a media item's file, or null when it is missing.</summary>
-    public string? BlobPath(MediaItem item)
-    {
-        var withExtension = Path.Combine(BlobDirectory, item.FileHash + Path.GetExtension(item.FileName).ToLowerInvariant());
-        if (File.Exists(withExtension)) return withExtension;
-        if (!Directory.Exists(BlobDirectory)) return null;
-        return Directory.EnumerateFiles(BlobDirectory, item.FileHash + ".*").FirstOrDefault(f => !f.EndsWith(".tmp", StringComparison.Ordinal));
-    }
+    /// <summary>The library copy of a media item's file, or null when it is missing (see MissingMedia).</summary>
+    public string? BlobPath(MediaItem item) => Blobs.Find(item.FileHash);
 
     public static string HashFile(string path)
     {
