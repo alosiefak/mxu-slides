@@ -238,8 +238,10 @@ public sealed class VideoSoundPlayer : IAudioRenderSource, IDisposable
                 decodeThread.Start();
             }
         }
-        catch (Exception error) when (error is AudioEngineException or IOException or InvalidOperationException or System.Runtime.InteropServices.COMException)
+        catch (Exception error)
         {
+            // Whatever the reason (no audio track, a codec Media Foundation lacks, a damaged
+            // file), the video still plays: its own player is given the sound back.
             problem = error.Message;
             decoder?.Dispose();
             decoder = null;

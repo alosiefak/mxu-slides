@@ -108,9 +108,9 @@ public sealed class SoundSettingsPanel : UserControl
         var choices = new List<Choice>();
         if (!music) choices.Add(new Choice(null, model!.SoundTokenTitle(null)));
         choices.Add(new Choice(AudioMixInventory.DefaultOutputId, model!.SoundTokenTitle(AudioMixInventory.DefaultOutputId)));
-        choices.AddRange(Routing.Outputs.Entries.Select(o => new Choice(o.Id, model.SoundTokenTitle(o.Id))));
-        choices.Add(new Choice(AudioMixInventory.NoOutputId, model.SoundTokenTitle(AudioMixInventory.NoOutputId)));
-        if (token is not null && choices.All(c => c.Token != token)) choices.Add(new Choice(token, model.SoundTokenTitle(token)));
+        choices.AddRange(Routing.Outputs.Entries.Select(o => new Choice(o.Id, model.SoundTokenTitle(o.Id, video: !music))));
+        choices.Add(new Choice(AudioMixInventory.NoOutputId, model.SoundTokenTitle(AudioMixInventory.NoOutputId, video: !music)));
+        if (token is not null && choices.All(c => c.Token != token)) choices.Add(new Choice(token, model.SoundTokenTitle(token, video: !music)));
         var box = new ComboBox { ItemsSource = choices, MinWidth = 300, ToolTip = tooltip };
         box.SelectedItem = choices.FirstOrDefault(c => c.Token == token) ?? choices[0];
         box.SelectionChanged += (_, _) =>

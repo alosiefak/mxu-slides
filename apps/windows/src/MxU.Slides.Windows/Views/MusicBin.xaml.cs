@@ -57,6 +57,11 @@ public partial class MusicBin : UserControl
         if (Model is { } model) MusicManagerWindow.Open(Owner, model, model.ShownPlaylist?.Id);
     }
 
+    private void Mute_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model is { } model) model.MusicMuted = !model.MusicMuted;
+    }
+
     private void Fade_Click(object sender, RoutedEventArgs e)
     {
         if (Model is { } model) MusicMenus.ShowFadePopup(FadeButton, model);

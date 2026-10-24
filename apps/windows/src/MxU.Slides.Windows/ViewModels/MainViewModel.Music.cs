@@ -50,6 +50,21 @@ public sealed partial class MainViewModel
 
     public IReadOnlyList<Playlist> MusicPlaylists => PlaylistLibrary.MusicPlaylists(Library);
 
+    /// <summary>Mutes all music (the Audio module's speaker button). The songs play on, silently, and streams hear them muted too.</summary>
+    public bool MusicMuted
+    {
+        get => audio?.IsMuted ?? false;
+        set
+        {
+            Audio.IsMuted = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(MusicMuteGlyph));
+        }
+    }
+
+    /// <summary>A speaker, or a crossed-out one while muted.</summary>
+    public string MusicMuteGlyph => MusicMuted ? "" : "";
+
     public IReadOnlyList<AudioItem> Songs => Library.All<AudioItem>();
 
     /// <summary>Shows a playlist's songs in the Music tab (when nothing else is playing).</summary>

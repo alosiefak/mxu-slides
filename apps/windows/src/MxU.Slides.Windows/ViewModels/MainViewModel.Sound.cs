@@ -169,11 +169,12 @@ public sealed partial class MainViewModel
     // MARK: Words for the Sound settings
 
     /// <summary>"Speakers (Realtek)", "Focusrite USB 3-4 · 20 ms delay"… for a place music or video sound can play.</summary>
-    public string SoundTokenTitle(string? token) => token switch
+    /// <param name="video">For video sound, whose "no device" is silent everywhere: it isn't part of a mix the streams can take (as on the Mac, which turns the video volume down to 0).</param>
+    public string SoundTokenTitle(string? token, bool video = false) => token switch
     {
         null => "Same as the music",
         AudioMixInventory.DefaultOutputId => "System default",
-        AudioMixInventory.NoOutputId => "No device (streams and recordings only)",
+        AudioMixInventory.NoOutputId => video ? "No device (silent)" : "No device (streams and recordings only)",
         _ when SoundRouting.Outputs.Entry(token) is { } output => $"{output.Name} — {AudioOutputWords.Subtitle(output, SoundRouting.Devices)}",
         _ => "An output that was removed",
     };

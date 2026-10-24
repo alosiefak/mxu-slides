@@ -106,6 +106,9 @@ public sealed partial class SelfTest
         model.SetPlaylistShuffle(playlist.Id, false);
         model.MoveTrack(playlist.Id, secondEntry, -1);
         Check("a song moves up the playlist", model.Library.Get<Playlist>(playlist.Id)!.Entries[0].Id == secondEntry && model.MusicTracks[0].EntryId == secondEntry);
+        model.MusicMuted = true;
+        Check("“mute all music” silences the playing playlist (it plays on)", bus is { IsPlaying: true, Engine.IsMuted: true });
+        model.MusicMuted = false;
         model.MusicFadeSeconds = 2;
         Check("the fade and crossfade settings reach the music and settings.json",
             model.Audio.FadeSeconds == 2 && model.Settings.Sound.FadeSeconds == 2 && model.MusicFadeLabel == "Fade 2s");

@@ -66,6 +66,9 @@
                             Margin="0,0,4,0" ToolTip="Crossfade between songs" />
                     <Button x:Name="FadeButton" DockPanel.Dock="Right" Content="{Binding MusicFadeLabel}" Click="Fade_Click" Style="{StaticResource GhostButton}"
                             Margin="0,0,4,0" ToolTip="Fade on play, pause and stop" />
+                    <Button DockPanel.Dock="Right" Click="Mute_Click" Style="{StaticResource GhostButton}" Margin="0,0,4,0" ToolTip="Mute or unmute all music">
+                        <TextBlock FontFamily="{StaticResource Icons}" Text="{Binding MusicMuteGlyph}" />
+                    </Button>
                     <TextBlock Text="{Binding MusicTracksTitle}" ToolTip="{Binding MusicTracksTitle}" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </DockPanel>
                 <Grid>
