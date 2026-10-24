@@ -190,6 +190,7 @@ public sealed class AnimatedScene
     public bool AnimatesOnHostTime => Layers.Any(layer => !layer.IsHidden && layer.Items.Any(item =>
         (item.AnimationContext is not null && item.AnimationSteps.Count > 0)
         || (item.Render.Content is ItemContent.Text && item.Scroll is { Speed: > 0 })
+        || (item.Render.Content is ItemContent.Text { Styled: var text } && PathTextLayout.IsMoving(text))
         || item.Effects.Any(e => e.VariesWithTime)));
 
     public AnimatedScene Copy()

@@ -390,12 +390,43 @@ public static class SlideSceneBuilder
 
         // Text inside a shape renders as a second item over it.
         var text = StyledTextFor(o, theme, null);
+        switch (o.ShapeTextPlacement ?? ShapeTextPlacement.Inside)
+        {
+            case ShapeTextPlacement.Inside:
+                text = text with { PathData = null, PathReversed = false };
+                break;
+            default:
+                // On the shape's edge: the text runs along its outline, outside it or (reversed, so it
+                // reads upright) inside it. The offset points away from the shape either way.
+                var placement = o.ShapeTextPlacement!.Value;
+                var frame = primary.Frame;
+                if (ShapeOutlineSvg.PathData(o.ShapeKind, new SceneSize(frame.Width, frame.Height),
+                        o.ShapeTextCornerRadius ?? o.CornerRadius, o.PathData, placement) is not { } outline)
+                    return [primary];
+                var inside = placement == ShapeTextPlacement.EdgeInside;
+                text = text with
+                {
+                    PathData = outline,
+                    PathReversed = inside,
+                    PathOffset = (o.TextStyle?.PathOffset ?? 0) * (inside ? -1 : 1),
+                };
+                break;
+        }
         return
         [
             primary,
             primary with { Id = $"{id}::text", Content = new ItemContent.Text(text), BlurRadius = 0 },
         ];
     }
+
+    /// <summary>The scene's easing for a document ramp (SlideSceneBuilder.sceneRamp).</summary>
+    public static Animation.SceneAnimationRamp SceneRamp(AnimationRamp? ramp) => ramp switch
+    {
+        AnimationRamp.In => Animation.SceneAnimationRamp.EaseIn,
+        AnimationRamp.Out => Animation.SceneAnimationRamp.EaseOut,
+        AnimationRamp.Both => Animation.SceneAnimationRamp.EaseInOut,
+        _ => Animation.SceneAnimationRamp.None,
+    };
 
     /// <summary>Chord display (transposition and notation).</summary>
     public static Func<List<ChordPlacement>, string?, string?, ChordNotation, List<ChordPlacement>> DisplayChords { get; set; } =
@@ -465,6 +496,19 @@ public static class SlideSceneBuilder
             ParagraphSpacing = V(s => s.ParagraphSpacing) ?? 0,
             Underline = V(s => s.Underline) ?? false,
             Strikethrough = V(s => s.Strikethrough) ?? false,
+            // Text on a path and tickers. Inside a shape's edge the text runs the other way and its
+            // offset points inwards, so it reads upright (as the Mac's styledText does).
+            PathData = R(s => s.PathData),
+            TickerSpeed = V(s => s.TickerSpeed) ?? 0,
+            PathReversed = V(s => s.PathSide) == TextPathSide.Inside,
+            PathOffset = (V(s => s.PathOffset) ?? 0) * (V(s => s.PathSide) == TextPathSide.Inside ? -1 : 1),
+            TickerRepeat = V(s => s.TickerRepeat) ?? 0,
+            TickerLeftToRight = V(s => s.TickerDirection) == TickerDirection.LeftToRight,
+            TickerStream = V(s => s.TickerStream) ?? false,
+            TickerGap = V(s => s.TickerGap) ?? 0,
+            TickerSeparator = R(s => s.TickerSeparator) ?? "",
+            WordSpacing = V(s => s.WordSpacing) ?? 0,
+            TickerRamp = SceneRamp(V(s => s.TickerRamp)),
             StyleRuns = (o.StyleRuns ?? [])
                 .Select(r => new StyleRun(r.Line, r.Column, r.Length, r.Underline, r.Strikethrough, r.FontName, r.FontSize,
                     ColorHex.Color(r.ColorHex), ColorHex.Color(r.HighlightColorHex)))

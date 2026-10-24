@@ -58,8 +58,11 @@ public sealed class SceneView : FrameworkElement
         }
     }
 
-    /// <summary>What an item's drawing depends on; when equal, the cached drawing is reused.</summary>
-    private sealed record ContentKey(RenderItem Render, string Hidden, StrokeTrim? Trim, double FillOpacity);
+    /// <summary>
+    /// What an item's drawing depends on; when equal, the cached drawing is reused. A ticker's
+    /// <paramref name="Path"/> pose changes every frame, so a moving ticker is redrawn each frame.
+    /// </summary>
+    private sealed record ContentKey(RenderItem Render, string Hidden, StrokeTrim? Trim, double FillOpacity, PathTextRenderer.Pose? Path = null);
 
     /// <summary>Where an item sits this frame; when equal, its transform, clip and mask stay.</summary>
     private sealed record PoseKey(SceneRect Frame, double Rotation, bool FlipH, bool FlipV, AnimationMotion Motion);
@@ -490,7 +493,7 @@ public sealed class SceneView : FrameworkElement
             kids.Clear();
             foreach (var visual in order) kids.Add(visual);
         }
-        root.Animating = AnimationTimeline.IsAnimating(scene, now);
+        root.Animating = AnimationTimeline.IsAnimating(scene, now, tickers: PlaysVideo);
     }
 
     /// <summary>
@@ -525,13 +528,14 @@ public sealed class SceneView : FrameworkElement
         var render = item.Render;
         var motion = resolved.Motion;
 
+        var pathPose = PathTextPose(item, ppd, now);
         var content = new ContentKey(
             render with { Opacity = 1, BlurRadius = 0, RotationDegrees = 0, FlipHorizontal = false, FlipVertical = false, SkewX = 0, SkewY = 0, MaskedBy = null, MaskOut = false },
-            HiddenKey(item.HiddenRuns), item.StrokeTrim, item.FillOpacity);
+            HiddenKey(item.HiddenRuns), item.StrokeTrim, item.FillOpacity, pathPose);
         if (slot.Content != content)
         {
             slot.Keys.Clear();
-            var drawing = BuildContent(item, ppd, key =>
+            var drawing = BuildContent(item, ppd, pathPose, key =>
             {
                 slot.Keys.Add(key);
                 if (root.Keys.Add(key)) media?.Retain(key);
@@ -791,7 +795,21 @@ public sealed class SceneView : FrameworkElement
 
     // MARK: Drawing an item
 
-    private ItemVisual BuildContent(AnimatedItem animated, double ppd, Action<string> usesKey)
+    /// <summary>
+    /// Where text on a path sits this frame (null for other items, and for a ticker with nothing to show
+    /// now). Live views move tickers; thumbnails and the editor show them at rest, unless the scene is
+    /// frozen at an instant (scrubbing, the self-test's pictures).
+    /// </summary>
+    private PathTextRenderer.Pose? PathTextPose(AnimatedItem item, double ppd, double now)
+    {
+        if (item.Render.Content is not ItemContent.Text { Styled: var text } || !PathTextLayout.IsPathText(text)) return null;
+        var frozen = item.AnimationContext?.FrozenHostTime;
+        var moving = (PlaysVideo || frozen is not null) && frozen != AnimationContext.Settled.FrozenHostTime;
+        var anchor = item.TickerAnchorHostTime ?? item.AnimationContext?.AnchorHostTime;
+        return PathTextRenderer.PoseAt(text, item.Render.Frame, ppd, frozen ?? now, anchor, moving);
+    }
+
+    private ItemVisual BuildContent(AnimatedItem animated, double ppd, PathTextRenderer.Pose? pathPose, Action<string> usesKey)
     {
         var item = animated.Render;
         var visual = new ItemVisual();
@@ -800,6 +818,11 @@ public sealed class SceneView : FrameworkElement
         {
             switch (item.Content)
             {
+                case ItemContent.Text text when PathTextLayout.IsPathText(text.Styled):
+                    // Along its path (a ticker, or text round a shape's edge) instead of as a block.
+                    if (pathPose is { } pose) PathTextRenderer.Draw(dc, text.Styled, item.Frame, ppd, pose);
+                    visual.Effect = ShadowEffect(text.Styled.Shadow);
+                    break;
                 case ItemContent.Text text:
                     DrawText(dc, text.Styled, item.Frame, ppd, animated.HiddenRuns);
                     visual.Effect = ShadowEffect(text.Styled.Shadow);
