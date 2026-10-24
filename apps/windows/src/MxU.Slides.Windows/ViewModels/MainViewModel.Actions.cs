@@ -183,8 +183,7 @@ public sealed partial class MainViewModel : IShowActions
     public async Task RefreshMidiOutputsAsync() => midiOutPorts = await MidiOutputService.ListAsync();
 
     /// <summary>A MIDI output on this PC, as the router sees a library MIDI device: id = destination = the Windows port id.</summary>
-    IReadOnlyList<MidiOutDevice> IShowActions.MidiOutDevices =>
-        [.. midiOutPorts.Select(p => new MidiOutDevice(p.Id, true, MIDIDeviceItemDirection.Output, p.Id))];
+    IReadOnlyList<MidiOutDevice> IShowActions.MidiOutDevices => [.. MidiDevices.Select(d => d.ForActions())];
 
     /// <summary>To one port, or (null) the output chosen in Settings; skipped when none is chosen.</summary>
     void IShowActions.SendMidi(MidiOutMessage message, string? destinationId)

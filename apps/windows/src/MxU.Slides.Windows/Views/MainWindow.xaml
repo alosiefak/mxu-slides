@@ -238,6 +238,7 @@
                                 <ContextMenu>
                                     <MenuItem Header="Go live" Click="ServiceGoLive_Click" />
                                     <MenuItem Header="Rename…" Click="ServiceItemRename_Click" />
+                                    <MenuItem Header="Actions…" Click="ServiceItemActions_Click" />
                                     <Separator />
                                     <MenuItem Header="Move up" Command="{Binding MoveServiceItemUpCommand}" />
                                     <MenuItem Header="Move down" Command="{Binding MoveServiceItemDownCommand}" />
@@ -813,7 +814,9 @@
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding ShowingCombos, Converter={StaticResource Visible}}">
                         <TextBlock Text="Click to run · MIDI &quot;Run Action Combo&quot; with velocity n runs the nth" Style="{StaticResource Muted}"
-                                   VerticalAlignment="Center" FontSize="11" />
+                                   VerticalAlignment="Center" FontSize="11" Margin="0,0,12,0" />
+                        <Button Click="EditCombos_Click" Content="Edit combos…" Margin="0,0,6,0" ToolTip="Make and change action combos and their folders" />
+                        <Button Click="Scheduler_Click" Content="Scheduler…" ToolTip="Things that happen by themselves at set times, or when a timer reaches a value" />
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
                                 Visibility="{Binding ShowingMedia, Converter={StaticResource Visible}}">
@@ -985,6 +988,7 @@
                                             <MenuItem Header="Loop on / off" Click="MediaToggleLoop_Click" />
                                             <MenuItem Header="Switch background / foreground" Click="MediaToggleKind_Click" />
                                             <MenuItem Header="Rename…" Click="MediaRename_Click" />
+                                            <MenuItem Header="Actions…" Click="MediaActions_Click" />
                                             <Separator />
                                             <MenuItem Header="Move to Trash" Click="MediaDelete_Click" />
                                         </ContextMenu>

@@ -56,7 +56,8 @@ public sealed partial class MainViewModel
             Timers = [.. Timers.Timers.Select(t => new EditorChoice(t.Id, t.Name))],
             Combos = Named(Library.All<ActionCombo>()),
             CapturePresets = Named(Library.All<StreamRecordPreset>()),
-            MidiDevices = [.. midiOutPorts.Select(p => new EditorChoice(p.Id, p.Name))],
+            // The library's MIDI devices that send (Screens & Settings › MIDI devices); a step with none uses Settings' output.
+            MidiDevices = [.. this.MidiDevices.Where(d => d.WantsOutput).Select(d => new EditorChoice(d.Id, d.Device.Name))],
             SlideCount = id => Library.Get<Presentation>(id)?.Slides.Count,
             ComboIcon = id => Library.Get<ActionCombo>(id)?.IconName,
         };

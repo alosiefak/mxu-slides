@@ -302,6 +302,9 @@ public partial class MainWindow : Window
             menu.Items.Add(new Separator());
             menu.Items.Add(Item($"Use \"{media.Name}\" as this slide's background", () => model.SetMediaAsSlideBackgroundCommand.Execute(media)));
         }
+        // "Actions: N", built now so the count is fresh: what the slide does when it goes live.
+        menu.Items.Add(new Separator());
+        menu.Items.Add(SlideActionsWindow.ActionsMenu(this, model, tile.Slide, model.CurrentPresentation));
         menu.PlacementTarget = (UIElement)sender;
         menu.IsOpen = true;
         e.Handled = true;
@@ -473,6 +476,22 @@ public partial class MainWindow : Window
     }
 
     private void ServiceGoLive_Click(object sender, RoutedEventArgs e) => model.FireServiceItemCommand.Execute(model.SelectedServiceItem);
+
+    // MARK: Automation editors
+
+    private void EditCombos_Click(object sender, RoutedEventArgs e) => ActionCombosWindow.Open(this, model);
+
+    private void Scheduler_Click(object sender, RoutedEventArgs e) => SchedulerWindow.Open(this, model);
+
+    private void ServiceItemActions_Click(object sender, RoutedEventArgs e)
+    {
+        if (model.SelectedServiceItem is { } row) SlideActionsWindow.EditServiceItem(this, model, row.Item);
+    }
+
+    private void MediaActions_Click(object sender, RoutedEventArgs e)
+    {
+        if (ContextOf<MediaTileViewModel>(sender) is { } tile) SlideActionsWindow.EditMedia(this, model, tile.Item);
+    }
 
     private void ServiceItemRename_Click(object sender, RoutedEventArgs e)
     {
