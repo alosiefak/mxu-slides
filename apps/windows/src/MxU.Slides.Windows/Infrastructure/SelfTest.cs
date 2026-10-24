@@ -24,7 +24,7 @@ namespace MxU.Slides.Windows.Infrastructure;
 /// of each step and writes report.txt with pass/fail checks, then quits.
 /// Use it to confirm a build works on a new computer.
 /// </summary>
-public sealed class SelfTest(MainWindow window, MainViewModel model, string folder)
+public sealed partial class SelfTest(MainWindow window, MainViewModel model, string folder)
 {
     private readonly StringBuilder report = new();
     private int failures;
@@ -236,6 +236,7 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
             await ApiCheck();
             await PowerPointCheck();
             await ProPresenterCheck();
+            await RenderCheck();
         }
         catch (Exception ex)
         {

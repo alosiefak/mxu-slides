@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using MxU.Slides.Core.Outputs;
+using MxU.Slides.Core.Scene;
 using MxU.Slides.VideoIO.DeckLink;
 using MxU.Slides.Windows.Infrastructure;
 using MxU.Slides.Windows.Outputs;
@@ -164,6 +165,7 @@ public partial class ScreensWindow : Window
         }
         LayoutHelp.Text = ScreenEditing.LayoutHelp(layout);
         TestPattern.IsChecked = Config.TestPatternScreens.Contains(sid);
+        ShowLook(sid);
         loading = false;
         if (sliceId is null || Config.SliceInfo(sliceId.Value)?.ScreenId != sid) sliceId = sid;
         ShowSlices();
@@ -211,6 +213,82 @@ public partial class ScreensWindow : Window
     {
         if (loading || screenId is not { } id || ScaleCombo.SelectedItem is not Choice<OutputScaleMode> mode) return;
         Config.SetScaleMode(id, mode.Value);
+    }
+
+    // MARK: Look (the theme this screen shows the live slide through)
+
+    /// <summary>One of a theme's design sets a look can use: all of them, one folder, or one design.</summary>
+    private sealed record LookScope(string? Folder, string? SlideId, string Label)
+    {
+        public override string ToString() => Label;
+    }
+
+    private IReadOnlyList<Core.Model.Theme> Themes() => outputs.Themes?.Invoke() ?? [];
+
+    private void ShowLook(Guid sid)
+    {
+        var themes = Themes();
+        var current = Config.ScreenLook(sid);
+        var choices = new List<Choice<string?>> { new(null, "As designed (each slide's own theme)") };
+        choices.AddRange(themes.Select(t => new Choice<string?>(t.Id, t.Name)));
+        if (current is not null && themes.All(t => t.Id != current.ThemeId)) choices.Add(new Choice<string?>(current.ThemeId, "A theme that isn't in the library"));
+        LookCombo.ItemsSource = choices;
+        LookCombo.SelectedItem = choices.First(c => c.Value == current?.ThemeId);
+        ShowLookScopes(themes.FirstOrDefault(t => t.Id == current?.ThemeId), current);
+
+        var audience = Config.Role(sid) == ScreenRole.Audience;
+        LookCombo.IsEnabled = audience;
+        LookScopeCombo.IsEnabled = audience && current is not null;
+        string Name(string key) => Config.ActiveLooks.TryGetValue(key, out var look)
+            ? LookName(themes, look)
+            : "a theme that isn't in the library";
+        LookStatus.Text = !audience
+            ? "A stage screen shows its stage layout, so it has no look."
+            : Config.SlideThemeRouting.TryGetValue(SwiftUuid.Format(sid), out var routed)
+                ? $"The active output preset shows this screen through {Name(routed)}, whatever is chosen here."
+                : current is not null
+                    ? $"The live slide shows here through {LookName(themes, current)}; the other screens are unaffected."
+                    : "The live slide shows here as designed.";
+    }
+
+    private static string LookName(IReadOnlyList<Core.Model.Theme> themes, SlideThemeLook look)
+    {
+        var theme = themes.FirstOrDefault(t => t.Id == look.ThemeId);
+        var name = theme?.Name ?? "a missing theme";
+        if (look.SlideId is { } slideId && theme?.Slides?.FirstOrDefault(s => s.Id == slideId) is { } design) return $"{name} › {design.Name}";
+        return look.Folder is { } folder ? $"{name} › {folder}" : name;
+    }
+
+    private void ShowLookScopes(Core.Model.Theme? theme, SlideThemeLook? current)
+    {
+        var scopes = new List<LookScope> { new(null, null, "All its designs") };
+        if (theme is not null)
+        {
+            foreach (var folder in theme.SlideFolders()) scopes.Add(new LookScope(folder, null, $"Only its \"{folder}\" designs"));
+            foreach (var design in theme.Slides ?? [])
+                scopes.Add(new LookScope(design.Folder, design.Id, design.Folder is { Length: > 0 } f ? $"Just \"{design.Name}\" ({f})" : $"Just \"{design.Name}\""));
+        }
+        LookScopeCombo.ItemsSource = scopes;
+        LookScopeCombo.SelectedItem = scopes.FirstOrDefault(s => current?.SlideId is { } id ? s.SlideId == id : s.SlideId is null && s.Folder == current?.Folder)
+            ?? scopes[0];
+    }
+
+    private void Look_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (loading || screenId is not { } id || LookCombo.SelectedItem is not Choice<string?> choice) return;
+        Config.SetScreenLook(id, choice.Value is { } themeId ? new SlideThemeLook(themeId, null, null) : null);
+        loading = true;
+        ShowLook(id);
+        loading = false;
+    }
+
+    private void LookScope_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (loading || screenId is not { } id || Config.ScreenLook(id) is not { } look || LookScopeCombo.SelectedItem is not LookScope scope) return;
+        Config.SetScreenLook(id, look with { Folder = scope.Folder, SlideId = scope.SlideId });
+        loading = true;
+        ShowLook(id);
+        loading = false;
     }
 
     // MARK: Layout

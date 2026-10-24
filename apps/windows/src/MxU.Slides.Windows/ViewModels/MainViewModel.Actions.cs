@@ -71,10 +71,9 @@ public sealed partial class MainViewModel : IShowActions
 
     void IShowActions.SwitchOutputPreset(string presetId)
     {
-        if (Library.Get<OutputPreset>(presetId) is not { } preset || Outputs is not { } outputs) return;
-        OutputPresets.Apply(outputs.Config, preset, themeId => Library.Get<Theme>(themeId) is not null);
-        Settings.ActiveOutputPresetId = presetId;
-        Settings.Save();
+        if (Library.Get<OutputPreset>(presetId) is not { } preset || Outputs is null) return;
+        // Looks the new preset drops play their Outs first (MainViewModel.Live.cs).
+        ActivateOutputPreset(preset);
         Notice = $"Output preset: {preset.Name}";
     }
 

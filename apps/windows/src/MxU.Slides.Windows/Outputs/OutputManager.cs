@@ -33,6 +33,7 @@ public sealed class OutputManager
     private readonly DispatcherTimer displayDebounce;
     private AnimatedScene? audience;
     private AnimatedScene? stage;
+    private IReadOnlyDictionary<string, AnimatedScene> looks = new Dictionary<string, AnimatedScene>();
     private bool showing;
 
     public OutputManager(AppSettings settings, Window main, MediaHub media)
@@ -70,6 +71,15 @@ public sealed class OutputManager
     /// <summary>Makes NDI and DeckLink feeds for those devices (set by the app once its video I/O is ready).</summary>
     public Func<string, IProgramSink?>? DeviceSinkFactory { get; set; }
 
+    /// <summary>The library's themes, for the Screens window's Look picker (set by the app).</summary>
+    public Func<IReadOnlyList<Core.Model.Theme>>? Themes { get; set; }
+
+    /// <summary>
+    /// The looks some screen shows changed (a screen's Look, or an output preset): the app should
+    /// render the show again so the new look's scene exists. Raised on the UI thread.
+    /// </summary>
+    public event Action? LooksChanged;
+
     /// <summary>Upgrades an old settings file: its Audience and Stage display choices become two screens.</summary>
     private static List<PlaceholderScreenConfig> FirstRun(AppSettings s) => ScreenSetup.FirstRun(
         s.AudienceDisplay is { } a ? OutputDevice.Display(a) : null, s.AudienceDisplayName,
@@ -84,11 +94,22 @@ public sealed class OutputManager
 
     // MARK: Scenes
 
-    /// <summary>The audience program; every screen with the audience job shows it, reshaped.</summary>
-    public void Present(OutputRole role, AnimatedScene? scene, SceneTransition transition)
+    /// <summary>
+    /// The audience program; every screen with the audience job shows it, reshaped. A screen with a
+    /// look (<see cref="OutputConfiguration.LookKey"/>) shows that look's scene from
+    /// <paramref name="lookScenes"/> instead, when it is there; if it isn't, the program as designed.
+    /// </summary>
+    public void Present(OutputRole role, AnimatedScene? scene, SceneTransition transition, IReadOnlyDictionary<string, AnimatedScene>? lookScenes = null)
     {
-        if (role == OutputRole.Audience) audience = scene;
-        else stage = scene;
+        if (role == OutputRole.Audience)
+        {
+            audience = scene;
+            looks = lookScenes ?? new Dictionary<string, AnimatedScene>();
+        }
+        else
+        {
+            stage = scene;
+        }
         foreach (var target in Targets(role)) target.Present(scene is null ? null : SceneFor(target.ScreenId), transition);
     }
 
@@ -98,10 +119,17 @@ public sealed class OutputManager
 
     public void Update(OutputRole role, RenderScene scene) => Update(role, AnimatedScene.From(scene));
 
-    public void Update(OutputRole role, AnimatedScene scene)
+    public void Update(OutputRole role, AnimatedScene scene, IReadOnlyDictionary<string, AnimatedScene>? lookScenes = null)
     {
-        if (role == OutputRole.Audience) audience = scene;
-        else stage = scene;
+        if (role == OutputRole.Audience)
+        {
+            audience = scene;
+            if (lookScenes is not null) looks = lookScenes;
+        }
+        else
+        {
+            stage = scene;
+        }
         foreach (var target in Targets(role))
             if (SceneFor(target.ScreenId) is { } shaped) target.View.Update(shaped);
     }
@@ -124,7 +152,10 @@ public sealed class OutputManager
             yield return new Target(preview.ScreenId, preview.View);
     }
 
-    /// <summary>What one screen shows now: the grid or sync test while lining up, else the stage or program shaped for it.</summary>
+    /// <summary>
+    /// What one screen shows now: the grid or sync test while lining up, else the stage, or the
+    /// program (through the screen's look when it has one) shaped for it.
+    /// </summary>
     private AnimatedScene? SceneFor(Guid screenId)
     {
         var feed = Config.Feed(SwiftUuid.Format(screenId));
@@ -133,9 +164,14 @@ public sealed class OutputManager
             OutputFeedKind.AlignmentGrid => AnimatedScene.From(OutputConfiguration.AlignmentGrid(feed.CanvasSize!.Value)),
             OutputFeedKind.SyncTest => AnimatedScene.From(OutputConfiguration.SyncTestScene(feed.CanvasSize!.Value)),
             OutputFeedKind.Confidence => stage,
-            _ => audience is null ? null : Config.Program(feed, audience),
+            _ => (feed.SlideThemeKey is { } look && looks.TryGetValue(look, out var variant) ? variant : audience) is { } program
+                ? Config.Program(feed, program)
+                : null,
         };
     }
+
+    /// <summary>The scene a screen is showing now (for the self-test and diagnostics); null when it shows nothing.</summary>
+    public AnimatedScene? ShownScene(Guid screenId) => SceneFor(screenId);
 
     // MARK: Windows and feeds
 
@@ -200,12 +236,13 @@ public sealed class OutputManager
     /// <summary>Audience screens share the "live" players, so a video is in step on every one; stage screens share "stage".</summary>
     private string ScopeFor(Guid screenId) => Config.Role(screenId) == ScreenRole.Confidence ? "stage" : "live";
 
-    private readonly Dictionary<Guid, (OutputFeedKind Kind, int Width, int Height, OutputScaleMode Mode, bool Spanned)> shown = [];
+    private readonly Dictionary<Guid, (OutputFeedKind Kind, int Width, int Height, OutputScaleMode Mode, bool Spanned, string? Look)> shown = [];
 
     /// <summary>
     /// After any change to the setup: re-applies every slice's corrections (cheap, so a slider can
     /// drag smoothly) and re-sends a screen its picture only when what it shows has changed
-    /// (its job, test grid, size or fit).
+    /// (its job, test grid, size, fit or look). A new look needs a scene the app builds, so the app is
+    /// asked (<see cref="LooksChanged"/>) to render again.
     /// </summary>
     private void Rebuild(bool force)
     {
@@ -221,15 +258,21 @@ public sealed class OutputManager
             foreach (var slice in feed.Slices)
                 ApplyCorrections(slice, feed.Width, feed.Height);
         var changed = new HashSet<Guid>();
+        var looksChanged = false;
         foreach (var screen in Config.Screens)
         {
-            var key = (Config.Feed(SwiftUuid.Format(screen.Id)).Kind, screen.Width, screen.Height, Config.ScaleMode(screen.Id), Config.IsSpanned(screen.Id));
-            if (force || !shown.TryGetValue(screen.Id, out var was) || was != key) changed.Add(screen.Id);
+            var feed = Config.Feed(SwiftUuid.Format(screen.Id));
+            var look = feed.Kind == OutputFeedKind.Program ? feed.SlideThemeKey : null;
+            var key = (feed.Kind, screen.Width, screen.Height, Config.ScaleMode(screen.Id), Config.IsSpanned(screen.Id), look);
+            var known = shown.TryGetValue(screen.Id, out var was);
+            if (force || !known || was != key) changed.Add(screen.Id);
+            if (known && was.Look != look || !known && look is not null) looksChanged = true;
             shown[screen.Id] = key;
         }
         foreach (var role in Enum.GetValues<OutputRole>())
             foreach (var target in Targets(role).Where(t => changed.Contains(t.ScreenId)))
                 target.Present(SceneFor(target.ScreenId), SceneTransition.Cut);
+        if (looksChanged) LooksChanged?.Invoke();
     }
 
     private void ApplyCorrections(SliceView slice, int width, int height)

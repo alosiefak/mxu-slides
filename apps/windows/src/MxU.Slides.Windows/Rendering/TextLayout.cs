@@ -56,6 +56,88 @@ public sealed class TextLayout
         return layout;
     }
 
+    // MARK: Pages
+
+    private static readonly Dictionary<string, IReadOnlyList<string>> PagesCache = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The paging measurer the show uses (<see cref="Core.Animation.TextPager"/>): long text on a
+    /// "page on click" placeholder becomes one click page per screenful.
+    /// </summary>
+    public static readonly Core.Animation.TextPager Pager = Pages;
+
+    /// <summary>
+    /// Splits text into the pages that fit a frame of this size, the way the Mac's
+    /// TextRasterizer.pages does: shrink to fit as far as the text's minimum size allows,
+    /// then cut it into runs of whole lines that fit, each trimmed. Text that fits is one page.
+    /// </summary>
+    public static IReadOnlyList<string> Pages(StyledText text, SceneSize frameSize)
+    {
+        if (text.String.Length == 0 || frameSize.Width <= 0 || frameSize.Height <= 0 || text.FontSize <= 0) return [text.String];
+        // Measured plain: no chords and no case change (pages are cut from the stored text).
+        var plain = text with { Chords = [], Transform = SceneTextTransform.None };
+        var key = Signature(plain, new SceneRect(0, 0, frameSize.Width, frameSize.Height), 1);
+        lock (PagesCache)
+        {
+            if (PagesCache.TryGetValue(key, out var cached)) return cached;
+        }
+        IReadOnlyList<string> pages;
+        try
+        {
+            pages = ComputePages(plain, frameSize);
+        }
+        catch (Exception ex)
+        {
+            // Never lose the words over a measuring fault: show it all on one page.
+            Infrastructure.Log.Warn($"Couldn't page text; showing it whole: {ex.Message}");
+            pages = [text.String];
+        }
+        lock (PagesCache)
+        {
+            if (PagesCache.Count > 512) PagesCache.Clear();
+            PagesCache[key] = pages;
+        }
+        return pages;
+    }
+
+    private static IReadOnlyList<string> ComputePages(StyledText text, SceneSize frameSize)
+    {
+        var inner = new SceneRect(0, 0,
+            Math.Max(frameSize.Width - text.InsetLeft - text.InsetRight, 1),
+            Math.Max(frameSize.Height - text.InsetTop - text.InsetBottom, 1));
+        var source = text.String.Replace("\r\n", "\n").Replace('\r', '\n');
+        var builder = new Builder(text with { String = source }, source, 1);
+        var scale = builder.FittedScale(inner);
+        var lines = builder.WrappedLines(scale, inner.Width);
+
+        // Where each paragraph starts in the source, so a page can be cut out of it.
+        var paragraphStarts = new List<int> { 0 };
+        for (var i = 0; i < source.Length; i++)
+            if (source[i] == '\n') paragraphStarts.Add(i + 1);
+        int Offset(int line) => line >= lines.Count ? source.Length : paragraphStarts[lines[line].Paragraph] + lines[line].Start;
+
+        var pages = new List<string>();
+        var first = 0;
+        while (first < lines.Count)
+        {
+            // As many whole lines as fit; a line taller than the frame still makes a page of the rest.
+            var height = 0.0;
+            var end = first;
+            while (end < lines.Count)
+            {
+                var extra = lines[end].Height + (end > first && lines[end].Paragraph != lines[end - 1].Paragraph ? text.ParagraphSpacing * scale : 0);
+                if (height + extra > inner.Height + 0.5) break;
+                height += extra;
+                end++;
+            }
+            if (end == first) end = lines.Count;
+            var page = source[Offset(first)..Offset(end)].Trim();
+            if (page.Length > 0) pages.Add(page);
+            first = end;
+        }
+        return pages.Count == 0 ? [text.String] : pages;
+    }
+
     private static TextLayout Compute(StyledText text, SceneRect frame, double ppd)
     {
         var inner = new SceneRect(
@@ -67,19 +149,7 @@ public sealed class TextLayout
         if (display.Length == 0) return new TextLayout { Bounds = inner };
 
         var builder = new Builder(text, display, ppd);
-        var scale = 1.0;
-        if (text.AutoShrink && text.FontSize > 0 && !builder.Fits(1, inner))
-        {
-            var lo = Math.Min(1, Math.Max(0.01, text.MinFontSize / text.FontSize));
-            var hi = 1.0;
-            for (var i = 0; i < 10; i++)
-            {
-                var mid = (lo + hi) / 2;
-                if (builder.Fits(mid, inner)) lo = mid; else hi = mid;
-            }
-            scale = Math.Floor(lo * 1000) / 1000;
-        }
-        return builder.Arrange(scale, inner);
+        return builder.Arrange(builder.FittedScale(inner), inner);
     }
 
     private sealed class Builder(StyledText text, string display, double ppd)
@@ -106,6 +176,24 @@ public sealed class TextLayout
 
         private static bool NeedsShaping(string s) => s.Any(c => c is >= '֐' and <= 'ࣿ' or >= 'ऀ' and <= '෿'
             or >= '฀' and <= '࿿' or >= 'က' and <= '႟' or >= 'ក' and <= '៿' or >= 'יִ' and <= '﻿');
+
+        /// <summary>Auto-shrink: 1 when it fits (or doesn't shrink), else a binary search down to the minimum size, exactly like the Mac.</summary>
+        public double FittedScale(SceneRect inner)
+        {
+            if (!text.AutoShrink || text.FontSize <= 0 || Fits(1, inner)) return 1;
+            var lo = Math.Min(1, Math.Max(0.01, text.MinFontSize / text.FontSize));
+            var hi = 1.0;
+            for (var i = 0; i < 10; i++)
+            {
+                var mid = (lo + hi) / 2;
+                if (Fits(mid, inner)) lo = mid; else hi = mid;
+            }
+            return Math.Floor(lo * 1000) / 1000;
+        }
+
+        /// <summary>The wrapped lines at a scale: which paragraph, where in it each starts, and its height in the stack.</summary>
+        public List<(int Paragraph, int Start, double Height)> WrappedLines(double scale, double width) =>
+            [.. Wrap(scale, width).Select(line => (line.Paragraph, line.Start, LineBoxHeight(line)))];
 
         public bool Fits(double scale, SceneRect inner)
         {

@@ -419,8 +419,8 @@ public sealed partial class MainViewModel : IApiBridge
     {
         if (id is null)
         {
-            Settings.ActiveOutputPresetId = null;
-            Settings.Save();
+            // No preset: every layer and the screens' own looks everywhere again.
+            ActivateOutputPreset(null);
             return;
         }
         if (Library.Get<OutputPreset>(ApiIds.Validated(id)) is null) throw ApiError.NotFound($"No output preset '{id}'.");
