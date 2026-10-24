@@ -137,6 +137,9 @@ public sealed class OutputManager
         };
     }
 
+    /// <summary>What a screen is showing right now, shaped to its size (the mask editor draws over it); null when nothing is up.</summary>
+    public AnimatedScene? Picture(Guid screenId) => SceneFor(screenId);
+
     // MARK: Windows and feeds
 
     /// <summary>Opens, moves or closes outputs to match the setup and the connected displays.</summary>

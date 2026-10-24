@@ -85,6 +85,9 @@ public sealed partial class ObjectInspectorViewModel : ObservableObject
         set => Set(() => o.Opacity = value >= 99.5 ? null : Math.Clamp(value / 100, 0, 1));
     }
 
+    /// <summary>Re-reads every setting after something else (the overlay editor's fields) changed the object.</summary>
+    public void Refresh() => OnPropertyChanged(string.Empty);
+
     /// <summary>Called after the canvas moves/resizes the object, so the numbers follow.</summary>
     public void GeometryChanged()
     {
@@ -269,4 +272,89 @@ public sealed partial class ObjectInspectorViewModel : ObservableObject
             else o.MediaScaleMode = mode;
         });
     }
+
+    // MARK: Mask (shown by the overlay editor's inspector)
+
+    /// <summary>
+    /// Every object of the same slide or overlay, so this one can be masked by another.
+    /// Left null (as the slide editor does for now), the mask settings stay hidden.
+    /// </summary>
+    public IReadOnlyList<SlideObject>? Siblings { get; init; }
+
+    /// <summary>One entry in the "Mask with" list: an object's id and name ("" = no mask).</summary>
+    public sealed record MaskChoice(string Id, string Label)
+    {
+        public override string ToString() => Label;
+    }
+
+    /// <summary>"None", then the objects this one may be masked with (no loops), as the Mac's inspector lists them.</summary>
+    public IReadOnlyList<MaskChoice> MaskChoices
+    {
+        get
+        {
+            var choices = new List<MaskChoice> { new("", "None") };
+            if (Siblings is null) return choices;
+            choices.AddRange(ObjectMasks.Candidates(o, Siblings).Select(c => new MaskChoice(c.Id, ObjectMasks.DisplayName(c))));
+            if (o.MaskObjectId is { Length: > 0 } id && choices.All(c => c.Id != id)) choices.Add(new MaskChoice(id, "Missing object"));
+            return choices;
+        }
+    }
+
+    public bool ShowsMask => Siblings is not null && (MaskChoices.Count > 1 || HasMask);
+
+    public bool HasMask => !string.IsNullOrEmpty(o.MaskObjectId);
+
+    public MaskChoice? MaskWith
+    {
+        get => MaskChoices.FirstOrDefault(c => c.Id == (o.MaskObjectId ?? ""));
+        set => Set(() => ObjectMasks.SetMask(o, value?.Id), nameof(HasMask), nameof(MaskModeIndex));
+    }
+
+    /// <summary>0 keeps what's inside the mask object, 1 cuts it out.</summary>
+    public int MaskModeIndex
+    {
+        get => o.MaskMode == MaskMode.Out ? 1 : 0;
+        set => Set(() => o.MaskMode = value == 1 ? MaskMode.Out : MaskMode.In);
+    }
+
+    /// <summary>True when another object is masked by this one, so outputs never draw it.</summary>
+    public bool IsMatte => Siblings is not null && ObjectMasks.IsMatte(o, Siblings);
+
+    // MARK: Text source (what a text box shows)
+
+    /// <summary>What a text box can show: what the operator types, or something the app fills in.</summary>
+    public sealed record SourceChoice(TextSourceKind? Kind, string Label)
+    {
+        public override string ToString() => Label;
+    }
+
+    private static readonly SourceChoice[] CommonSources =
+    [
+        new(null, "Typed text"),
+        new(TextSourceKind.Clock, "The time (clock)"),
+        new(TextSourceKind.CurrentSlide, "The live slide's words"),
+        new(TextSourceKind.NextSlide, "The next slide's words"),
+        new(TextSourceKind.CurrentPresentation, "The song or presentation's name"),
+        new(TextSourceKind.CurrentServiceItem, "The service item now"),
+        new(TextSourceKind.NextServiceItem, "The next service item"),
+        new(TextSourceKind.StageMessage, "The stage message"),
+    ];
+
+    public IReadOnlyList<SourceChoice> TextSources =>
+        o.TextLink is { } link && CommonSources.All(c => c.Kind != link.Source)
+            ? [.. CommonSources, new SourceChoice(link.Source, $"Linked: {link.Source}")]
+            : CommonSources;
+
+    public SourceChoice TextSource
+    {
+        get => TextSources.FirstOrDefault(c => c.Kind == o.TextLink?.Source) ?? CommonSources[0];
+        set
+        {
+            if (value is null || value.Kind == o.TextLink?.Source) return;
+            Set(() => o.TextLink = value.Kind is { } kind ? new TextLink { Source = kind } : null, nameof(IsTyped));
+        }
+    }
+
+    /// <summary>True for a text box the operator types into (it appears as a field in the bin).</summary>
+    public bool IsTyped => o.TextLink is null;
 }

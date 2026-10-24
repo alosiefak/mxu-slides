@@ -7,6 +7,7 @@ using MxU.Slides.Core.Json;
 using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
+using MxU.Slides.Windows.Infrastructure;
 
 namespace MxU.Slides.Windows.ViewModels;
 
@@ -92,7 +93,7 @@ public sealed partial class MainViewModel
     public void RefreshOverlays()
     {
         var all = Library.All<Overlay>();
-        var packs = all.Select(PackOf).Distinct().OrderBy(p => p == "Other" ? 1 : 0).ThenBy(p => p).ToList();
+        var packs = OverlayLibrary.Packs(all);
         if (!packs.SequenceEqual(OverlayPacks))
         {
             OverlayPacks.Clear();
@@ -115,7 +116,7 @@ public sealed partial class MainViewModel
         MarkLiveOverlays();
     }
 
-    private static string PackOf(Overlay overlay) => overlay.Folder?.Split('/').FirstOrDefault() is { Length: > 0 } pack ? pack : "Other";
+    private static string PackOf(Overlay overlay) => OverlayLibrary.PackOf(overlay);
 
     private static int CategoryOrder(string? folder) => folder?.Split('/').LastOrDefault() switch
     {
@@ -131,6 +132,7 @@ public sealed partial class MainViewModel
     private void MarkLiveOverlays()
     {
         foreach (var tile in Overlays) tile.IsLive = Show.LiveOverlays.Any(o => o.Id == tile.Overlay.Id);
+        LiveOverlaysChanged?.Invoke();
     }
 
     /// <summary>Puts an overlay up, or takes it down if it is already showing.</summary>
@@ -161,12 +163,19 @@ public sealed partial class MainViewModel
     private void DuplicateOverlay()
     {
         if (SelectedOverlay is not { } tile) return;
-        var copy = MxuJson.Clone(tile.Overlay);
-        copy.Id = LibraryStore.NewId();
-        copy.Name = $"{tile.Overlay.Name} (copy)";
+        FlushOverlaySave();
+        var copy = OverlayLibrary.Duplicate(tile.Overlay);
         Library.Save(copy);
         RefreshOverlays();
         SelectedOverlay = Overlays.FirstOrDefault(o => o.Overlay.Id == copy.Id);
+    }
+
+    /// <summary>Opens the overlay editor on the selected overlay (or the first of the pack).</summary>
+    [RelayCommand]
+    private void EditOverlays()
+    {
+        if (System.Windows.Application.Current?.MainWindow is not { } owner) return;
+        Views.OverlayEditorWindow.Open(owner, this, SelectedOverlay?.Overlay.Id);
     }
 
     // Typing in an overlay's fields updates its thumbnail at once, the live output if it is up, and the file shortly after.
@@ -177,13 +186,25 @@ public sealed partial class MainViewModel
     private void OverlayEdited()
     {
         if (SelectedOverlay is not { } tile) return;
-        tile.Preview = OverlayTileViewModel.PreviewScene(tile.Overlay);
-        if (Show.LiveOverlays.Any(o => o.Id == tile.Overlay.Id))
+        OverlayChanged(tile.Overlay);
+    }
+
+    /// <summary>
+    /// An overlay was changed (by its fields in the bin, or in the overlay editor): its
+    /// thumbnail updates at once, the program too if it is up (without replaying its
+    /// entrance), and the file is saved shortly after the changes stop.
+    /// </summary>
+    public void OverlayChanged(Overlay overlay)
+    {
+        foreach (var tile in Overlays.Where(t => t.Overlay.Id == overlay.Id))
+            tile.Preview = OverlayTileViewModel.PreviewScene(overlay);
+        if (IsOverlayLive(overlay.Id))
         {
-            Show.OverlayEdited(tile.Overlay);
+            Show.OverlayEdited(overlay);
             RenderOutputs(Rendering.SceneTransition.Cut, refreshOnly: true);
         }
-        pendingOverlaySave = tile.Overlay;
+        if (pendingOverlaySave is { } other && other.Id != overlay.Id) FlushOverlaySave();
+        pendingOverlaySave = overlay;
         overlaySaveTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(600), DispatcherPriority.Background, (_, _) => FlushOverlaySave(), Dispatcher.CurrentDispatcher);
         overlaySaveTimer.Stop();
         overlaySaveTimer.Start();
@@ -196,10 +217,59 @@ public sealed partial class MainViewModel
         pendingOverlaySave = null;
         suppressOverlayRefresh = true;
         try { Library.Save(overlay); }
+        catch (Exception ex)
+        {
+            Log.Error($"Saving the overlay \"{overlay.Name}\" failed", ex);
+            Problem = $"Couldn't save the overlay \"{overlay.Name}\": {ex.Message}";
+        }
         finally { suppressOverlayRefresh = false; }
     }
 
+    /// <summary>Saves any overlay edit still waiting for its pause (before closing the editor, or quitting).</summary>
+    public void FlushOverlayEdits() => FlushOverlaySave();
+
     private bool suppressOverlayRefresh;
+
+    // MARK: For the overlay editor
+
+    public bool IsOverlayLive(string id) => Show.LiveOverlays.Any(o => o.Id == id);
+
+    /// <summary>Raised when overlays go up or come down, so the editor's Go Live button can follow.</summary>
+    public event Action? LiveOverlaysChanged;
+
+    /// <summary>Puts an overlay up (playing its In) or takes it down (playing its Out), as clicking its tile does.</summary>
+    public void SetOverlayLive(Overlay overlay, bool up)
+    {
+        FlushOverlaySave();
+        SetOverlay(overlay, up);
+    }
+
+    /// <summary>Saves a new, renamed or re-filed overlay straight away and refreshes the bin.</summary>
+    public void SaveOverlayNow(Overlay overlay)
+    {
+        if (pendingOverlaySave?.Id == overlay.Id) pendingOverlaySave = null;
+        FlushOverlaySave();
+        Library.Save(overlay);
+        if (IsOverlayLive(overlay.Id))
+        {
+            Show.OverlayEdited(overlay);
+            RenderOutputs(Rendering.SceneTransition.Cut, refreshOnly: true);
+        }
+    }
+
+    /// <summary>Moves an overlay to the library's Trash, taking it off the program first if it is up.</summary>
+    public void DeleteOverlay(Overlay overlay)
+    {
+        if (pendingOverlaySave?.Id == overlay.Id) pendingOverlaySave = null;
+        FlushOverlaySave();
+        if (IsOverlayLive(overlay.Id))
+        {
+            Show.DismissOverlay(overlay.Id);
+            RenderOutputs(DefaultTransition());
+            MarkLiveOverlays();
+        }
+        Library.Delete<Overlay>(overlay.Id);
+    }
 }
 
 /// <summary>The bottom bin's tabs.</summary>

@@ -68,17 +68,47 @@ public sealed class SlideCanvasEditor : Grid
 
     public void Refresh()
     {
+        var leavingPreview = IsPreviewing;
+        IsPreviewing = false;
         if (Slide is null)
         {
             view.Present((RenderScene?)null, SceneTransition.Cut);
         }
         else
         {
-            var scene = SlideSceneBuilder.Scene(Slide, Theme, Presentation);
-            if (view.Scene is null) view.Present(scene, SceneTransition.Cut);
+            var scene = SceneBuilder?.Invoke(Slide) ?? SlideSceneBuilder.Scene(Slide, Theme, Presentation);
+            if (view.Scene is null || leavingPreview) view.Present(scene, SceneTransition.Cut);
             else view.Update(scene);
         }
         overlay.InvalidateVisual();
+    }
+
+    // MARK: Other compositions (the overlay editor)
+
+    /// <summary>
+    /// Builds the picture the canvas shows for its slide, instead of the slide composed
+    /// with its theme. The overlay editor sets this to draw an overlay (and a backdrop)
+    /// the way the overlay layer draws it. Null (the slide editor) uses the slide's scene.
+    /// </summary>
+    public Func<Slide, RenderScene>? SceneBuilder { get; set; }
+
+    /// <summary>True while <see cref="ShowPreview"/> is playing an animated picture; selection is hidden meanwhile.</summary>
+    public bool IsPreviewing { get; private set; }
+
+    /// <summary>
+    /// Plays an animated picture on the canvas (its items carry their own animation clock),
+    /// hiding the selection. Any edit, a click on the canvas or <see cref="EndPreview"/> goes back to editing.
+    /// </summary>
+    public void ShowPreview(Core.Animation.AnimatedScene scene)
+    {
+        IsPreviewing = true;
+        view.Present(scene, SceneTransition.Cut);
+        overlay.InvalidateVisual();
+    }
+
+    public void EndPreview()
+    {
+        if (IsPreviewing) Refresh();
     }
 
     public void Select(IEnumerable<string> ids)
@@ -146,6 +176,7 @@ public sealed class SlideCanvasEditor : Grid
     {
         base.OnMouseLeftButtonDown(e);
         if (Slide is null) return;
+        EndPreview();
         Focus();
         var p = ToScene(e.GetPosition(this));
         var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
@@ -384,6 +415,11 @@ public sealed class SlideCanvasEditor : Grid
         protected override void OnRender(DrawingContext dc)
         {
             if (editor.Slide is null) return;
+            if (editor.IsPreviewing)
+            {
+                dc.DrawRectangle(Brushes.Transparent, null, new Rect(RenderSize)); // still catches the click that ends the preview
+                return;
+            }
             dc.DrawRectangle(Brushes.Transparent, null, new Rect(RenderSize));
             var objects = EditorGeometry.ComposedOrder(editor.Objects, editor.Template);
             foreach (var o in objects.Where(o => o.Hidden != true))
