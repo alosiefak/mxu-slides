@@ -30,8 +30,12 @@ public static class ShaderCompiler
 
     private static readonly Dictionary<string, PixelShader?> Cache = [];
 
-    /// <summary>A WPF pixel shader (ps_3_0) from HLSL, or null (logged) if this PC can't compile or run it.</summary>
-    public static PixelShader? Compile(string name, string hlsl, string entryPoint = "main")
+    /// <summary>
+    /// A WPF pixel shader from HLSL, or null (logged) if this PC can't compile or run it. Shaders are
+    /// ps_3_0 unless they ask for ps_2_0, which WPF can also run without a graphics card (in software:
+    /// thumbnails, pictures, and PCs that can't capture on the graphics card).
+    /// </summary>
+    public static PixelShader? Compile(string name, string hlsl, string entryPoint = "main", string target = "ps_3_0")
     {
         lock (Cache)
         {
@@ -40,7 +44,7 @@ public static class ShaderCompiler
             try
             {
                 var source = Encoding.UTF8.GetBytes(hlsl);
-                var hr = D3DCompile(source, (nuint)source.Length, name, IntPtr.Zero, IntPtr.Zero, entryPoint, "ps_3_0",
+                var hr = D3DCompile(source, (nuint)source.Length, name, IntPtr.Zero, IntPtr.Zero, entryPoint, target,
                     OptimizationLevel3, 0, out var code, out var errors);
                 if (hr < 0 || code is null)
                 {

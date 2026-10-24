@@ -41,7 +41,7 @@ public sealed partial class MainViewModel
 
     public bool HasCanvasSelection => canvas?.Selection.Count > 0;
 
-    private void LoadCanvas() => canvas?.Load(IsEditing ? EditedSlide : null, CurrentTheme, CurrentPresentation);
+    private void LoadCanvas() => canvas?.Load(IsEditing ? EditedSlide : null, EditedSlideTheme, CurrentPresentation);
 
     private List<SlideObject> SelectedObjects() =>
         EditedSlide is { } slide && canvas is not null ? slide.Objects.Where(o => canvas.Selection.Contains(o.Id)).ToList() : [];
@@ -51,9 +51,10 @@ public sealed partial class MainViewModel
         var selected = SelectedObjects();
         if (selected.Count == 1 && EditedSlide is { } slide)
         {
-            var template = SlideSceneBuilder.ThemeSlide(slide, CurrentTheme);
+            var theme = EditedSlideTheme;
+            var template = SlideSceneBuilder.ThemeSlide(slide, theme);
             var placeholder = SlideSceneBuilder.PlaceholderAssignments(slide.Objects, template).GetValueOrDefault(selected[0].Id);
-            Inspector = new ObjectInspectorViewModel(selected[0], placeholder, CurrentTheme, SlideSceneBuilder.CanvasSizeFor(CurrentPresentation), InspectorChanged);
+            Inspector = new ObjectInspectorViewModel(selected[0], placeholder, theme, SlideSceneBuilder.CanvasSizeFor(CurrentPresentation), InspectorChanged);
         }
         else
         {

@@ -26,10 +26,15 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="{Binding Number}" Margin="6,0" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="White" FontSize="11" />
                         <TextBlock Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" Foreground="White" FontSize="11"
                                    TextTrimming="CharacterEllipsis" />
+                        <!-- Text doesn't fit its box (the Mac's orange triangle). -->
+                        <TextBlock Grid.Column="2" FontFamily="{StaticResource Icons}" Text="&#xE7BA;" Foreground="#FF9F0A" FontSize="11" Margin="4,0,6,0"
+                                   VerticalAlignment="Center" Visibility="{Binding HasClippedText, Converter={StaticResource Visible}}"
+                                   ToolTip="{x:Static vm:SlideTileViewModel.ClippedTextHelp}" />
                     </Grid>
                 </StackPanel>
             </Border>

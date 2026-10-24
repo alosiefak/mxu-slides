@@ -64,6 +64,76 @@ public static partial class FontMap
 
     private static readonly Dictionary<string, Face> Cache = new(StringComparer.Ordinal);
 
+    // The library's own fonts (a deck's embedded fonts, saved by the PowerPoint importer), loaded
+    // for drawing from their files without installing them into Windows. By PostScript name
+    // ("Gotham-Bold": the exact face) and by family name ("Gotham": every face of it in the folder).
+    private static readonly Dictionary<string, Face> LibraryFaces = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, FontFamily> LibraryFamilies = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> LoadedFiles = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Makes the fonts in the library's <c>fonts</c> folder usable for drawing and in the font
+    /// pickers, as the Mac's FontActivator.activateStored does at launch. Each file is read once;
+    /// call again after an import to pick up new ones. WPF loads them from the file privately
+    /// (a FontFamily with a file location), so nothing is installed into Windows. Returns how many
+    /// faces were added.
+    /// </summary>
+    public static int ActivateStored(string libraryRoot)
+    {
+        var added = 0;
+        var folder = Path.Combine(libraryRoot, Core.Library.FontFiles.FolderName);
+        lock (Cache)
+        {
+            foreach (var file in Core.Library.FontFiles.Stored(libraryRoot))
+            {
+                if (!LoadedFiles.Add(file)) continue;
+                try
+                {
+                    var faces = Core.Library.FontFiles.Faces(File.ReadAllBytes(file));
+                    // WPF's own reading of the file, so its family names are the ones WPF will match.
+                    var families = Fonts.GetFontFamilies(file).ToList();
+                    if (faces.Count == 0 || families.Count == 0) continue;
+                    foreach (var family in families)
+                        foreach (var name in family.FamilyNames.Values.Append(FamilyName(family)).OfType<string>())
+                            LibraryFamilies.TryAdd(name, new FontFamily(new Uri(folder + Path.DirectorySeparatorChar), "./#" + name));
+                    foreach (var face in faces)
+                    {
+                        var family = families.FirstOrDefault(f => f.FamilyNames.Values.Contains(face.Family, StringComparer.OrdinalIgnoreCase)) ?? families[0];
+                        LibraryFamilies.TryAdd(face.Family, new FontFamily(new Uri(folder + Path.DirectorySeparatorChar), "./#" + (FamilyName(family) ?? face.Family)));
+                        if (LibraryFaces.TryAdd(face.PostScriptName, new Face(family, FontWeight.FromOpenTypeWeight(Math.Clamp(face.Weight, 1, 999)),
+                                face.Italic ? FontStyles.Italic : FontStyles.Normal, FontStretch.FromOpenTypeStretch(Math.Clamp(face.Width, 1, 9)))))
+                            added++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Infrastructure.Log.Warn($"Couldn't load the library font {Path.GetFileName(file)}: {ex.Message}");
+                }
+            }
+            if (added > 0)
+            {
+                // Names that fell back to a stand-in before may now have their real font.
+                Cache.Clear();
+                installedFamilies = null;
+            }
+        }
+        if (added > 0)
+        {
+            Infrastructure.Log.Info($"Loaded {added} font face{(added == 1 ? "" : "s")} from the library");
+            TextLayout.ForgetMeasurements();
+            PathTextRenderer.ForgetLayouts();
+        }
+        return added;
+    }
+
+    /// <summary>The family name in a family's location ("file:///…/x.ttf#Gotham" → "Gotham").</summary>
+    private static string? FamilyName(FontFamily family) =>
+        family.Source.LastIndexOf('#') is var hash and >= 0 ? family.Source[(hash + 1)..] : null;
+
+    private static bool IsAvailable(string family) => Installed.Value.Contains(family) || LibraryFamilies.ContainsKey(family);
+
+    private static FontFamily Family(string name) => LibraryFamilies.TryGetValue(name, out var own) ? own : new FontFamily(name);
+
     public static Face Resolve(string? fontName)
     {
         fontName = string.IsNullOrWhiteSpace(fontName) ? "HelveticaNeue-Bold" : fontName.Trim();
@@ -78,9 +148,12 @@ public static partial class FontMap
 
     private static Face Compute(string fontName)
     {
+        // A library font's exact face by its PostScript name ("Gotham-Bold"), as Core Text resolves it.
+        if (LibraryFaces.TryGetValue(fontName, out var own)) return own;
+
         // A plain family name ("Open Sans", "Montserrat SemiBold") that is installed wins outright.
-        if (fontName.Contains(' ') && Installed.Value.Contains(fontName))
-            return new Face(new FontFamily(fontName), FontWeights.Normal, FontStyles.Normal, FontStretches.Normal);
+        if (fontName.Contains(' ') && IsAvailable(fontName))
+            return new Face(Family(fontName), FontWeights.Normal, FontStyles.Normal, FontStretches.Normal);
 
         var dash = fontName.IndexOf('-');
         var familyPart = dash > 0 ? fontName[..dash] : fontName;
@@ -98,8 +171,8 @@ public static partial class FontMap
         var candidates = Substitutes.TryGetValue(key, out var known)
             ? known
             : [familyPart, SpaceCamelCase(familyPart), "Segoe UI"];
-        var family = candidates.FirstOrDefault(Installed.Value.Contains) ?? "Segoe UI";
-        return new Face(new FontFamily(family), weight, style, stretch);
+        var family = candidates.FirstOrDefault(IsAvailable) ?? "Segoe UI";
+        return new Face(Family(family), weight, style, stretch);
     }
 
     private static (FontWeight, FontStyle, FontStretch) ParseStyle(string style)
@@ -142,9 +215,26 @@ public static partial class FontMap
 
     public static bool IsItalic(string? fontName) => Resolve(fontName).Style != FontStyles.Normal;
 
-    /// <summary>Families to offer in font pickers: the installed ones, sorted.</summary>
-    public static IReadOnlyList<string> InstalledFamilies() =>
-        Fonts.SystemFontFamilies.Select(f => f.Source).Distinct().OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase).ToList();
+    private static IReadOnlyList<string>? installedFamilies;
+
+    /// <summary>Families to offer in font pickers: the installed ones and the library's own, sorted.</summary>
+    public static IReadOnlyList<string> InstalledFamilies()
+    {
+        lock (Cache)
+        {
+            return installedFamilies ??= Fonts.SystemFontFamilies.Select(f => f.Source)
+                .Concat(LibraryFamilies.Keys)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+    }
+
+    /// <summary>True for a font that comes from the library rather than Windows (for tests and the self-test).</summary>
+    public static bool IsLibraryFont(string fontName)
+    {
+        lock (Cache) return LibraryFaces.ContainsKey(fontName) || LibraryFamilies.ContainsKey(fontName);
+    }
 
     private static string SpaceCamelCase(string s) => CamelBoundary().Replace(s, " ");
 

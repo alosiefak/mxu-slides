@@ -205,6 +205,47 @@ public sealed record StyledText
     public bool Underline { get; init; }
     public bool Strikethrough { get; init; }
 
+    // Text on a path, and tickers (PathTextLayout). Unit-space SVG path data over the item's
+    // frame; with it, the text is drawn as one line along the path instead of as a block.
+
+    /// <summary>The path the text runs along (unit space over the frame), or null for block text.</summary>
+    public string? PathData { get; init; }
+
+    /// <summary>How fast the text flows along its path, in canvas units a second; 0 = it sits still.</summary>
+    public double TickerSpeed { get; init; }
+
+    /// <summary>Runs the other way along the path (text inside a shape's edge reads upright).</summary>
+    public bool PathReversed { get; init; }
+
+    /// <summary>How far the text sits off its path, towards its "up" side.</summary>
+    public double PathOffset { get; init; }
+
+    /// <summary>Passes before a ticker stops (0 = for ever).</summary>
+    public int TickerRepeat { get; init; }
+
+    public bool TickerLeftToRight { get; init; }
+
+    /// <summary>Copies follow each other continuously (with <see cref="TickerGap"/> between), instead of one pass at a time.</summary>
+    public bool TickerStream { get; init; }
+
+    public double TickerGap { get; init; }
+
+    /// <summary>Text between a stream's copies (" • "), centred in the gap.</summary>
+    public string TickerSeparator { get; init; } = "";
+
+    /// <summary>Extra space after each space character.</summary>
+    public double WordSpacing { get; init; }
+
+    /// <summary>Eases each counted pass of a ticker with a repeat count.</summary>
+    public Animation.SceneAnimationRamp TickerRamp { get; init; }
+
+    /// <summary>
+    /// The block scroll (credits) the text rolls with, as on the Mac's StyledText. The renderer
+    /// plays it from <see cref="Animation.AnimatedItem.Scroll"/>; it's here so a scene alone can tell
+    /// text that shows all its words by rolling from text that's cut off (the clipped-text badge).
+    /// </summary>
+    public Animation.SceneBlockScroll? Scroll { get; init; }
+
     /// <summary>The string as displayed (after the uppercase transform).</summary>
     public string DisplayString => Transform == SceneTextTransform.Uppercase
         ? String.ToUpper(CultureInfo.CurrentCulture)

@@ -89,12 +89,15 @@ public static class AnimationTimeline
     /// started but it is still waiting out its delay, or something scrolls. A renderer
     /// draws every frame while this holds and can stop once it doesn't (a click re-renders).
     /// </summary>
-    public static bool IsAnimating(AnimatedScene scene, double now) =>
-        scene.Layers.Where(l => !l.IsHidden).SelectMany(l => l.Items).Any(item => IsAnimating(item, now));
+    /// <param name="tickers">False for a view that shows tickers at rest (a thumbnail): they then don't keep it drawing.</param>
+    public static bool IsAnimating(AnimatedScene scene, double now, bool tickers = true) =>
+        scene.Layers.Where(l => !l.IsHidden).SelectMany(l => l.Items).Any(item => IsAnimating(item, now, tickers));
 
-    private static bool IsAnimating(AnimatedItem item, double now)
+    private static bool IsAnimating(AnimatedItem item, double now, bool tickers)
     {
         if (item.Render.Content is ItemContent.Text && item.Scroll is { Speed: > 0 }) return true;
+        // A ticker is drawn afresh every frame while it's up, as the Mac does (even once a repeat count runs out).
+        if (tickers && item.Render.Content is ItemContent.Text { Styled: var styled } && PathTextLayout.IsMoving(styled)) return true;
         if (item.Effects.Any(e => e.VariesWithTime)) return true;
         if (item.AnimationContext is not { } context) return false;
         foreach (var step in item.AnimationSteps)

@@ -91,7 +91,8 @@ public sealed partial class MainViewModel
             return;
         }
 
-        var theme = Library.Get<Theme>(presentation.ThemeId);
+        // The slide's own theme (or none for a Blank slide), else the presentation's, as on the Mac.
+        var theme = ThemeFor(slide, presentation);
         // A slide (or its service item) can switch the output preset first, as on the Mac.
         if (runActions) Actions.ApplyPresetSwitches(slide, itemId);
         Show.Fire(slide, presentation, theme, arrangementId, arrivesSettled: fireSettled);

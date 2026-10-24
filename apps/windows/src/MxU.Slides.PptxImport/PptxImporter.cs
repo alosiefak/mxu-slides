@@ -147,8 +147,11 @@ public static class PptxImporter
                     Sections = parsed.Sections,
                     Warnings = warnings,
                 };
+                // A family counts as present when this deck brought it, Windows has it, or an earlier
+                // import already saved it into the library (the app loads those for drawing).
+                var libraryFamilies = new HashSet<string>(Core.Library.FontFiles.Families(library.Root), StringComparer.OrdinalIgnoreCase);
                 mapped = PptxDocumentMapper.Map(deck, fallbackName, sourceId,
-                    family => activatedFamilies.Contains(family) || FontActivator.IsInstalled(family));
+                    family => activatedFamilies.Contains(family) || FontActivator.IsInstalled(family) || libraryFamilies.Contains(family));
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {

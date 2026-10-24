@@ -58,8 +58,11 @@ public sealed class SceneView : FrameworkElement
         }
     }
 
-    /// <summary>What an item's drawing depends on; when equal, the cached drawing is reused.</summary>
-    private sealed record ContentKey(RenderItem Render, string Hidden, StrokeTrim? Trim, double FillOpacity);
+    /// <summary>
+    /// What an item's drawing depends on; when equal, the cached drawing is reused. A ticker's
+    /// <paramref name="Path"/> pose changes every frame, so a moving ticker is redrawn each frame.
+    /// </summary>
+    private sealed record ContentKey(RenderItem Render, string Hidden, StrokeTrim? Trim, double FillOpacity, PathTextRenderer.Pose? Path = null);
 
     /// <summary>Where an item sits this frame; when equal, its transform, clip and mask stay.</summary>
     private sealed record PoseKey(SceneRect Frame, double Rotation, bool FlipH, bool FlipV, AnimationMotion Motion);
@@ -88,9 +91,30 @@ public sealed class SceneView : FrameworkElement
     }
 
     /// <summary>
+    /// A keystoned item: what it looks like untouched lives in <see cref="Source"/> (not in the
+    /// visual tree) and <see cref="Face"/> paints that over <see cref="Region"/>, where the
+    /// <see cref="KeystoneEffect"/> warps it into its trapezoid (the trail passes' trick).
+    /// </summary>
+    private sealed class KeystonePass
+    {
+        public KeystonePass()
+        {
+            Layer.Effect = Shader;
+            Layer.Children.Add(Face);
+        }
+
+        public ContainerVisual Layer { get; } = new();
+        public ContainerVisual Source { get; } = new();
+        public DrawingVisual Face { get; } = new();
+        public KeystoneEffect Shader { get; } = new();
+        public Rect Region;
+        public (SceneRect Frame, double Top, double Bottom, bool Stretch)? Warp;
+    }
+
+    /// <summary>
     /// One item: Outer (canvas space) carries the matte clip, Inner (moves with the item) the
-    /// pose, opacity, wipe and blur, and between Inner and the drawing sits one layer per
-    /// picture effect (first effect innermost, as the Mac applies them in order).
+    /// pose, opacity, wipe and blur, and between Inner and the drawing sits the keystone warp (if
+    /// any), then one layer per picture effect (first effect innermost, as the Mac applies them in order).
     /// </summary>
     private sealed class Slot
     {
@@ -98,6 +122,7 @@ public sealed class SceneView : FrameworkElement
         public ContainerVisual Outer { get; } = new();
         public ContainerVisual Inner { get; } = new();
         public List<EffectPass> Passes { get; } = [];
+        public KeystonePass? Keystone;
         public string PassShape = "";
         public ItemVisual? Drawing;
         public ContentKey? Content;
@@ -108,8 +133,8 @@ public sealed class SceneView : FrameworkElement
         /// <summary>The video players its drawing uses (released when the item goes).</summary>
         public HashSet<string> Keys { get; } = new(StringComparer.Ordinal);
 
-        /// <summary>Where the drawing goes: under the innermost effect pass, or Inner when there are none.</summary>
-        public ContainerVisual Host => Passes.Count > 0 ? Passes[0].Host : Inner;
+        /// <summary>Where the drawing goes: under the innermost effect pass, else under the keystone warp, else Inner.</summary>
+        public ContainerVisual Host => Passes.Count > 0 ? Passes[0].Host : Keystone?.Source ?? Inner;
     }
 
     private sealed class Root
@@ -366,7 +391,7 @@ public sealed class SceneView : FrameworkElement
     {
         if (root is null) return;
         children.Remove(root.Visual);
-        foreach (var key in root.Keys) media?.Release(key);
+        foreach (var key in root.Keys) ReleaseKey(key);
         root.Keys.Clear();
     }
 
@@ -490,7 +515,7 @@ public sealed class SceneView : FrameworkElement
             kids.Clear();
             foreach (var visual in order) kids.Add(visual);
         }
-        root.Animating = AnimationTimeline.IsAnimating(scene, now);
+        root.Animating = AnimationTimeline.IsAnimating(scene, now, tickers: PlaysVideo);
     }
 
     /// <summary>
@@ -506,7 +531,7 @@ public sealed class SceneView : FrameworkElement
         foreach (var key in root.Keys.Where(k => !inUse.Contains(k)).ToList())
         {
             root.Keys.Remove(key);
-            media?.Release(key);
+            ReleaseKey(key);
         }
     }
 
@@ -525,23 +550,24 @@ public sealed class SceneView : FrameworkElement
         var render = item.Render;
         var motion = resolved.Motion;
 
+        var pathPose = PathTextPose(item, ppd, now);
         var content = new ContentKey(
             render with { Opacity = 1, BlurRadius = 0, RotationDegrees = 0, FlipHorizontal = false, FlipVertical = false, SkewX = 0, SkewY = 0, MaskedBy = null, MaskOut = false },
-            HiddenKey(item.HiddenRuns), item.StrokeTrim, item.FillOpacity);
+            HiddenKey(item.HiddenRuns), item.StrokeTrim, item.FillOpacity, pathPose);
         if (slot.Content != content)
         {
             slot.Keys.Clear();
-            var drawing = BuildContent(item, ppd, key =>
+            var drawing = BuildContent(item, ppd, pathPose, key =>
             {
                 slot.Keys.Add(key);
-                if (root.Keys.Add(key)) media?.Retain(key);
+                if (root.Keys.Add(key)) RetainKey(key);
             });
             slot.Host.Children.Clear();
             slot.Host.Children.Add(drawing);
             slot.Drawing = drawing;
             slot.Content = content;
         }
-        ApplyEffects(slot, item, now);
+        ApplyEffects(slot, item, motion, now);
 
         var opacity = Math.Clamp(render.Opacity, 0, 1);
         if (slot.Inner.Opacity != opacity) slot.Inner.Opacity = opacity;
@@ -581,8 +607,8 @@ public sealed class SceneView : FrameworkElement
     /// <summary>One pass to draw this frame: a shader pass (mode and parameters) or a trail pass (the effect and its index in the list).</summary>
     private readonly record struct PassPlan(AnimationEffect Effect, int Index, int Mode, Point4D Parameters, bool Trail);
 
-    /// <summary>Keeps one effect layer per drawable pass and sets each pass's parameters for this frame.</summary>
-    private void ApplyEffects(Slot slot, AnimatedItem item, double now)
+    /// <summary>Keeps one effect layer per drawable pass (and the keystone warp) and sets each pass's parameters for this frame.</summary>
+    private void ApplyEffects(Slot slot, AnimatedItem item, AnimationMotion motion, double now)
     {
         var effects = item.Effects;
         var passes = new List<PassPlan>();
@@ -603,8 +629,10 @@ public sealed class SceneView : FrameworkElement
                 }
             }
         }
-        var shape = string.Concat(passes.Select(p => p.Trail ? 'T' : 'S'));
-        if (shape != slot.PassShape) RebuildPasses(slot, passes);
+        var keystone = BuildProjector.HasKeystone(motion) && KeystoneEffect.IsSupported;
+        var shape = string.Concat(passes.Select(p => p.Trail ? 'T' : 'S')) + (keystone ? "K" : "");
+        if (shape != slot.PassShape) RebuildPasses(slot, passes, keystone);
+        if (slot.Keystone is { } warp) ApplyKeystone(warp, item.Render.Frame, motion);
         for (var i = 0; i < passes.Count; i++)
         {
             var plan = passes[i];
@@ -622,17 +650,29 @@ public sealed class SceneView : FrameworkElement
         }
     }
 
-    /// <summary>Rebuilds the chain: Inner → last effect → … → first effect → drawing (a trail pass holds what's under it in its Source).</summary>
-    private static void RebuildPasses(Slot slot, List<PassPlan> passes)
+    /// <summary>
+    /// Rebuilds the chain: Inner → keystone → last effect → … → first effect → drawing (a trail pass and
+    /// the keystone hold what's under them in their Source). The keystone goes outermost because the Mac
+    /// warps the item after its effects.
+    /// </summary>
+    private static void RebuildPasses(Slot slot, List<PassPlan> passes, bool keystone = false)
     {
         foreach (var pass in slot.Passes)
         {
             pass.Layer.Children.Clear();
             pass.Source?.Children.Clear();
         }
+        slot.Keystone?.Source.Children.Clear();
         slot.Inner.Children.Clear();
         slot.Passes.Clear();
         ContainerVisual outer = slot.Inner;
+        slot.Keystone = null;
+        if (keystone)
+        {
+            slot.Keystone = new KeystonePass();
+            outer.Children.Add(slot.Keystone.Layer);
+            outer = slot.Keystone.Source;
+        }
         var chain = new List<EffectPass>();
         for (var i = passes.Count - 1; i >= 0; i--)
         {
@@ -664,8 +704,28 @@ public sealed class SceneView : FrameworkElement
             outer = pass.Host;
         }
         slot.Passes.AddRange(chain);
-        slot.PassShape = string.Concat(passes.Select(p => p.Trail ? 'T' : 'S'));
+        slot.PassShape = string.Concat(passes.Select(p => p.Trail ? 'T' : 'S')) + (keystone ? "K" : "");
         if (slot.Drawing is { } drawing) outer.Children.Add(drawing);
+    }
+
+    /// <summary>
+    /// The keystone warp this frame: the face shows the untouched item over the warp's region, and the
+    /// shader squeezes it into its trapezoid. Only redrawn when the frame or the keystone changes.
+    /// </summary>
+    private static void ApplyKeystone(KeystonePass pass, SceneRect frame, AnimationMotion motion)
+    {
+        var warp = (frame, motion.KeystoneTop, motion.KeystoneBottom, motion.KeystoneStretch);
+        if (pass.Warp == warp) return;
+        var region = KeystoneEffect.Region(frame, motion.KeystoneTop, motion.KeystoneBottom);
+        if (pass.Region != region)
+        {
+            var brush = new VisualBrush(pass.Source) { Viewbox = region, ViewboxUnits = BrushMappingMode.Absolute, Stretch = Stretch.Fill };
+            using (var dc = pass.Face.RenderOpen()) dc.DrawRectangle(brush, null, region);
+            pass.Region = region;
+        }
+        // A trapezoid folded flat (an edge at 0%) has nothing to show.
+        pass.Layer.Opacity = pass.Shader.Set(frame, region, motion.KeystoneTop, motion.KeystoneBottom, motion.KeystoneStretch) ? 1 : 0;
+        pass.Warp = warp;
     }
 
     /// <summary>
@@ -711,7 +771,8 @@ public sealed class SceneView : FrameworkElement
 
     /// <summary>
     /// Skew, flip, scale (with the 3-D swing and tilt flattened to a squash), rotation
-    /// about the frame centre, then the animated move. Keystone isn't drawn.
+    /// about the frame centre, then the animated move. Keystone is drawn inside this, by
+    /// the keystone pass (<see cref="ApplyKeystone"/>), as the Mac warps before it skews.
     /// </summary>
     private static Transform? ItemTransform(RenderItem render, AnimationMotion motion)
     {
@@ -791,7 +852,21 @@ public sealed class SceneView : FrameworkElement
 
     // MARK: Drawing an item
 
-    private ItemVisual BuildContent(AnimatedItem animated, double ppd, Action<string> usesKey)
+    /// <summary>
+    /// Where text on a path sits this frame (null for other items, and for a ticker with nothing to show
+    /// now). Live views move tickers; thumbnails and the editor show them at rest, unless the scene is
+    /// frozen at an instant (scrubbing, the self-test's pictures).
+    /// </summary>
+    private PathTextRenderer.Pose? PathTextPose(AnimatedItem item, double ppd, double now)
+    {
+        if (item.Render.Content is not ItemContent.Text { Styled: var text } || !PathTextLayout.IsPathText(text)) return null;
+        var frozen = item.AnimationContext?.FrozenHostTime;
+        var moving = (PlaysVideo || frozen is not null) && frozen != AnimationContext.Settled.FrozenHostTime;
+        var anchor = item.TickerAnchorHostTime ?? item.AnimationContext?.AnchorHostTime;
+        return PathTextRenderer.PoseAt(text, item.Render.Frame, ppd, frozen ?? now, anchor, moving);
+    }
+
+    private ItemVisual BuildContent(AnimatedItem animated, double ppd, PathTextRenderer.Pose? pathPose, Action<string> usesKey)
     {
         var item = animated.Render;
         var visual = new ItemVisual();
@@ -800,6 +875,11 @@ public sealed class SceneView : FrameworkElement
         {
             switch (item.Content)
             {
+                case ItemContent.Text text when PathTextLayout.IsPathText(text.Styled):
+                    // Along its path (a ticker, or text round a shape's edge) instead of as a block.
+                    if (pathPose is { } pose) PathTextRenderer.Draw(dc, text.Styled, item.Frame, ppd, pose);
+                    visual.Effect = ShadowEffect(text.Styled.Shadow);
+                    break;
                 case ItemContent.Text text:
                     DrawText(dc, text.Styled, item.Frame, ppd, animated.HiddenRuns);
                     visual.Effect = ShadowEffect(text.Styled.Shadow);
@@ -839,6 +919,16 @@ public sealed class SceneView : FrameworkElement
         if (string.IsNullOrEmpty(text.String)) return;
         var layout = TextLayout.Build(text, frame, ppd);
         if (layout.Lines.Count == 0) return;
+        // Words that don't fit are cut off at the box's edge, as the Mac draws them (and as the
+        // slide grid's warning says), rather than spilling over what's around the box.
+        var clipped = layout.Overflows;
+        if (clipped) dc.PushClip(new RectangleGeometry(new Rect(frame.X, frame.Y, Math.Max(0, frame.Width), Math.Max(0, frame.Height))));
+        DrawLaidOutText(dc, text, frame, layout, hidden);
+        if (clipped) dc.Pop();
+    }
+
+    private static void DrawLaidOutText(DrawingContext dc, StyledText text, SceneRect frame, TextLayout layout, IReadOnlyList<HiddenTextRun> hidden)
+    {
 
         if (text.LineFill is { } lineFill && Painting.FillBrush(lineFill.Fill, Bounds(layout)) is { } fillBrush)
         {
@@ -956,7 +1046,7 @@ public sealed class SceneView : FrameworkElement
         {
             if (fillOpacity < 1) dc.PushOpacity(fillOpacity);
             if (style.Fill is SceneFill.Media mediaFill)
-                DrawMedia(dc, mediaFill.Id, mediaFill.ScaleMode, frame, item, usesKey, geometry);
+                DrawMedia(dc, mediaFill.Id, mediaFill.ScaleMode, frame, item, usesKey, geometry, isFill: true);
             else if (Painting.FillBrush(style.Fill, frame) is { } brush)
                 dc.DrawGeometry(brush, null, geometry);
             if (fillOpacity < 1) dc.Pop();
@@ -1046,19 +1136,51 @@ public sealed class SceneView : FrameworkElement
         }
     }
 
-    private void DrawMedia(DrawingContext dc, string mediaId, SceneMediaScaleMode mode, Rect frame, RenderItem item, Action<string> usesKey, Geometry clip)
+    /// <summary>
+    /// A camera, NDI source or mirrored screen: its picture updates in place as frames arrive, and
+    /// the view keeps it coming for as long as it shows it (<see cref="MediaHub.LiveKey"/>). On the
+    /// Video Input layer it says "Waiting for…" until the first frame. As a shape's fill (a
+    /// picture-in-picture camera on a slide), live views draw nothing until then, as the Mac does,
+    /// and thumbnails and the editor always draw the Mac's placeholder instead of the live picture.
+    /// </summary>
+    private void DrawLivePicture(DrawingContext dc, string mediaId, SceneMediaScaleMode mode, Rect frame, Action<string> usesKey, bool isFill)
+    {
+        if (isFill && !PlaysVideo)
+        {
+            if (LiveInputPlaceholder.For(mediaId) is { } glyph)
+                LiveInputPlaceholder.Draw(dc, glyph, Place(LiveInputPlaceholder.NaturalSize, frame, mode));
+            return;
+        }
+        usesKey(MediaHub.LiveKey(mediaId));
+        if (media!.LiveInputPicture(mediaId) is { } picture)
+            dc.DrawImage(picture, Place(new Size(picture.PixelWidth, picture.PixelHeight), frame, mode));
+        else if (!isFill)
+            DrawPlaceholder(dc, frame, $"Waiting for {media.LiveInputName?.Invoke(mediaId) ?? "the input"}…", failed: false);
+    }
+
+    /// <summary>Holds a video player or a live picture while an item draws it.</summary>
+    private void RetainKey(string key)
+    {
+        if (MediaHub.IsLiveKey(key)) media?.RetainLive(key);
+        else media?.Retain(key);
+    }
+
+    private void ReleaseKey(string key)
+    {
+        if (MediaHub.IsLiveKey(key)) media?.ReleaseLive(key);
+        else media?.Release(key);
+    }
+
+    private void DrawMedia(DrawingContext dc, string mediaId, SceneMediaScaleMode mode, Rect frame, RenderItem item, Action<string> usesKey, Geometry clip,
+        bool isFill = false)
     {
         if (media is null || frame.Width <= 0 || frame.Height <= 0) return;
         dc.PushClip(clip);
         try
         {
-            if (MediaHub.IsLiveInput(mediaId))
+            if (MediaHub.IsLivePicture(mediaId))
             {
-                // A camera or NDI source: its picture updates in place as frames arrive.
-                if (media.LiveInputPicture(mediaId) is { } picture)
-                    dc.DrawImage(picture, Place(new Size(picture.PixelWidth, picture.PixelHeight), frame, mode));
-                else
-                    DrawPlaceholder(dc, frame, $"Waiting for {media.LiveInputName?.Invoke(mediaId) ?? "the input"}…", failed: false);
+                DrawLivePicture(dc, mediaId, mode, frame, usesKey, isFill);
                 return;
             }
             switch (media.KindOf(mediaId))

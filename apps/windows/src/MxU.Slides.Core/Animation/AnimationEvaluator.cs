@@ -69,7 +69,9 @@ public static class AnimationEvaluator
     /// </summary>
     public static List<ResolvedItem> Resolve(AnimatedItem item, SceneSize canvasSize, double hostTime, TextBlockHeight? blockHeight = null)
     {
-        if (item.Render.Content is not ItemContent.Text { Styled: var text } || item.Scroll is not { Speed: > 0 } scroll)
+        // Text on a path flows along it (a ticker) rather than rolling as a block, as on the Mac.
+        if (item.Render.Content is not ItemContent.Text { Styled: var text } || item.Scroll is not { Speed: > 0 } scroll
+            || PathTextLayout.IsPathText(text))
             return ResolveBuilds(item, canvasSize, hostTime);
 
         if (item.AnimationContext?.FrozenHostTime == AnimationContext.Settled.FrozenHostTime)

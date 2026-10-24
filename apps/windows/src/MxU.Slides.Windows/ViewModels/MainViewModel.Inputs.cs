@@ -49,8 +49,10 @@ public sealed partial class MainViewModel
             if (inputs is not null) return inputs;
             inputs = new VideoInputInventory(Path.Combine(AppPaths.DataRoot, "video-inputs.json"));
             inputs.EntriesChanged += () => System.Windows.Application.Current?.Dispatcher.BeginInvoke(RefreshInputs);
-            Media.LiveFrames = engineId => inputs.LatestFrame(engineId);
-            Media.LiveInputName = engineId => inputs.EntryForEngineId(engineId)?.Name;
+            // A slide can also name a device directly (an older Mac document): it shows through the input that uses that device.
+            Media.LiveFrames = engineId => inputs.LatestFrame(NamedInputFor(engineId));
+            Media.LiveInputName = engineId => inputs.EntryForEngineId(NamedInputFor(engineId))?.Name;
+            Media.ScreenFrames = engineId => ScreenMirrors.LatestFrame(engineId);
             return inputs;
         }
     }

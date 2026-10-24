@@ -265,6 +265,30 @@ public static class SlideSceneBuilder
         return scene;
     }
 
+    /// <summary>
+    /// The slide's text objects whose words don't fit their box, so the output cuts them off: the
+    /// slide grid marks such slides with a warning. Text that shows all its words its own way (on a
+    /// path, a ticker, a block scroll) never counts, and nor does the design's own text. A shape's text
+    /// counts as the shape. Port of SlideSceneBuilder.clippedTextObjectIDs; <paramref name="overflows"/>
+    /// is the renderer's measure (TextRasterizer.overflows on the Mac, TextLayout.OverflowsFrame here).
+    /// </summary>
+    /// <param name="scene">The slide's scene, as <see cref="Scene"/> builds it (with a pager, text that pages shows its first page, which fits).</param>
+    public static List<string> ClippedTextObjectIds(Slide slide, RenderScene scene, Func<StyledText, SceneSize, bool> overflows)
+    {
+        var objectIds = slide.Objects.Select(o => o.Id).ToHashSet();
+        var clipped = new List<string>();
+        foreach (var item in scene[LayerKind.Slide].Items)
+        {
+            if (item.Content is not ItemContent.Text { Styled: var styled }
+                || styled.PathData is not null || styled.TickerSpeed != 0 || styled.Scroll is not null)
+                continue;
+            var baseId = item.Id.EndsWith("::text", StringComparison.Ordinal) ? item.Id[..^"::text".Length] : item.Id;
+            if (!objectIds.Contains(baseId) || clipped.Contains(baseId)) continue;
+            if (overflows(styled, new SceneSize(item.Frame.Width, item.Frame.Height))) clipped.Add(baseId);
+        }
+        return clipped;
+    }
+
     /// <summary>Adds a slide's own objects, composed with its theme design, to the slide layer.</summary>
     public static void AddSlideObjects(
         RenderScene scene, IReadOnlyList<SlideObject> objects, Theme? theme, Slide? template,
@@ -390,12 +414,43 @@ public static class SlideSceneBuilder
 
         // Text inside a shape renders as a second item over it.
         var text = StyledTextFor(o, theme, null);
+        switch (o.ShapeTextPlacement ?? ShapeTextPlacement.Inside)
+        {
+            case ShapeTextPlacement.Inside:
+                text = text with { PathData = null, PathReversed = false };
+                break;
+            default:
+                // On the shape's edge: the text runs along its outline, outside it or (reversed, so it
+                // reads upright) inside it. The offset points away from the shape either way.
+                var placement = o.ShapeTextPlacement!.Value;
+                var frame = primary.Frame;
+                if (ShapeOutlineSvg.PathData(o.ShapeKind, new SceneSize(frame.Width, frame.Height),
+                        o.ShapeTextCornerRadius ?? o.CornerRadius, o.PathData, placement) is not { } outline)
+                    return [primary];
+                var inside = placement == ShapeTextPlacement.EdgeInside;
+                text = text with
+                {
+                    PathData = outline,
+                    PathReversed = inside,
+                    PathOffset = (o.TextStyle?.PathOffset ?? 0) * (inside ? -1 : 1),
+                };
+                break;
+        }
         return
         [
             primary,
             primary with { Id = $"{id}::text", Content = new ItemContent.Text(text), BlurRadius = 0 },
         ];
     }
+
+    /// <summary>The scene's easing for a document ramp (SlideSceneBuilder.sceneRamp).</summary>
+    public static Animation.SceneAnimationRamp SceneRamp(AnimationRamp? ramp) => ramp switch
+    {
+        AnimationRamp.In => Animation.SceneAnimationRamp.EaseIn,
+        AnimationRamp.Out => Animation.SceneAnimationRamp.EaseOut,
+        AnimationRamp.Both => Animation.SceneAnimationRamp.EaseInOut,
+        _ => Animation.SceneAnimationRamp.None,
+    };
 
     /// <summary>Chord display (transposition and notation).</summary>
     public static Func<List<ChordPlacement>, string?, string?, ChordNotation, List<ChordPlacement>> DisplayChords { get; set; } =
@@ -465,6 +520,20 @@ public static class SlideSceneBuilder
             ParagraphSpacing = V(s => s.ParagraphSpacing) ?? 0,
             Underline = V(s => s.Underline) ?? false,
             Strikethrough = V(s => s.Strikethrough) ?? false,
+            // Text on a path and tickers. Inside a shape's edge the text runs the other way and its
+            // offset points inwards, so it reads upright (as the Mac's styledText does).
+            PathData = R(s => s.PathData),
+            TickerSpeed = V(s => s.TickerSpeed) ?? 0,
+            PathReversed = V(s => s.PathSide) == TextPathSide.Inside,
+            PathOffset = (V(s => s.PathOffset) ?? 0) * (V(s => s.PathSide) == TextPathSide.Inside ? -1 : 1),
+            TickerRepeat = V(s => s.TickerRepeat) ?? 0,
+            TickerLeftToRight = V(s => s.TickerDirection) == TickerDirection.LeftToRight,
+            TickerStream = V(s => s.TickerStream) ?? false,
+            TickerGap = V(s => s.TickerGap) ?? 0,
+            TickerSeparator = R(s => s.TickerSeparator) ?? "",
+            WordSpacing = V(s => s.WordSpacing) ?? 0,
+            TickerRamp = SceneRamp(V(s => s.TickerRamp)),
+            Scroll = R(s => s.Scroll) is { } scroll ? Animation.AnimatedItems.BlockScroll(scroll) : null,
             StyleRuns = (o.StyleRuns ?? [])
                 .Select(r => new StyleRun(r.Line, r.Column, r.Length, r.Underline, r.Strikethrough, r.FontName, r.FontSize,
                     ColorHex.Color(r.ColorHex), ColorHex.Color(r.HighlightColorHex)))
@@ -542,12 +611,83 @@ public static class SlideSceneBuilder
             case FillKind.LinearGradient:
                 return (SceneFill?)Gradient(fill) ?? new SceneFill.Solid(SceneColor.White);
             default:
-                if (!string.IsNullOrEmpty(fill.ScreenSourceId) || !string.IsNullOrEmpty(fill.LiveInputId)
-                    || !string.IsNullOrEmpty(fill.CaptureSourceId) || fill.CaptureSourceKind is not null)
-                    return SceneFill.None; // Live inputs and screen mirrors arrive in a later phase.
+                // A screen mirror wins over a live input, which wins over a library file, as on the Mac.
+                if (!string.IsNullOrEmpty(fill.ScreenSourceId))
+                    return new SceneFill.Media(ScreenMirrorEngineId(fill.ScreenSourceId), ScaleMode(fill.MediaScaleMode));
+                if (FillInputEngineId(fill) is { } input)
+                    return new SceneFill.Media(input, ScaleMode(fill.MediaScaleMode));
                 if (string.IsNullOrEmpty(fill.MediaId)) return SceneFill.None;
                 return new SceneFill.Media(fill.MediaId, ScaleMode(fill.MediaScaleMode), SourceRect(fill.MediaSourceRect));
         }
+    }
+
+    // MARK: Live inputs and screen mirrors as fills (a picture-in-picture camera on a slide)
+
+    /// <summary>
+    /// The engine id of a live-input object: a named input from the inventory (<c>input::item::id</c>),
+    /// else the legacy direct device reference (<c>input::camera::deviceId</c>, <c>input::ndi::name</c>).
+    /// </summary>
+    public static string LiveInputEngineId(SlideObject o)
+    {
+        if (!string.IsNullOrEmpty(o.LiveInputId)) return $"input::item::{o.LiveInputId}";
+        var kind = o.CaptureSourceKind == CaptureSourceKind.Ndi ? "ndi" : "camera";
+        return $"input::{kind}::{o.CaptureSourceId ?? ""}";
+    }
+
+    /// <summary>A mirror of one of this app's screens (what that screen's outputs show), drawn like a live input.</summary>
+    public static string ScreenMirrorEngineId(string screenId) => $"screen::{screenId}";
+
+    /// <summary>The screen a shape's fill mirrors, as an engine id, or null.</summary>
+    public static string? FillScreenMirrorId(SlideObject source)
+    {
+        var o = SlideObjectNormalization.Normalized(source);
+        if (o.ObjectKind != SlideObjectKind.Shape || o.Fill is not { FillKind: FillKind.Media } fill || string.IsNullOrEmpty(fill.ScreenSourceId)) return null;
+        return ScreenMirrorEngineId(fill.ScreenSourceId);
+    }
+
+    /// <summary>The library media a shape's fill shows, or null (a live input or a mirror isn't library media).</summary>
+    public static string? FillMediaId(SlideObject source)
+    {
+        var o = SlideObjectNormalization.Normalized(source);
+        if (o.ObjectKind != SlideObjectKind.Shape || o.Fill is not { FillKind: FillKind.Media } fill
+            || !string.IsNullOrEmpty(fill.ScreenSourceId) || FillInputEngineId(fill) is not null || string.IsNullOrEmpty(fill.MediaId))
+            return null;
+        return fill.MediaId;
+    }
+
+    /// <summary>The live input a shape's fill shows (an assigned one: a named input or a device), as an engine id, or null.</summary>
+    public static string? FillLiveInputId(SlideObject source)
+    {
+        var o = SlideObjectNormalization.Normalized(source);
+        if (o.ObjectKind != SlideObjectKind.Shape || o.Fill is not { FillKind: FillKind.Media } fill
+            || !string.IsNullOrEmpty(fill.ScreenSourceId)
+            || string.IsNullOrEmpty(fill.LiveInputId) && string.IsNullOrEmpty(fill.CaptureSourceId))
+            return null;
+        return FillInputEngineId(fill);
+    }
+
+    private static string? FillInputEngineId(ObjectFill fill)
+    {
+        if (!string.IsNullOrEmpty(fill.LiveInputId)) return $"input::item::{fill.LiveInputId}";
+        if (fill.CaptureSourceKind is null && string.IsNullOrEmpty(fill.CaptureSourceId)) return null;
+        var kind = fill.CaptureSourceKind == CaptureSourceKind.Ndi ? "ndi" : "camera";
+        return $"input::{kind}::{fill.CaptureSourceId ?? ""}";
+    }
+
+    /// <summary>
+    /// What a set of objects needs opened to draw: library media and live inputs (with whether they
+    /// loop), then screen mirrors. An unassigned live input wants nothing (it draws its placeholder).
+    /// Port of SlideSceneBuilder.mediaWants.
+    /// </summary>
+    public static Dictionary<string, bool?> MediaWants(IEnumerable<SlideObject> objects)
+    {
+        var normalized = SlideObjectNormalization.Normalized(objects);
+        var wanted = new Dictionary<string, bool?>(StringComparer.Ordinal);
+        foreach (var o in normalized)
+            if ((FillMediaId(o) ?? FillLiveInputId(o)) is { } id) wanted.TryAdd(id, o.Fill?.Loops);
+        foreach (var o in normalized)
+            if (FillScreenMirrorId(o) is { } id) wanted.TryAdd(id, null);
+        return wanted;
     }
 
     public static SceneMediaScaleMode ScaleMode(MediaScaleMode? mode) => mode switch

@@ -24,6 +24,7 @@ public sealed partial class MainViewModel : ObservableObject
         Settings = settings;
         Session = session;
         Media = new MediaHub(ResolveMedia) { VideoVolume = settings.VideoVolume, PosterCache = Path.Combine(AppPaths.LocalRoot, "Posters") };
+        Media.TrimOf = TrimFor; // each video's in point, out point and play rate (MainViewModel.Rendering.cs)
         SceneView.DefaultMedia = Media;
         Library.Changed += OnLibraryChanged;
 
@@ -296,7 +297,7 @@ public sealed partial class MainViewModel : ObservableObject
             for (var i = 0; i < arranged.Count; i++)
             {
                 var slide = arranged[i];
-                var scene = SlideSceneBuilder.Scene(slide, CurrentTheme, p, arrangementId, pager: Rendering.TextLayout.Pager);
+                var scene = SlideSceneBuilder.Scene(slide, ThemeFor(slide, p), p, arrangementId, pager: Rendering.TextLayout.Pager);
                 Slides.Add(new SlideTileViewModel(i, slide, scene, GroupNames.For(slide, p), GroupNames.ColorFor(slide, p),
                     starts.Contains(i) || i == 0));
             }

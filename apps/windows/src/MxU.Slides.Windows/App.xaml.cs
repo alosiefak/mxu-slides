@@ -100,6 +100,8 @@ public partial class App : Application
             if (library.IsNew || library.Count<Core.Model.Theme>() == 0) LibrarySeeder.Seed(library);
             else LibrarySeeder.RefreshStarterPacks(library);
             if (library.IsNew) StarterBackgrounds.AddTo(library);
+            // The library's own fonts (decks' embedded fonts), loaded for drawing as the Mac does at launch.
+            Rendering.FontMap.ActivateStored(library.Root);
             foreach (var problem in library.LoadProblems) Log.Warn($"Library: {problem}");
             try
             {
