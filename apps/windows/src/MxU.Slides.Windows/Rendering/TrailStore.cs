@@ -24,8 +24,19 @@ internal static class TrailStore
     /// <summary>The trail picture's longest side, in pixels.</summary>
     public const int MaxSide = 384;
 
-    /// <summary>A view drawing within this long after another reuses its update (the same screen refresh).</summary>
-    private const double SameFrame = 0.004;
+    // WPF frames seen so far. Views draw one after another within a frame, several milliseconds
+    // apart, so "the same frame" is counted, not timed: the first view to draw an item in a frame
+    // advances its trail, and the rest reuse it. (Timing it advanced the trail once per view, which
+    // blew the ghost's smoke away three times too fast on a quick PC.)
+    private static long frame;
+    private static bool counting;
+
+    private static void CountFrames()
+    {
+        if (counting) return;
+        counting = true;
+        CompositionTarget.Rendering += (_, _) => frame++;
+    }
 
     private const double Forget = 5;
 
@@ -39,7 +50,7 @@ internal static class TrailStore
         public ImageBrush? Brush;
         public uint[] FreshPixels = [];
         public uint[] TrailPixels = [];
-        public double UpdatedAt = double.NegativeInfinity;
+        public long UpdatedInFrame = -1;
         public double LastUsed;
         public Trail Result = Trail.None;
     }
@@ -62,8 +73,9 @@ internal static class TrailStore
     {
         if (!Entries.TryGetValue(key, out var entry)) Entries[key] = entry = new Entry();
         entry.LastUsed = now;
-        if (now - entry.UpdatedAt is >= 0 and < SameFrame) return entry.Result;
-        entry.UpdatedAt = now;
+        CountFrames();
+        if (entry.UpdatedInFrame == frame) return entry.Result;
+        entry.UpdatedInFrame = frame;
         try
         {
             var scale = Math.Min(1, MaxSide / Math.Max(1, Math.Max(region.Width, region.Height)));

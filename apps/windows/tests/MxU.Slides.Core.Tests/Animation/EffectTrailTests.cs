@@ -98,6 +98,47 @@ public class EffectTrailTests
     }
 
     [Fact]
+    public void GhostTrailsDriftAtTheSameSpeedWhateverTheFrameRate()
+    {
+        // Half a second of smoke from a square, advanced 60 or 180 times a second. How much smoke is left
+        // (the sum of its coverage) must be the same, near enough: neither the push nor the fading may
+        // depend on how often the trail is advanced (a quick PC advances it more often).
+        (long Smoke, int Covered) Run(int framesPerSecond)
+        {
+            var trail = new EffectTrail();
+            const int size = 48;
+            var output = new uint[size * size];
+            var ghost = new AnimationEffect.GhostTrails(1.5, 3, 16, 0.5);
+            var square = Picture(size, size, (x, y) => x is >= 16 and < 32 && y is >= 16 and < 32 ? White : Clear);
+            var empty = Picture(size, size, (_, _) => Clear);
+            trail.Advance(square, size, size, 5, ghost, 1, output);
+            for (var frame = 1; frame <= framesPerSecond / 2; frame++)
+                trail.Advance(empty, size, size, 5 + frame / (double)framesPerSecond, ghost, 1, output);
+            return (output.Sum(p => (long)Alpha(p)), output.Count(p => Alpha(p) > 24));
+        }
+        var at60 = Run(60);
+        var at180 = Run(180);
+        Assert.True(at60.Smoke > 0);
+        Assert.True(at180.Smoke > at60.Smoke * 0.8 && at180.Smoke < at60.Smoke * 1.25,
+            $"smoke {at60.Smoke} at 60 fps, {at180.Smoke} at 180 (covering {at60.Covered} and {at180.Covered} pixels)");
+    }
+
+    [Fact]
+    public void AFaintTrailFadesAllTheWayAway()
+    {
+        // Whole-step maths rounded a faint value back up for ever, leaving a haze: the history keeps fractions.
+        var trail = new EffectTrail();
+        const int size = 8;
+        var output = new uint[size * size];
+        var echo = new AnimationEffect.Echo(0.5);
+        var dim = Picture(size, size, (_, _) => 0x14141414);
+        var empty = Picture(size, size, (_, _) => Clear);
+        trail.Advance(dim, size, size, 1, echo, 1, output);
+        for (var frame = 1; frame <= 180; frame++) trail.Advance(empty, size, size, 1 + frame / 60.0, echo, 1, output);
+        Assert.All(output, p => Assert.Equal(Clear, p));
+    }
+
+    [Fact]
     public void TheNoisePushStaysInRange()
     {
         for (var i = 0; i < 200; i++)

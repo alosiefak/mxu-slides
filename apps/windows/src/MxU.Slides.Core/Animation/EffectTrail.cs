@@ -25,10 +25,17 @@ public sealed class EffectTrail
     /// <summary>A history older than this is stale (the item was off screen): start again. The Mac's Compositor.historyGap.</summary>
     public const double HistoryGap = 0.5;
 
-    private uint[] history = [];
+    // The history, four channels a pixel (blue, green, red, alpha, premultiplied, 0-255), kept as
+    // fractions rather than whole steps. The Mac keeps it on the graphics card in floating point. With
+    // whole steps, mixing every frame either rounded a step away each time (eating the trail on a PC
+    // that draws often) or never faded the faintest values (leaving a haze). Only the trail handed back
+    // is rounded.
+    private float[] history = [];
+    private float[] moved = [];
     private double lastTime = double.NaN;
 
     public int Width { get; private set; }
+
     public int Height { get; private set; }
 
     /// <summary>When the trail last took a frame (host-time seconds), or NaN before the first.</summary>
@@ -41,6 +48,7 @@ public sealed class EffectTrail
     public void Reset()
     {
         history = [];
+        moved = [];
         Width = Height = 0;
         lastTime = double.NaN;
     }
@@ -63,46 +71,63 @@ public sealed class EffectTrail
             AnimationEffect.GhostTrails g => (g.Fade, g),
             _ => throw new ArgumentException("Only Echo and Ghost Trails keep a trail.", nameof(effect)),
         };
-
         var elapsed = now - lastTime;
-        var usable = width == Width && height == Height && history.Length == count && elapsed is >= 0 and <= HistoryGap;
+        var usable = width == Width && height == Height && history.Length == count * 4 && elapsed is >= 0 and <= HistoryGap;
         lastTime = now;
         if (!usable)
         {
             // Start a new trail from this frame; there is nothing to draw behind it yet.
             Width = width;
             Height = height;
-            history = fresh[..count].ToArray();
+            history = new float[count * 4];
+            moved = new float[count * 4];
+            for (var i = 0; i < count; i++) Unpack(fresh[i], history, i * 4);
             trail[..count].Clear();
             return null;
         }
-
         var keep = Keep(Math.Max(elapsed, 1.0 / 240), fade);
-        var k = (int)Math.Round(keep * 256);
+        var k = (float)keep;
         if (ghost is null)
         {
-            // compositor_echo: trail = history × keep; history = max(fresh, trail).
+            // compositor_echo: trail = history x keep; history = max(fresh, trail).
             for (var i = 0; i < count; i++)
             {
-                var t = Scale(history[i], k);
-                trail[i] = t;
-                history[i] = Max(fresh[i], t);
+                var o = i * 4;
+                var f = fresh[i];
+                for (var c = 0; c < 4; c++)
+                {
+                    var t = history[o + c] * k;
+                    moved[o + c] = t;
+                    history[o + c] = Math.Max((f >> (c * 8)) & 0xFF, t);
+                }
+                trail[i] = Pack(moved, o);
             }
         }
         else
         {
             // compositor_ghost_trails: the history sampled where the noise pushes it, then mixed with fresh.
-            Displace(trail, width, height, now, ghost, pixelsPerUnit);
-            for (var i = 0; i < count; i++) history[i] = Lerp(fresh[i], trail[i], k);
+            // The Mac pushes it once per 60 Hz frame; here the push is scaled by the time since the last
+            // frame, so the smoke drifts at the same speed however often the trail is advanced.
+            var share = Math.Clamp(elapsed * 60, 0.05, 4);
+            Displace(width, height, now, ghost, pixelsPerUnit, share);
+            for (var i = 0; i < count; i++)
+            {
+                var o = i * 4;
+                trail[i] = Pack(moved, o);
+                var f = fresh[i];
+                for (var c = 0; c < 4; c++)
+                    history[o + c] = ((f >> (c * 8)) & 0xFF) * (1 - k) + moved[o + c] * k;
+            }
         }
         return keep;
     }
 
     // Samples the history at each pixel moved by the warp noise (2 octaves, as the Mac's warp_noise),
-    // with bilinear filtering and edge clamping. The offsets come from a coarse grid, smoothly filled in.
-    private void Displace(Span<uint> trail, int width, int height, double now, AnimationEffect.GhostTrails ghost, double pixelsPerUnit)
+    // with bilinear filtering and edge clamping, into `moved`. The offsets come from a coarse grid,
+    // smoothly filled in. driftShare scales only how far it moves this frame (the noise's size stays put).
+    private void Displace(int width, int height, double now, AnimationEffect.GhostTrails ghost, double pixelsPerUnit, double driftShare)
     {
-        var drift = ghost.Drift * pixelsPerUnit;
+        var drift = ghost.Drift * pixelsPerUnit * driftShare;
         var cell = Math.Max(ghost.Scale * pixelsPerUnit, 1);
         var z = now * ghost.Speed;
         var step = Math.Clamp((int)(cell / 4), 1, 8);
@@ -130,7 +155,7 @@ public sealed class EffectTrail
                 var i00 = gy * gw + gx;
                 var dx = Bilerp(ox[i00], ox[i00 + 1], ox[i00 + gw], ox[i00 + gw + 1], fx, fy);
                 var dy = Bilerp(oy[i00], oy[i00 + 1], oy[i00 + gw], oy[i00 + gw + 1], fx, fy);
-                trail[y * width + x] = Sample(x + dx, y + dy, width, height);
+                Sample(x + dx, y + dy, width, height, (y * width + x) * 4);
             }
         }
     }
@@ -138,7 +163,7 @@ public sealed class EffectTrail
     private static float Bilerp(float a, float b, float c, float d, float fx, float fy) =>
         (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fy;
 
-    /// <summary>The noise push at a point (in noise cells), each axis in −0.5…0.5. Port of the ghost shader's nx/ny.</summary>
+    /// <summary>The noise push at a point (in noise cells), each axis in -0.5..0.5. Port of the ghost shader's nx/ny.</summary>
     public static (double X, double Y) NoiseOffset(double px, double py, double z)
     {
         var nx = Noise(px, py, z) * 0.7 + Noise(px * 2 + 17, py * 2 + 17, z * 2 + 17) * 0.3 - 0.5;
@@ -146,8 +171,8 @@ public sealed class EffectTrail
         return (nx, ny);
     }
 
-    // Bilinear sample of the history at a pixel position (pixel centres at +0.5), clamped to the edges.
-    private uint Sample(double x, double y, int width, int height)
+    // Bilinear sample of the history at a pixel position, clamped to the edges, into moved[into..into+3].
+    private void Sample(double x, double y, int width, int height, int into)
     {
         x = Math.Clamp(x, 0, width - 1);
         y = Math.Clamp(y, 0, height - 1);
@@ -155,32 +180,28 @@ public sealed class EffectTrail
         var y0 = (int)y;
         var x1 = Math.Min(x0 + 1, width - 1);
         var y1 = Math.Min(y0 + 1, height - 1);
-        var wx = (int)((x - x0) * 256);
-        var wy = (int)((y - y0) * 256);
-        var top = Lerp(history[y0 * width + x0], history[y0 * width + x1], wx);
-        var bottom = Lerp(history[y1 * width + x0], history[y1 * width + x1], wx);
-        return Lerp(top, bottom, wy);
+        var wx = (float)(x - x0);
+        var wy = (float)(y - y0);
+        int a = (y0 * width + x0) * 4, b = (y0 * width + x1) * 4, c = (y1 * width + x0) * 4, d = (y1 * width + x1) * 4;
+        for (var ch = 0; ch < 4; ch++)
+        {
+            var top = history[a + ch] + (history[b + ch] - history[a + ch]) * wx;
+            var bottom = history[c + ch] + (history[d + ch] - history[c + ch]) * wx;
+            moved[into + ch] = top + (bottom - top) * wy;
+        }
     }
 
-    // Per channel, k in 0…256.
-    private static uint Scale(uint c, int k) =>
-        (((c >> 24) * (uint)k >> 8) << 24) | ((((c >> 16) & 0xFF) * (uint)k >> 8) << 16)
-        | ((((c >> 8) & 0xFF) * (uint)k >> 8) << 8) | ((c & 0xFF) * (uint)k >> 8);
-
-    private static uint Max(uint a, uint b) =>
-        Math.Max(a & 0xFF000000, b & 0xFF000000) | Math.Max(a & 0xFF0000, b & 0xFF0000)
-        | Math.Max(a & 0xFF00, b & 0xFF00) | Math.Max(a & 0xFF, b & 0xFF);
-
-    /// <summary>a → b by k/256, per channel.</summary>
-    private static uint Lerp(uint a, uint b, int k)
+    private static void Unpack(uint pixel, float[] into, int at)
     {
-        uint Channel(int shift)
-        {
-            var ca = (int)((a >> shift) & 0xFF);
-            var cb = (int)((b >> shift) & 0xFF);
-            return (uint)((ca * (256 - k) + cb * k) >> 8) << shift;
-        }
-        return Channel(24) | Channel(16) | Channel(8) | Channel(0);
+        for (var c = 0; c < 4; c++) into[at + c] = (pixel >> (c * 8)) & 0xFF;
+    }
+
+    // Four channels back into one premultiplied BGRA pixel, each rounded to the nearest step.
+    private static uint Pack(float[] channels, int at)
+    {
+        uint pixel = 0;
+        for (var c = 0; c < 4; c++) pixel |= (uint)Math.Clamp((int)(channels[at + c] + 0.5f), 0, 255) << (c * 8);
+        return pixel;
     }
 
     // The Mac's warp_hash and warp_noise (value noise with a smoothstep blend).
