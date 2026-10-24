@@ -1,0 +1,122 @@
+<UserControl x:Class="MxU.Slides.Windows.Views.ObjectInspectorPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:MxU.Slides.Windows.Views">
+    <!--
+        The object inspector as a reusable panel: give it an ObjectInspectorViewModel as its
+        DataContext. It shows the same settings as the main window's Edit-mode inspector, plus
+        the label, what a text box shows, and the Mask section (when the view model has Siblings).
+    -->
+    <UserControl.Resources>
+        <v:BoolToVisibility x:Key="Visible" />
+    </UserControl.Resources>
+    <StackPanel>
+        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Margin="0,0,0,6" TextTrimming="CharacterEllipsis" />
+        <DockPanel Margin="0,0,0,6">
+            <TextBlock Text="Label" Style="{StaticResource Muted}" Width="56" VerticalAlignment="Center"
+                       ToolTip="The name shown in lists, and beside a text field when you type into the overlay" />
+            <TextBox Text="{Binding Name, UpdateSourceTrigger=LostFocus}" KeyDown="NumberBox_KeyDown" />
+        </DockPanel>
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+            <TextBlock Text="X" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+            <TextBox Text="{Binding X, UpdateSourceTrigger=LostFocus}" Width="56" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
+            <TextBlock Text="Y" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+            <TextBox Text="{Binding Y, UpdateSourceTrigger=LostFocus}" Width="56" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
+            <TextBlock Text="W" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+            <TextBox Text="{Binding W, UpdateSourceTrigger=LostFocus}" Width="56" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
+            <TextBlock Text="H" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+            <TextBox Text="{Binding H, UpdateSourceTrigger=LostFocus}" Width="56" KeyDown="NumberBox_KeyDown" />
+        </StackPanel>
+        <DockPanel Margin="0,0,0,6">
+            <TextBlock DockPanel.Dock="Left" Text="↻" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" ToolTip="Rotation (degrees)" />
+            <TextBox DockPanel.Dock="Left" Text="{Binding Rotation, UpdateSourceTrigger=LostFocus}" Width="48" Margin="0,0,12,0" KeyDown="NumberBox_KeyDown"
+                     ToolTip="Rotation (degrees)" />
+            <TextBlock DockPanel.Dock="Left" Text="Opacity" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <Slider Minimum="0" Maximum="100" Value="{Binding Opacity}" VerticalAlignment="Center" />
+        </DockPanel>
+
+        <!-- Text -->
+        <StackPanel Visibility="{Binding IsText, Converter={StaticResource Visible}}">
+            <DockPanel Margin="0,0,0,6">
+                <TextBlock Text="Shows" Style="{StaticResource Muted}" Width="56" VerticalAlignment="Center" />
+                <ComboBox ItemsSource="{Binding TextSources}" SelectedItem="{Binding TextSource}"
+                          ToolTip="Typed text is a field you fill in before putting the overlay up; the others fill themselves in" />
+            </DockPanel>
+            <TextBox x:Name="InspectorText" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True"
+                     TextWrapping="Wrap" MinHeight="48" Margin="0,0,0,6" Visibility="{Binding IsTyped, Converter={StaticResource Visible}}" />
+            <DockPanel Margin="0,0,0,6">
+                <ToggleButton DockPanel.Dock="Right" IsChecked="{Binding Italic}" Content="I" FontStyle="Italic" Width="30" ToolTip="Italic" />
+                <ToggleButton DockPanel.Dock="Right" IsChecked="{Binding Bold}" Content="B" FontWeight="Bold" Width="30" Margin="0,0,2,0" ToolTip="Bold" />
+                <TextBox DockPanel.Dock="Right" Text="{Binding FontSize, UpdateSourceTrigger=LostFocus}" Width="44" Margin="6,0,6,0" ToolTip="Size" KeyDown="NumberBox_KeyDown" />
+                <ComboBox ItemsSource="{Binding FontChoices}" SelectedItem="{Binding FontFamily}" ToolTip="Font" />
+            </DockPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                <ComboBox SelectedIndex="{Binding Alignment}" Width="84" Margin="0,0,6,0" ToolTip="Horizontal alignment">
+                    <ComboBoxItem Content="Left" />
+                    <ComboBoxItem Content="Centre" />
+                    <ComboBoxItem Content="Right" />
+                </ComboBox>
+                <ComboBox SelectedIndex="{Binding VerticalAlignment}" Width="84" Margin="0,0,10,0" ToolTip="Vertical alignment">
+                    <ComboBoxItem Content="Top" />
+                    <ComboBoxItem Content="Middle" />
+                    <ComboBoxItem Content="Bottom" />
+                </ComboBox>
+                <v:ColorPicker Hex="{Binding TextColor}" ToolTip="Text colour" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                <TextBlock Text="Line height" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBox Text="{Binding LineHeight, UpdateSourceTrigger=LostFocus}" Width="44" Margin="0,0,12,0" ToolTip="Line height" KeyDown="NumberBox_KeyDown" />
+                <TextBlock Text="Letter spacing" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBox Text="{Binding Tracking, UpdateSourceTrigger=LostFocus}" Width="44" ToolTip="Letter spacing" KeyDown="NumberBox_KeyDown" />
+            </StackPanel>
+            <WrapPanel>
+                <CheckBox Content="CAPS" IsChecked="{Binding Uppercase}" Margin="0,0,10,4" />
+                <CheckBox Content="Shrink to fit" IsChecked="{Binding AutoShrink}" Margin="0,0,10,4" />
+                <CheckBox Content="Shadow" IsChecked="{Binding Shadow}" Margin="0,0,10,4" />
+                <TextBlock Text="Outline" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,4" />
+                <v:ColorPicker Hex="{Binding OutlineColor}" Margin="0,0,0,4" />
+            </WrapPanel>
+        </StackPanel>
+
+        <!-- Shape -->
+        <WrapPanel Visibility="{Binding IsShape, Converter={StaticResource Visible}}">
+            <TextBlock Text="Fill" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+            <v:ColorPicker Hex="{Binding FillColor}" Margin="0,0,8,0" />
+            <TextBlock Text="Corners" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+            <TextBox Text="{Binding CornerRadius, UpdateSourceTrigger=LostFocus}" Width="42" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
+            <CheckBox Content="Circle" IsChecked="{Binding IsEllipse}" Margin="0,0,8,0" VerticalAlignment="Center" />
+            <TextBlock Text="Outline" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,4,4,0" />
+            <v:ColorPicker Hex="{Binding StrokeColor}" Margin="0,4,4,0" />
+            <TextBox Text="{Binding StrokeWidth, UpdateSourceTrigger=LostFocus}" Width="42" Margin="0,4,0,0" ToolTip="Outline width" KeyDown="NumberBox_KeyDown" />
+        </WrapPanel>
+
+        <!-- Media -->
+        <DockPanel Visibility="{Binding IsMedia, Converter={StaticResource Visible}}">
+            <TextBlock Text="Fit" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <ComboBox SelectedIndex="{Binding ScaleMode}" Width="140" HorizontalAlignment="Left">
+                <ComboBoxItem Content="Fill (crop)" />
+                <ComboBoxItem Content="Fit (whole picture)" />
+                <ComboBoxItem Content="Stretch" />
+            </ComboBox>
+        </DockPanel>
+
+        <!-- Mask -->
+        <StackPanel Visibility="{Binding ShowsMask, Converter={StaticResource Visible}}" Margin="0,12,0,0">
+            <TextBlock Text="MASK" Style="{StaticResource SectionLabel}" />
+            <DockPanel Margin="0,0,0,6">
+                <TextBlock Text="Mask with" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                <ComboBox ItemsSource="{Binding MaskChoices}" SelectedItem="{Binding MaskWith}"
+                          ToolTip="Show this object only inside (or outside) another object's shape, for text that slides in from behind an edge" />
+            </DockPanel>
+            <DockPanel Margin="0,0,0,6" Visibility="{Binding HasMask, Converter={StaticResource Visible}}">
+                <TextBlock Text="Keep" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                <ComboBox SelectedIndex="{Binding MaskModeIndex}" Width="140" HorizontalAlignment="Left">
+                    <ComboBoxItem Content="Inside" />
+                    <ComboBoxItem Content="Cut out" />
+                </ComboBox>
+            </DockPanel>
+            <TextBlock Text="Used as a mask: hidden on outputs." Style="{StaticResource Muted}" FontSize="11"
+                       Visibility="{Binding IsMatte, Converter={StaticResource Visible}}" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

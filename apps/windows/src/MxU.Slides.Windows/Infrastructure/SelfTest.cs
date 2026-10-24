@@ -240,6 +240,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await RenderCheck();
             await EditorsCheck();
             await TimelineEditorCheck();
+            await OverlayEditorChecks();
         }
         catch (Exception ex)
         {
