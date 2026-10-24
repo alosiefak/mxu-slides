@@ -660,7 +660,9 @@ public sealed class TimelinePlayheadLayer : FrameworkElement
         if (x < -30 || x > ActualWidth + 30) return;
         var accent = new SolidColorBrush(vm.IsRecording ? Color.FromRgb(0xEF, 0x44, 0x44) : TimelineLanesView.Accent);
         accent.Freeze();
-        dc.DrawRectangle(accent, null, new Rect(x - 0.75, TimelineEditorLayout.RulerHeight, 1.5, Math.Max(ActualHeight - TimelineEditorLayout.RulerHeight, 0)));
+        // Down through the rows (not the empty space under them).
+        var bottom = Math.Min(ActualHeight, vm.Layout.Rows.Count > 0 ? vm.Layout.Rows[^1].Bottom : TimelineEditorLayout.LanesTop);
+        dc.DrawRectangle(accent, null, new Rect(x - 0.75, TimelineEditorLayout.RulerHeight, 1.5, Math.Max(bottom - TimelineEditorLayout.RulerHeight, 0)));
         const double width = 44;
         var card = new Rect(Math.Max(x - width / 2, 0), 2, width, 12);
         dc.DrawRoundedRectangle(accent, null, card, 3, 3);
