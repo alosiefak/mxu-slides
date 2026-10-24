@@ -1,5 +1,10 @@
 using System.Windows;
 using System.Diagnostics;
+using System.Globalization;
+using System.Windows.Media;
+using System.Windows.Threading;
+using MxU.Slides.Audio;
+using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Control;
 using MxU.Slides.LocalApi;
 using MxU.Slides.Windows.Infrastructure;
@@ -19,6 +24,13 @@ public partial class SettingsWindow : Window
     {
         public override string ToString() => Label;
     }
+
+    private sealed record TimecodeChoice(TimecodeFollower.Input Input, string Label)
+    {
+        public override string ToString() => Label;
+    }
+
+    private bool loadingTimecode = true;
 
     private sealed class MidiRow(MidiCommand command, int note) : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
     {
@@ -74,6 +86,15 @@ public partial class SettingsWindow : Window
         MidiDevices.Text = $"Connected: {model.MidiStatus}";
         midiRows = MidiCommands.All.Select(c => new MidiRow(c, s.MidiMap.NoteFor(c))).ToList();
         MidiMapRows.ItemsSource = midiRows;
+        Loaded += async (_, _) =>
+        {
+            var ports = await MidiOutputService.ListAsync();
+            var choices = new List<DisplayChoice> { new(null, ports.Count == 0 ? "No MIDI outputs connected" : "Nowhere") };
+            choices.AddRange(ports.Select(p => new DisplayChoice(p.Id, p.Name)));
+            MidiOutCombo.ItemsSource = choices;
+            MidiOutCombo.SelectedItem = choices.FirstOrDefault(c => c.DeviceName == s.MidiOutputId) ?? choices[0];
+            await LoadTimecodeAsync();
+        };
         ApiEnabled.IsChecked = s.LocalApiEnabled;
         ApiPort.Text = s.LocalApiPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         ApiConnect.Text = s.LocalApiEnabled
@@ -92,13 +113,87 @@ public partial class SettingsWindow : Window
         choices.AddRange(displays.Select(d => new DisplayChoice(d.DeviceName, d.Label)));
         AudienceCombo.ItemsSource = choices;
         StageCombo.ItemsSource = choices;
-        AudienceCombo.SelectedItem = choices.FirstOrDefault(c => c.DeviceName == model.Settings.AudienceDisplay) ?? choices[0];
-        StageCombo.SelectedItem = choices.FirstOrDefault(c => c.DeviceName == model.Settings.StageDisplay) ?? choices[0];
+        AudienceCombo.SelectedItem = choices.FirstOrDefault(c => c.DeviceName == outputs.AssignedDisplay(OutputRole.Audience)) ?? choices[0];
+        StageCombo.SelectedItem = choices.FirstOrDefault(c => c.DeviceName == outputs.AssignedDisplay(OutputRole.Stage)) ?? choices[0];
+    }
+
+    // MARK: Timecode in (applies straight away; the follower saves its own settings)
+
+    private async Task LoadTimecodeAsync()
+    {
+        var follower = model.Timecode;
+        var choices = new List<TimecodeChoice> { new(new TimecodeFollower.Input.None(), "Off") };
+        choices.AddRange(AudioDeviceList.InputDevices().Select(d => new TimecodeChoice(new TimecodeFollower.Input.Audio(d.Uid), $"LTC · {d.Name}")));
+        choices.AddRange((await MidiInputService.ListAsync()).Select(p => new TimecodeChoice(new TimecodeFollower.Input.Midi(p.Id), $"MTC · {p.Name}")));
+        var current = follower.CurrentInput;
+        if (current is not TimecodeFollower.Input.None && choices.All(c => c.Input != current))
+            choices.Add(new TimecodeChoice(current, "The input used before (not connected now)"));
+        TimecodeInput.ItemsSource = choices;
+        TimecodeInput.SelectedItem = choices.FirstOrDefault(c => c.Input == current) ?? choices[0];
+        TimecodeChannel.ItemsSource = Enumerable.Range(1, 16).Select(c => $"Channel {c}").ToList();
+        TimecodeChannel.SelectedIndex = Math.Clamp(follower.Channel, 0, 15);
+        TimecodeFollows.IsChecked = follower.Follows;
+        TimecodePlaysAudio.IsChecked = follower.PlaysAudio;
+        TimecodeOffset.Text = follower.OffsetFrames.ToString(CultureInfo.InvariantCulture);
+        loadingTimecode = false;
+        TimecodeChannel.IsEnabled = current is TimecodeFollower.Input.Audio;
+        var ticker = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        ticker.Tick += (_, _) => ShowTimecodeReading();
+        ticker.Start();
+        Closed += (_, _) => ticker.Stop();
+        ShowTimecodeReading();
+    }
+
+    private void ShowTimecodeReading()
+    {
+        var follower = model.Timecode;
+        if (!follower.HasInput)
+        {
+            TimecodeReadout.Text = "";
+            return;
+        }
+        var (word, tone) = TimecodeFollower.StatusWord(follower.Reading, follower.Follows, follower.NoTimecode);
+        TimecodeReadout.Text = follower.Problem ?? $"{TimecodeFollower.LabelText(follower.Reading)}  {word}";
+        TimecodeReadout.Foreground = tone switch
+        {
+            TimecodeStatusTone.Green => new SolidColorBrush(Color.FromRgb(0x3F, 0xB9, 0x50)),
+            TimecodeStatusTone.Red => new SolidColorBrush(Color.FromRgb(0xE5, 0x48, 0x4D)),
+            _ => (Brush)FindResource("MutedText"),
+        };
+    }
+
+    private void TimecodeInput_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (loadingTimecode || TimecodeInput.SelectedItem is not TimecodeChoice choice) return;
+        model.Timecode.SetInput(choice.Input);
+        TimecodeChannel.IsEnabled = choice.Input is TimecodeFollower.Input.Audio;
+    }
+
+    private void TimecodeChannel_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!loadingTimecode && TimecodeChannel.SelectedIndex >= 0) model.Timecode.SetChannel(TimecodeChannel.SelectedIndex);
+    }
+
+    private void TimecodeFollows_Click(object sender, RoutedEventArgs e) => model.Timecode.SetFollows(TimecodeFollows.IsChecked == true);
+
+    private void TimecodePlaysAudio_Click(object sender, RoutedEventArgs e) => model.Timecode.SetPlaysAudio(TimecodePlaysAudio.IsChecked == true);
+
+    private void TimecodeOffset_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if (!loadingTimecode && int.TryParse(TimecodeOffset.Text.Replace('−', '-'), NumberStyles.Integer, CultureInfo.InvariantCulture, out var frames))
+            model.Timecode.SetOffset(frames);
     }
 
     private void Identify_Click(object sender, RoutedEventArgs e) => OutputManager.Identify();
 
     private void Refresh_Click(object sender, RoutedEventArgs e) => LoadDisplays();
+
+    /// <summary>The full Screens window. The two pickers above are a shortcut to its first Audience and Stage screens.</summary>
+    private void Screens_Click(object sender, RoutedEventArgs e)
+    {
+        new ScreensWindow(outputs) { Owner = this }.ShowDialog();
+        LoadDisplays();
+    }
 
     private void TransitionSeconds_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) =>
         TransitionLabel.Text = $"{e.NewValue:0.0} seconds";
@@ -119,10 +214,8 @@ public partial class SettingsWindow : Window
                 "MxU Slides", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
 
-        s.AudienceDisplay = audience?.DeviceName;
-        s.AudienceDisplayName = audience?.DeviceName is null ? null : audience.Label;
-        s.StageDisplay = stage?.DeviceName;
-        s.StageDisplayName = stage?.DeviceName is null ? null : stage.Label;
+        outputs.AssignDisplay(OutputRole.Audience, audience?.DeviceName, audience?.DeviceName is null ? null : audience.Label);
+        outputs.AssignDisplay(OutputRole.Stage, stage?.DeviceName, stage?.DeviceName is null ? null : stage.Label);
         s.OutputsOnAtLaunch = OutputsAtLaunch.IsChecked == true;
         s.PreventSleep = PreventSleep.IsChecked == true;
         s.Transition = (TransitionCombo.SelectedItem as TransitionChoice)?.Value ?? OutputTransition.Dissolve;
@@ -144,6 +237,7 @@ public partial class SettingsWindow : Window
         s.LocalApiEnabled = ApiEnabled.IsChecked == true;
         s.LocalApiPort = port;
         s.MidiInputEnabled = MidiEnabled.IsChecked == true;
+        if (MidiOutCombo.SelectedItem is DisplayChoice midiOut) s.MidiOutputId = midiOut.DeviceName;
         s.MidiMap.Channel = MidiChannel.SelectedIndex <= 0 ? null : MidiChannel.SelectedIndex;
         foreach (var row in midiRows) s.MidiMap.SetNote(row.Note, row.Command);
         s.Save();
@@ -155,7 +249,7 @@ public partial class SettingsWindow : Window
         // Outputs that now have a display move there; ones set to preview stay where they are.
         foreach (var role in Enum.GetValues<OutputRole>())
         {
-            var device = role == OutputRole.Audience ? s.AudienceDisplay : s.StageDisplay;
+            var device = outputs.AssignedDisplay(role);
             if (device is null && outputs.IsOnDisplay(role)) outputs.Hide(role);
         }
         outputs.Apply();

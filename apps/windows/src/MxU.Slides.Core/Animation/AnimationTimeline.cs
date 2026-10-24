@@ -95,6 +95,7 @@ public static class AnimationTimeline
     private static bool IsAnimating(AnimatedItem item, double now)
     {
         if (item.Render.Content is ItemContent.Text && item.Scroll is { Speed: > 0 }) return true;
+        if (item.Effects.Any(e => e.VariesWithTime)) return true;
         if (item.AnimationContext is not { } context) return false;
         foreach (var step in item.AnimationSteps)
         {

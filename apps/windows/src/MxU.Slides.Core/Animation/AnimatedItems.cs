@@ -108,6 +108,8 @@ public static class AnimatedItems
             KeystoneBottom = (o.KeystoneBottom ?? 100) / 100,
             KeystoneStretch = o.KeystoneMode == KeystoneMode.Stretch,
             EffectsApplyBelow = !shapeText && (o.EffectsApplyBelow ?? false),
+            // A shape's text box draws plain: the effects belong to the shape around it.
+            Effects = shapeText ? [] : AnimationEffect.From(o.Effects),
             Scroll = item.Content is ItemContent.Text && scroll is not null ? BlockScroll(scroll) : null,
         };
     }

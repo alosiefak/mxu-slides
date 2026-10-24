@@ -14,7 +14,7 @@ namespace MxU.Slides.Windows.Rendering;
 /// stay frame-for-frame in sync. Players are reference counted and closed a
 /// moment after the last view lets go.
 /// </summary>
-public sealed class MediaHub
+public sealed partial class MediaHub
 {
     public sealed record Resolved(string Path, MediaKind Kind, string Name);
 

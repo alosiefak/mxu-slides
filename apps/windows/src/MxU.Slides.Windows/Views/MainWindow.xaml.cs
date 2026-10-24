@@ -47,8 +47,11 @@ public partial class MainWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        VideoOutputs.Initialize();
         outputs = new OutputManager(model.Settings, this, model.Media);
+        outputs.DeviceSinkFactory = device => VideoOutputs.Create(device, outputs.Config);
         model.Outputs = outputs;
+        model.Program = new ProgramFeed(model.Media);
         model.AskYesNo = question => MessageBox.Show(this, question, "MxU Slides", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
         outputs.StatusChanged += UpdateOutputStatus;
         if (model.Settings.OutputsOnAtLaunch) outputs.Apply();
@@ -66,6 +69,58 @@ public partial class MainWindow : Window
         Close();
     }
 
+    // MARK: Song timeline
+
+    private void TimelineSlider_MouseDown(object sender, MouseButtonEventArgs e) => model.TimelineScrubbing = true;
+
+    private void TimelineSlider_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        model.TimelineScrubbing = false;
+        model.SeekTimeline(TimelineSlider.Value);
+    }
+
+    /// <summary>The ⋯ menu: the song's music, following timecode, undo and clear.</summary>
+    private void TimelineMenu_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu { PlacementTarget = (UIElement)sender, Placement = System.Windows.Controls.Primitives.PlacementMode.Top };
+        var music = new MenuItem { Header = "Play this music with the timeline" };
+        var songs = model.AudioTiles.Where(t => t.Item is not null).Select(t => t.Item!).ToList();
+        foreach (var item in songs)
+        {
+            var choice = new MenuItem { Header = item.Name };
+            choice.Click += (_, _) => model.SetTimelineSong(item);
+            music.Items.Add(choice);
+        }
+        if (songs.Count == 0) music.Items.Add(new MenuItem { Header = "No music yet: import some in the Music tab", IsEnabled = false });
+        menu.Items.Add(music);
+
+        var current = model.CurrentTimeline;
+        var follow = new MenuItem { Header = "Follow timecode", IsCheckable = true, IsChecked = current?.TimecodeEnabled == true };
+        follow.Click += (_, _) => model.SetTimelineTimecode(follow.IsChecked);
+        menu.Items.Add(follow);
+        var start = new MenuItem { Header = $"Timecode start ({Core.Automation.PresentationTimelines.Timecode(current?.TimecodeStart ?? 3600 * 30)})…" };
+        start.Click += (_, _) =>
+        {
+            var shown = Core.Automation.PresentationTimelines.Timecode(model.CurrentTimeline?.TimecodeStart ?? 3600 * 30);
+            if (InputDialog.Ask(this, "Timecode start", "Where this song starts (hh:mm:ss:ff)", shown) is not { } typed) return;
+            if (Core.Automation.PresentationTimelines.Frames(typed) is { } frames) model.SetTimelineTimecode(true, frames);
+            else MessageBox.Show(this, "Type the start as hours:minutes:seconds:frames, for example 01:00:00:00.", "Timecode start");
+        };
+        menu.Items.Add(start);
+        menu.Items.Add(new Separator());
+        var undo = new MenuItem { Header = "Undo the last take", IsEnabled = model.CanUndoTimeline };
+        undo.Click += (_, _) => model.UndoTimeline();
+        menu.Items.Add(undo);
+        var clear = new MenuItem { Header = "Clear this timeline", IsEnabled = current is not null };
+        clear.Click += (_, _) =>
+        {
+            if (MessageBox.Show(this, "Remove this song's timeline? Its slides stay as they are.", "Clear the timeline", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                model.ClearTimeline();
+        };
+        menu.Items.Add(clear);
+        menu.IsOpen = true;
+    }
+
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (!forceClose && outputs is not null && outputs.IsOnDisplay(OutputRole.Audience) && !model.Show.IsEmpty)
@@ -78,11 +133,31 @@ public partial class MainWindow : Window
                 return;
             }
         }
+        if (model.IsBroadcasting)
+        {
+            // A recording needs a moment to finish its file: stop everything, then close for real.
+            e.Cancel = true;
+            if (!forceClose && MessageBox.Show(this, "A recording or stream is running. Stop it and quit?", "MxU Slides",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+            IsEnabled = false;
+            _ = FinishBroadcastsThenClose();
+            return;
+        }
         model.FlushPendingSave();
         SavePlacement();
         model.Settings.Save();
         model.StopApi();
+        model.StopTimeline();
+        model.Program?.Dispose();
         outputs?.CloseAll();
+    }
+
+    private async Task FinishBroadcastsThenClose()
+    {
+        await model.EndBroadcastsAsync();
+        forceClose = true;
+        Close();
     }
 
     private void RestorePlacement()
@@ -462,6 +537,33 @@ public partial class MainWindow : Window
 
     // MARK: Media
 
+    private void InputTile_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (ContextOf<InputTileViewModel>(sender) is { } tile) model.InputClickedCommand.Execute(tile);
+    }
+
+    private void VideoInputs_Click(object sender, RoutedEventArgs e)
+    {
+        new VideoInputsWindow(model.Inputs) { Owner = this }.ShowDialog();
+        model.RefreshInputs();
+    }
+
+    private void AudioTile_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (ContextOf<AudioTileViewModel>(sender) is { } tile) model.AudioTileClickedCommand.Execute(tile);
+    }
+
+    private void ImportAudio_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import music",
+            Multiselect = true,
+            Filter = "Music|*.mp3;*.m4a;*.aac;*.wav;*.flac;*.wma;*.aiff;*.aif|All files|*.*",
+        };
+        if (dialog.ShowDialog(this) == true) model.ImportAudioFiles(dialog.FileNames);
+    }
+
     private void MediaTile_Click(object sender, MouseButtonEventArgs e)
     {
         if (ContextOf<MediaTileViewModel>(sender) is { } tile) model.MediaClickedCommand.Execute(tile);
@@ -546,6 +648,8 @@ public partial class MainWindow : Window
         UpdateOutputStatus();
         Activate();
     }
+
+    private void Broadcast_Click(object sender, RoutedEventArgs e) => new BroadcastWindow(model) { Owner = this }.Show();
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {

@@ -1,7 +1,9 @@
 using System.Text.Json;
+using MxU.Slides.Audio.Control;
 using MxU.Slides.Core.Json;
 using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Outputs;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Core.Stage;
 using MxU.Slides.LocalApi;
@@ -319,6 +321,7 @@ public sealed partial class MainViewModel : IApiBridge
             throw ApiError.BadRequest("Provide 'presetId' or 'message'.");
         }
         Show.FireAlert(message, audience, stage);
+        liveAlertPresetId = command.PresetId;
         RenderOutputs(DefaultTransition());
     }
 
@@ -381,22 +384,74 @@ public sealed partial class MainViewModel : IApiBridge
         }
     }
 
+    ApiAudioStatus IApiBridge.AudioStatus() =>
+        new([.. Audio.Status().Select(b => new ApiAudioBus(b.PlaylistId, b.AudioItemId, b.TrackName, b.Playing, b.Position, b.Duration))]);
+
+    void IApiBridge.FireAudioPlaylist(string id, string? startAtEntryId) =>
+        PlayAudioPlaylist(Library.Get<Playlist>(ApiIds.Validated(id)) ?? throw ApiError.NotFound($"No playlist '{id}'."), startAtEntryId, null);
+
+    void IApiBridge.FireAudioItem(string id) =>
+        PlayAudio(Library.Get<AudioItem>(ApiIds.Validated(id)) ?? throw ApiError.NotFound($"No audio item '{id}'."), null);
+
+    void IApiBridge.StopAudio(ApiAudioStopCommand command)
+    {
+        if (command.PlaylistId is { } playlist) Audio.StopPlaylist(playlist);
+        else if (command.AudioItemId is { } item) Audio.StopAudioItem(item);
+        else Audio.Stop();
+        UpdateNowPlaying();
+    }
+
+    void IApiBridge.AudioTransport(ApiAudioTransportCommand command)
+    {
+        var action = AudioController.ParseTransportAction(command.Action)
+            ?? throw ApiError.BadRequest($"Unknown action '{command.Action}'. Actions: playPause, next, previous, seek.");
+        try { Audio.Transport(action, command.Position); }
+        catch (InvalidOperationException ex) { throw ApiError.BadRequest(ex.Message); }
+    }
+
+    void IApiBridge.FireActionCombo(string id)
+    {
+        if (Library.Get<ActionCombo>(ApiIds.Validated(id)) is null) throw ApiError.NotFound($"No action combo '{id}'.");
+        RunActionCombo(id);
+    }
+
+    void IApiBridge.ActivateOutputPreset(string? id)
+    {
+        if (id is null)
+        {
+            Settings.ActiveOutputPresetId = null;
+            Settings.Save();
+            return;
+        }
+        if (Library.Get<OutputPreset>(ApiIds.Validated(id)) is null) throw ApiError.NotFound($"No output preset '{id}'.");
+        ((Core.Automation.IShowActions)this).SwitchOutputPreset(id);
+    }
+
     ApiOutputsStatus IApiBridge.OutputsStatus()
     {
-        var screens = new List<ApiOutputScreen>();
-        foreach (var role in Enum.GetValues<OutputRole>())
+        if (Outputs?.Config is not { } config) return new ApiOutputsStatus([], []);
+        var screens = config.Screens.Select(screen =>
         {
-            var window = Outputs?[role];
-            var display = window?.Display;
-            var backed = Outputs?.IsShowing(role) == true;
-            var (w, h) = display is null ? (1920, 1080) : (display.Width, display.Height);
-            screens.Add(new ApiOutputScreen(
-                role.ToString().ToLowerInvariant(), role == OutputRole.Audience ? "Audience" : "Stage",
-                role == OutputRole.Audience ? "audience" : "confidence", backed, w, h,
-                [new ApiOutput(role.ToString().ToLowerInvariant(), display?.FriendlyName ?? (backed ? "Preview window" : null),
-                    0, 0, w, h, backed ? "display" : "none", false)],
-                []));
-        }
-        return new ApiOutputsStatus(screens, []);
+            var slices = config.Slices(screen.Id).Select(slice =>
+            {
+                var device = config.Device(slice.Id);
+                var rect = slice.SourceRect;
+                return new ApiOutput(
+                    SwiftUuid.Format(slice.Id), config.DeviceName(slice.Id) ?? slice.Name,
+                    rect.X * screen.Width, rect.Y * screen.Height, rect.Width * screen.Width, rect.Height * screen.Height,
+                    device is null ? "none" : OutputDevice.Kind(device) switch
+                    {
+                        OutputDeviceKind.Ndi => "ndi",
+                        OutputDeviceKind.DeckLink => "decklink",
+                        _ => "display",
+                    },
+                    config.EffectiveAdjustments(slice.Id) is not null);
+            }).ToList();
+            return new ApiOutputScreen(
+                SwiftUuid.Format(screen.Id), screen.Name, config.Role(screen.Id).Raw(), config.IsClaimed(screen.Id),
+                screen.Width, screen.Height, slices, [.. config.ActiveMasks(screen.Id).Select(m => m.Name)]);
+        }).ToList();
+        var presets = Library.All<OutputPreset>().Select(p => new ApiOutputPreset(p.Id, p.Name, p.Id == Settings.ActiveOutputPresetId)).ToList();
+        return new ApiOutputsStatus(screens, presets);
     }
 }

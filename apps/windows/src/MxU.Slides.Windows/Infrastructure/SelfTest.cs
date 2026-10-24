@@ -113,6 +113,7 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
                 model.PreviousCommand.Execute(null);
             }
 
+            await ProgramFeedCheck();
             await VideoCheck();
 
             await Step("04-overlays", () => model.ShowingOverlays = true, settle: 800);
@@ -207,8 +208,8 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
             await Delay(1200);
             if (model.Outputs is { } outputs)
             {
-                Save(outputs[OutputRole.Audience], "09-audience-window");
-                Save(outputs[OutputRole.Stage], "09-stage-window");
+                if (outputs[OutputRole.Audience] is { } audienceWindow) Save(audienceWindow, "09-audience-window");
+                if (outputs[OutputRole.Stage] is { } stageWindow) Save(stageWindow, "09-stage-window");
                 Check("the audience preview window is showing", outputs.IsShowing(OutputRole.Audience));
             }
 
@@ -225,6 +226,13 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
             await Snapshot("11-welcome-frame", model.Show.Scene());
             model.ClearAllCommand.Execute(null);
 
+            await EffectsCheck();
+            await MusicCheck();
+            await LiveInputCheck();
+            await TimelineCheck();
+            await RecordingCheck();
+            await ActionsCheck();
+            await ScreensCheck();
             await ApiCheck();
             await PowerPointCheck();
             await ProPresenterCheck();
@@ -359,10 +367,10 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
             Check("its PowerPoint click animation waits for Next", model.Show.SlideClickCount == 1 && !VisibleAudienceText().Contains("Welcome, everyone"));
             model.NextCommand.Execute(null);
             await Delay(120);
-            if (model.Outputs is { } outputs) Save(outputs[OutputRole.Audience], "13-powerpoint-fading-in");
+            if (model.Outputs?[OutputRole.Audience] is { } fading) Save(fading, "13-powerpoint-fading-in");
             await Delay(900);
             Check("Next fades the text in", VisibleAudienceText().Contains("Welcome, everyone"));
-            if (model.Outputs is { } after) Save(after[OutputRole.Audience], "13-powerpoint-faded-in");
+            if (model.Outputs?[OutputRole.Audience] is { } faded) Save(faded, "13-powerpoint-faded-in");
             model.ClearAllCommand.Execute(null);
             var again = await model.ImportPowerPointAsync([path]);
             Check("importing the same deck again replaces it", again.FirstOrDefault()?.PresentationId == deck.Id
@@ -514,6 +522,497 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
         }
     }
 
+    /// <summary>A destination that counts frames and keeps the last one, like a recorder would see them.</summary>
+    private sealed class CountingSink : Core.Media.IProgramSink
+    {
+        private readonly Lock gate = new();
+        public int Frames;
+        public byte[]? Last;
+        public int Width, Height;
+
+        public void WriteVideo(Core.Media.VideoFrame frame)
+        {
+            lock (gate)
+            {
+                Frames++;
+                Width = frame.Width;
+                Height = frame.Height;
+                Last = frame.Pixels.ToArray();
+            }
+        }
+
+        public void WriteAudio(Core.Media.AudioBuffer buffer) { }
+    }
+
+    /// <summary>Listens to the program feed for three seconds with lyrics over a background, and checks rate and content.</summary>
+    private async Task ProgramFeedCheck()
+    {
+        if (model.Program is not { } feed) return;
+        var sink = new CountingSink();
+        feed.Add(sink);
+        await Delay(500);
+        var start = sink.Frames;
+        await Delay(3000);
+        var fps = (sink.Frames - start) / 3.0;
+        feed.Remove(sink);
+        report.AppendLine($"INFO  program feed: {fps:0.0} fps at {sink.Width}x{sink.Height}, {feed.FramesCaptured} new pictures, {feed.FramesLate} late"
+            + (feed.Problem is { } problem ? $"; {problem}" : ""));
+        if (feed.Problem is { } cannot && RenderCapability.Tier >> 16 == 0)
+        {
+            Skip("the program feed", $"no graphics card: {cannot}");
+            return;
+        }
+        Check("the program feed delivers frames steadily (25+ per second)", fps >= 25);
+        Check("program frames are full HD", sink.Width == 1920 && sink.Height == 1080);
+        if (sink.Last is not { } pixels) return;
+        // The lyrics are white, centred on the canvas: some pixels there must be bright.
+        var bright = 0;
+        for (var y = sink.Height * 2 / 5; y < sink.Height * 3 / 5; y += 2)
+            for (var x = sink.Width / 4; x < sink.Width * 3 / 4; x += 2)
+            {
+                var i = (y * sink.Width + x) * 4;
+                if (pixels[i] > 200 && pixels[i + 1] > 200 && pixels[i + 2] > 200) bright++;
+            }
+        Check("a program frame shows the lyrics", bright > 200);
+        var bitmap = BitmapSource.Create(sink.Width, sink.Height, 96, 96, PixelFormats.Pbgra32, null, pixels, sink.Width * 4);
+        Write(bitmap, "04-program-frame");
+    }
+
+    /// <summary>
+    /// Live inputs, end to end over NDI: the test sends a magenta picture as an NDI source, adds
+    /// an input that receives it, puts it live under the slides, and checks magenta reaches the
+    /// program feed. Skipped where NDI Tools isn't installed.
+    /// </summary>
+    private async Task LiveInputCheck()
+    {
+        if (!VideoIO.Ndi.NdiLibrary.TryLoad(out _, out var error))
+        {
+            Skip("live inputs over NDI", error.ToString() ?? "NDI isn't installed");
+            return;
+        }
+        const string source = "MxU self-test camera";
+        using var sender = new VideoIO.Ndi.NdiOutput(source);
+        sender.Start();
+        int w = 640, h = 360;
+        var pixels = new byte[w * h * 4];
+        for (var i = 0; i < pixels.Length; i += 4) (pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]) = (230, 20, 230, 255);
+        using var stop = new CancellationTokenSource();
+        var pump = Task.Run(async () =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                sender.WriteVideo(new Core.Media.VideoFrame(w, h, w * 4, pixels, ShowState.HostClock()));
+                await Task.Delay(33);
+            }
+        });
+        var entry = model.Inputs.Create("Self-test camera", CaptureSourceKind.Ndi, source);
+        try
+        {
+            model.RefreshInputs();
+            var tile = model.InputTiles.FirstOrDefault(t => t.Entry.Id == entry.Id);
+            Check("a live input appears as a tile in the Media tab", tile is not null);
+            if (tile is null) return;
+            model.InputClickedCommand.Execute(tile);
+            for (var i = 0; i < 100 && model.Media.LiveInputPicture(entry.EngineId) is null; i++) await Delay(100);
+            Check("an NDI source shows as a live input", model.Media.LiveInputPicture(entry.EngineId) is { PixelWidth: 640 });
+            if (model.Program is { } feed)
+            {
+                var sink = new CountingSink();
+                feed.Add(sink);
+                await Delay(1200);
+                feed.Remove(sink);
+                if (sink.Last is { } frame && sink.Width > 0)
+                {
+                    var c = (sink.Height / 2 * sink.Width + sink.Width / 2) * 4;
+                    Check("the input's picture reaches the program (under the slides)", frame[c + 2] > 180 && frame[c + 1] < 80 && frame[c] > 180);
+                    Write(BitmapSource.Create(sink.Width, sink.Height, 96, 96, PixelFormats.Pbgra32, null, frame, sink.Width * 4), "18-live-input");
+                }
+            }
+        }
+        finally
+        {
+            stop.Cancel();
+            await pump;
+            model.ClearAllCommand.Execute(null);
+            model.Inputs.Remove(entry.Id);
+            model.RefreshInputs();
+        }
+    }
+
+    /// <summary>
+    /// Recording: a record-only preset records the program (a slide, with its fade) for a few
+    /// seconds into the sandbox, and stopping it leaves a finished MP4 (not a .partial one).
+    /// The Stream &amp; Record window is pictured while it records.
+    /// </summary>
+    private async Task RecordingCheck()
+    {
+        if (model.Program is null)
+        {
+            Skip("recording", "no program feed");
+            return;
+        }
+        var folder = Path.Combine(Path.GetTempPath(), "MxU Slides self-test recordings");
+        if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        model.Settings.RecordingsFolder = folder;
+        var preset = new StreamRecordPreset
+        {
+            Name = "Self-test recording", PresetKind = StreamPresetKind.RecordOnly,
+            Width = 1280, Height = 720, FrameRate = 30, VideoBitrateKbps = 3000,
+        };
+        model.Library.Save(preset);
+        BroadcastWindow? window = null;
+        try
+        {
+            var problem = model.StartBroadcast(preset);
+            if (problem is not null && (problem.Contains("encoder", StringComparison.OrdinalIgnoreCase) || problem.Contains("Media Foundation", StringComparison.OrdinalIgnoreCase)))
+            {
+                Skip("recording", problem);
+                return;
+            }
+            Check("a record-only preset starts recording", problem is null && model.IsBroadcasting);
+            if (model.ServiceItems.FirstOrDefault(r => r.Name == "Amazing Grace") is { } song)
+            {
+                model.SelectedServiceItem = song;
+                model.GoLiveCommand.Execute(model.Slides.ElementAtOrDefault(1));
+            }
+            window = new BroadcastWindow(model) { Owner = Application.Current.MainWindow };
+            window.Show();
+            await Delay(2500);
+            Check("the toolbar shows REC and a running clock", model.BroadcastButtonText.Contains("REC", StringComparison.Ordinal));
+            Save(window, "20-recording");
+            model.StopBroadcast(preset.Id);
+            var session = model.Broadcast.Recording.Sessions.LastOrDefault(r => r.PresetId == preset.Id);
+            for (var i = 0; i < 100 && session?.Status.State.Kind is Broadcast.Recording.RecorderStateKind.Recording or Broadcast.Recording.RecorderStateKind.Finishing; i++)
+                await Delay(100);
+            var file = session?.FilePath;
+            var size = file is not null && File.Exists(file) ? new FileInfo(file).Length : 0;
+            report.AppendLine($"      recording: {file} ({size} bytes, {session?.Status.State.Kind}, {session?.Status.DroppedFrames} dropped)");
+            Check("stopping leaves a finished MP4 with pictures in it", session?.Status.State.Kind == Broadcast.Recording.RecorderStateKind.Finished
+                && file?.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) == true && !file.EndsWith(".partial.mp4", StringComparison.OrdinalIgnoreCase)
+                && size > 50_000);
+            Check("the toolbar goes back to Stream & Record", !model.IsBroadcasting && model.BroadcastButtonText == "Stream & Record");
+        }
+        finally
+        {
+            window?.Close();
+            model.StopBroadcast(null);
+            model.ClearAllCommand.Execute(null);
+            model.Library.Delete<StreamRecordPreset>(preset.Id);
+        }
+    }
+
+    /// <summary>
+    /// Song timelines: records a take (slides 2 and 3 clicked a moment apart), plays it back
+    /// from the start and checks the slides change by themselves, in order, then puts the
+    /// song back as it was. The timeline bar is pictured while it plays.
+    /// </summary>
+    private async Task TimelineCheck()
+    {
+        var songRow = model.ServiceItems.FirstOrDefault(r => r.Name == "Amazing Grace");
+        if (songRow is null)
+        {
+            Skip("song timelines", "the sample song isn't in the service");
+            return;
+        }
+        model.SelectedServiceItem = songRow;
+        await Delay(300);
+        if (model.CurrentPresentation is not { } song || model.Slides.Count < 3) return;
+        var before = song.Timelines?.ToList();
+        var second = model.Slides[1].Slide.Id;
+        var third = model.Slides[2].Slide.Id;
+        try
+        {
+            model.TimelineRecordCommand.Execute(null);
+            Check("recording a timeline starts and shows the timeline bar", model.TimelineRecording && model.ShowsTimelineBar);
+            await Delay(400);
+            model.GoLiveCommand.Execute(model.Slides[1]);
+            await Delay(700);
+            model.GoLiveCommand.Execute(model.Slides[2]);
+            await Delay(300);
+            model.TimelineRecordCommand.Execute(null);
+            var cues = model.CurrentTimeline?.Cues.Where(c => c.Lane == "slide").OrderBy(c => c.At).ToList() ?? [];
+            Check("the take recorded the two clicks as cues", cues.Count == 2 && cues[1].At - cues[0].At is > 0.4 and < 1.2);
+
+            model.ClearAllCommand.Execute(null);
+            model.TimelineRewindCommand.Execute(null);
+            model.TimelinePlayPauseCommand.Execute(null);
+            Check("the timeline plays", model.TimelinePlaying);
+            var seen = new List<string>();
+            var pictured = false;
+            var deadline = DateTime.Now.AddSeconds(4);
+            while (DateTime.Now < deadline && !seen.Contains(third))
+            {
+                if (model.Show.Live?.Slide.Id is { } live && (seen.Count == 0 || seen[^1] != live)) seen.Add(live);
+                if (!pictured && seen.Count > 0)
+                {
+                    pictured = true;
+                    await Step("19-timeline", () => { }, settle: 100);
+                }
+                await Delay(40);
+            }
+            Check("playing it fires the slides by themselves, in order", seen.SequenceEqual([second, third]));
+            Check("the Local API reports timecode in (none on this PC)", ((IApiBridge)model).TimecodeStatus() is { HasInput: false, Source: "ltc" });
+        }
+        finally
+        {
+            model.TimelineRewindCommand.Execute(null);
+            model.ClearAllCommand.Execute(null);
+            song.Timelines = before;
+            model.Library.Save(song);
+            model.TimelineBarOpen = false;
+        }
+    }
+
+    /// <summary>
+    /// Music: a short generated tone imports into the library, plays from its tile (even on a PC
+    /// with no sound card the engine keeps time), and F5 stops it.
+    /// </summary>
+    private async Task MusicCheck()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MxU self-test tone {Guid.NewGuid():N}.wav");
+        try
+        {
+            WriteTone(path, seconds: 6);
+            model.ImportAudioFiles([path]);
+            var tile = model.AudioTiles.FirstOrDefault(t => t.Item is not null && t.Name.StartsWith("MxU self-test tone", StringComparison.Ordinal));
+            Check("a music file imports into the library", tile is { Item.DurationSeconds: > 5 });
+            if (tile is null) return;
+            model.Bin = BinTab.Music;
+            model.AudioTileClickedCommand.Execute(tile);
+            await Delay(1200);
+            Check("music plays from its tile", tile.IsPlaying && model.Audio.Status().Any(b => b.Playing && b.AudioItemId == tile.Item!.Id));
+            Check("now playing shows the song and time", model.NowPlaying.Contains("MxU self-test tone"));
+            await Step("17-music", () => { }, settle: 300);
+            model.ClearAudioCommand.Execute(null);
+            await Delay(2500);
+            Check("F5 stops the music", !model.Audio.Status().Any(b => b.Playing));
+            model.Bin = BinTab.Media;
+        }
+        finally
+        {
+            try { File.Delete(path); }
+            catch (IOException) { }
+        }
+
+        static void WriteTone(string path, double seconds)
+        {
+            const int rate = 48000;
+            var frames = (int)(rate * seconds);
+            using var file = new BinaryWriter(File.Create(path));
+            file.Write("RIFF"u8);
+            file.Write(36 + frames * 4);
+            file.Write("WAVEfmt "u8);
+            file.Write(16);
+            file.Write((short)1);
+            file.Write((short)2);
+            file.Write(rate);
+            file.Write(rate * 4);
+            file.Write((short)4);
+            file.Write((short)16);
+            file.Write("data"u8);
+            file.Write(frames * 4);
+            for (var i = 0; i < frames; i++)
+            {
+                var sample = (short)(Math.Sin(2 * Math.PI * 440 * i / rate) * 1200);
+                file.Write(sample);
+                file.Write(sample);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show automation: an action combo puts up a message and starts a timer; a slide whose
+    /// action fires a background brings it up when the slide goes live; Clear All takes it all down.
+    /// </summary>
+    private async Task ActionsCheck()
+    {
+        var timer = model.TimerRows.FirstOrDefault();
+        var alert = new AlertPreset { Id = "selftest-alert", Name = "Self-test", Message = "Welcome, from an action combo" };
+        model.Library.Save(alert);
+        var combo = new ActionCombo
+        {
+            Id = "selftest-combo", Name = "Self-test combo",
+            Actions =
+            [
+                new SlideAction { Id = "a1", Kind = SlideActionKind.FireAlert, AlertId = alert.Id },
+                .. timer is null ? Array.Empty<SlideAction>() : [new SlideAction { Id = "a2", Kind = SlideActionKind.TimerStart, TimerId = timer.Id }],
+            ],
+        };
+        model.Library.Save(combo);
+        model.RunActionCombo(combo.Id);
+        await Delay(400);
+        Check("an action combo puts up a message", model.Show.AlertMessage == alert.Message);
+        if (timer is not null) Check("an action combo starts a timer", model.Timers.Snapshot(timer.Id)?.IsRunning == true);
+
+        var background = model.MediaItems.FirstOrDefault(m => m.Name == "Dusk");
+        if (background is not null)
+        {
+            var slide = new Slide
+            {
+                Id = "selftest-action-slide", Name = "Announcements",
+                Objects = [new SlideObject { Id = "t", ObjectKind = SlideObjectKind.Text, Name = "Text", Text = "Announcements" }],
+                Actions = [new SlideAction { Id = "s1", Kind = SlideActionKind.FireMedia, MediaId = background.Item.Id }],
+            };
+            var deck = new Presentation { Id = "selftest-action-deck", Name = "Announcements", Slides = [slide] };
+            model.Library.Save(deck);
+            model.Open(deck, null, null);
+            await Delay(300);
+            model.GoLiveCommand.Execute(model.Slides.FirstOrDefault());
+            await Delay(600);
+            Check("a slide's action fires its background when it goes live",
+                model.Show.LiveMedia.Values.Any(cue => cue.MediaId == background.Item.Id));
+        }
+        model.ClearAllCommand.Execute(null);
+        if (timer is not null) model.Timers.Reset(timer.Id);
+        Check("Clear All takes the message and the background down", !model.Show.HasAlert && model.Show.IsEmpty);
+
+        // The scheduler: "when the sermon timer reaches 29:58, show a message".
+        if (timer is null || model.Timers.Snapshot(timer.Id) is not { DurationSeconds: >= 10 } snapshot) return;
+        var trigger = new ScheduleTrigger
+        {
+            Id = "selftest-trigger", Name = "Self-test trigger",
+            Conditions = [new ScheduleCondition { Id = "c", Kind = ScheduleConditionKind.TimerReaches, TimerId = timer.Id, TimerSeconds = snapshot.DurationSeconds - 2 }],
+            Actions = [new SlideAction { Id = "t1", Kind = SlideActionKind.FireAlert, AlertId = alert.Id }],
+        };
+        model.Library.Save(trigger);
+        model.Timers.Start(timer.Id);
+        for (var i = 0; i < 60 && !model.Show.HasAlert; i++) await Delay(100);
+        Check("a schedule trigger fires when a timer reaches its time", model.Show.AlertMessage == alert.Message);
+        model.Timers.Reset(timer.Id);
+        model.Library.Delete<ScheduleTrigger>(trigger.Id);
+        model.ClearAllCommand.Execute(null);
+    }
+
+    /// <summary>
+    /// With NDI Tools installed: a screen sent to NDI appears on the network as a source other
+    /// NDI programs can pick (found here with NDI's own finder). Skipped where NDI isn't installed.
+    /// </summary>
+    private async Task NdiCheck(OutputManager outputs)
+    {
+        if (!VideoIO.Ndi.NdiLibrary.TryLoad(out var ndi, out var error))
+        {
+            Skip("NDI output", error.ToString() ?? "NDI isn't installed");
+            return;
+        }
+        var config = outputs.Config;
+        var screen = config.AddScreen("NDI self-test", 1280, 720)!;
+        const string source = "MxU Slides self-test";
+        try
+        {
+            config.AssignDevice(screen.Id, Core.Outputs.OutputDevice.Ndi(source), "NDI self-test");
+            outputs.Apply();
+            model.RenderOutputs(SceneTransition.Cut);
+            var finder = VideoIO.Ndi.NdiFinder.Create(ndi);
+            var names = await Task.Run(() => finder?.CurrentSourceNames(4000) ?? []);
+            (finder as IDisposable)?.Dispose();
+            Check("a screen sent to NDI shows up as an NDI source on the network", names.Any(n => n.Contains(source, StringComparison.Ordinal)));
+        }
+        finally
+        {
+            config.RemoveScreen(screen.Id);
+            outputs.Apply();
+        }
+    }
+
+    /// <summary>
+    /// The screen setup: first run makes an Audience and a Stage screen; and a screen sent to a
+    /// device goes through its slice's corrections on the graphics card. A temporary screen,
+    /// brightened all the way and with a left edge blend, must come out white on the right and
+    /// fade to black at the left edge.
+    /// </summary>
+    private async Task ScreensCheck()
+    {
+        if (model.Outputs is not { } outputs) return;
+        var config = outputs.Config;
+        Check("the screen setup starts with an Audience and a Stage screen",
+            config.Screens.Count(s => config.Role(s.Id) == Core.Outputs.ScreenRole.Audience) >= 1
+            && config.Screens.Any(s => config.Role(s.Id) == Core.Outputs.ScreenRole.Confidence));
+        if (RenderCapability.Tier >> 16 == 0 || OutputAdjustEffect.Shader is null)
+        {
+            Skip("output corrections", "no graphics card with pixel shader 3.0");
+            return;
+        }
+        var sink = new CountingSink();
+        var factory = outputs.DeviceSinkFactory;
+        outputs.DeviceSinkFactory = device => device == "ndi:MxU self-test" ? sink : factory?.Invoke(device);
+        var screen = config.AddScreen("Self-test", 1280, 720)!;
+        try
+        {
+            config.AssignDevice(screen.Id, "ndi:MxU self-test", "Self-test");
+            config.SetAdjustments(screen.Id, new Core.Outputs.OutputAdjustments
+            {
+                Brightness = 1,
+                BlendLeft = new Core.Outputs.OutputEdgeBlend(0.25, curve: 1),
+            });
+            outputs.Apply();
+            model.RenderOutputs(SceneTransition.Cut);
+            await Delay(1500);
+            Check("a screen on a device gets frames at its own size", sink.Frames > 10 && sink.Width == 1280 && sink.Height == 720);
+            if (sink.Last is { } pixels && sink.Width == 1280)
+            {
+                byte Red(int x, int y) => pixels[(y * sink.Width + x) * 4 + 2];
+                Check("brightness and an edge blend are applied on the graphics card",
+                    Red(1200, 360) > 230 && Red(2, 360) < 25 && Red(160, 360) is > 60 and < 200);
+                Write(BitmapSource.Create(sink.Width, sink.Height, 96, 96, PixelFormats.Pbgra32, null, pixels, sink.Width * 4), "15-screen-corrections");
+            }
+        }
+        finally
+        {
+            config.RemoveScreen(screen.Id);
+            outputs.Apply();
+            outputs.DeviceSinkFactory = factory;
+        }
+        Check("removing a screen stops its output", outputs.StatusText(OutputRole.Audience) != "2 outputs");
+        await NdiCheck(outputs);
+
+        var editor = new ScreensWindow(outputs) { Owner = window };
+        editor.Show();
+        await Delay(900);
+        Save(editor, "16-screens-window");
+        editor.Close();
+    }
+
+    /// <summary>
+    /// The GPU shaders compile, and an object's effect really draws: a white box with an
+    /// Invert effect comes out black in the program feed.
+    /// </summary>
+    private async Task EffectsCheck()
+    {
+        if (RenderCapability.Tier >> 16 == 0 || !RenderCapability.IsPixelShaderVersionSupported(3, 0))
+        {
+            Skip("GPU effects", "no graphics card with pixel shader 3.0");
+            return;
+        }
+        Check("the effect and output-correction shaders compile", ItemEffect.IsSupported && OutputAdjustEffect.Shader is not null);
+        if (model.Program is not { } feed || !ItemEffect.IsSupported) return;
+        var slide = new Slide
+        {
+            Id = "selftest-effects", Name = "Effects",
+            Objects =
+            [
+                new SlideObject
+                {
+                    Id = "box", ObjectKind = SlideObjectKind.Shape, Name = "Box", Text = "", X = 0, Y = 0, Width = 1920, Height = 1080,
+                    Fill = new ObjectFill { FillKind = FillKind.Solid, ColorHex = "#FFFFFFFF" },
+                    Effects = [new Effect { EffectKind = EffectKind.Invert }],
+                },
+            ],
+        };
+        var sink = new CountingSink();
+        feed.Add(sink);
+        model.Show.Fire(slide, new Presentation { Id = "selftest-effects", Name = "Effects", Slides = [slide] });
+        model.RenderOutputs(SceneTransition.Cut);
+        await Delay(1200);
+        feed.Remove(sink);
+        if (sink.Last is { } pixels && sink.Width > 0)
+        {
+            var i = (sink.Height / 2 * sink.Width + sink.Width / 2) * 4;
+            Check("an Invert effect turns a white box black", pixels[i] < 40 && pixels[i + 1] < 40 && pixels[i + 2] < 40);
+            Write(BitmapSource.Create(sink.Width, sink.Height, 96, 96, PixelFormats.Pbgra32, null, pixels, sink.Width * 4), "04-effect-invert");
+        }
+        model.ClearAllCommand.Execute(null);
+    }
+
     /// <summary>
     /// Makes a short MP4 from a starter background with Windows' own encoder,
     /// imports it, plays it as a foreground video and checks it opens, has a
@@ -590,6 +1089,9 @@ public sealed class SelfTest(MainWindow window, MainViewModel model, string fold
         .Select(i => i.Content is ItemContent.Text t ? t.Styled.String : null)
         .OfType<string>()
         .Where(s => s.Length > 0));
+
+    /// <summary>A check this computer can't run (no graphics card, no device): reported, not failed.</summary>
+    private void Skip(string what, string why) => report.AppendLine($"SKIP  {what} ({why})");
 
     private void Check(string what, bool ok)
     {

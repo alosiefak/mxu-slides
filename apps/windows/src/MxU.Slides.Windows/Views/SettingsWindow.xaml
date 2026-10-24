@@ -27,7 +27,8 @@
         </Grid>
         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
             <Button Content="Identify displays" Click="Identify_Click" Margin="0,0,8,0" />
-            <Button Content="Refresh list" Click="Refresh_Click" />
+            <Button Content="Refresh list" Click="Refresh_Click" Margin="0,0,8,0" />
+            <Button Content="More screens, NDI, DeckLink, edge blending…" Click="Screens_Click" Style="{StaticResource AccentButton}" />
         </StackPanel>
         <CheckBox x:Name="OutputsAtLaunch" Content="Turn outputs on when MxU Slides starts (if their displays are connected)" />
         <CheckBox x:Name="PreventSleep" Content="Keep the computer and screens awake while an output is showing" />
@@ -79,6 +80,10 @@
             <CheckBox x:Name="MidiEnabled" Content="Let MIDI notes run the show (same notes as ProPresenter)" VerticalAlignment="Center" />
         </DockPanel>
         <TextBlock x:Name="MidiDevices" Style="{StaticResource Muted}" FontSize="11" Margin="0,4,0,4" TextWrapping="Wrap" />
+        <DockPanel Margin="0,0,0,6">
+            <TextBlock Text="Send MIDI out to" VerticalAlignment="Center" Width="120" />
+            <ComboBox x:Name="MidiOutCombo" ToolTip="Where slide actions and combos send MIDI when they don't name an output (a lighting desk, a mixer…)" />
+        </DockPanel>
         <Expander Header="Note for each command" Foreground="{StaticResource Text}" Margin="0,0,0,0">
             <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0">
                 <ItemsControl x:Name="MidiMapRows">
@@ -94,6 +99,27 @@
                 </ItemsControl>
             </ScrollViewer>
         </Expander>
+
+        <TextBlock Text="TIMECODE IN" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
+        <DockPanel>
+            <ComboBox x:Name="TimecodeChannel" DockPanel.Dock="Right" Width="110" Margin="8,0,0,0" SelectionChanged="TimecodeChannel_Changed"
+                      ToolTip="The input channel the LTC arrives on" />
+            <TextBlock Text="Read from" VerticalAlignment="Center" Width="120" />
+            <ComboBox x:Name="TimecodeInput" SelectionChanged="TimecodeInput_Changed"
+                      ToolTip="LTC from a sound input (an audio interface channel), or MTC from a MIDI input" />
+        </DockPanel>
+        <DockPanel Margin="0,6,0,0">
+            <TextBlock x:Name="TimecodeReadout" DockPanel.Dock="Right" FontFamily="Consolas" FontSize="15" VerticalAlignment="Center" Margin="8,0,0,0" />
+            <CheckBox x:Name="TimecodeFollows" Content="Follow it (songs whose timeline follows timecode play by themselves)" VerticalAlignment="Center" Click="TimecodeFollows_Click" />
+        </DockPanel>
+        <DockPanel Margin="0,4,0,0">
+            <TextBox x:Name="TimecodeOffset" DockPanel.Dock="Right" Width="48" TextChanged="TimecodeOffset_Changed" ToolTip="Frames early (−) or late (+), from −30 to 30" />
+            <TextBlock DockPanel.Dock="Right" Text="Offset (frames)" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <CheckBox x:Name="TimecodePlaysAudio" Content="Also play the timelines' music" VerticalAlignment="Center" Click="TimecodePlaysAudio_Click"
+                      ToolTip="Usually off: under timecode the band's playback rig plays the music" />
+        </DockPanel>
+        <TextBlock Style="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
+                   Text="These apply straight away and belong to this PC. Turn on Follow timecode for a song from the ⋯ menu on its timeline." />
 
         <TextBlock Text="NETWORK &amp; API" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
         <DockPanel>

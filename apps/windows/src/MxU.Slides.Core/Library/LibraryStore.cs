@@ -24,6 +24,15 @@ public sealed class LibraryStore
         [typeof(Overlay)] = "Overlays",
         [typeof(ConfidenceLayout)] = "StageLayouts",
         [typeof(AlertPreset)] = "Alerts",
+        [typeof(AudioItem)] = "Audio",
+        [typeof(Playlist)] = "Playlists",
+        [typeof(ActionCombo)] = "ActionCombos",
+        [typeof(ScheduleTrigger)] = "Schedule",
+        [typeof(OutputPreset)] = "OutputPresets",
+        [typeof(StreamRecordPreset)] = "StreamPresets",
+        [typeof(StreamDestination)] = "StreamDestinations",
+        [typeof(ControlBoard)] = "ComboBoard",
+        [typeof(SchedulerBoard)] = "SchedulerBoard",
     };
 
     private readonly object gate = new();

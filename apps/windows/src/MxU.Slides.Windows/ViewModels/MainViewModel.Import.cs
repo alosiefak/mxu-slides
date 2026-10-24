@@ -124,6 +124,7 @@ public sealed partial class MainViewModel
             var result = await new ProWorkspaceImporter(Library).ImportWorkspaceAsync(showDirectory,
                 new WorkspaceImportOptions { Policy = ImportConflictPolicy.UpdateUnedited }, progress: progress);
             foreach (var warning in result.Warnings) Log.Info($"ProPresenter library import: {warning}");
+            SaveProPresenterExtras(result);
             RefreshLibrary();
             RefreshServices(keepSelection: true);
             RefreshThemes();
@@ -139,6 +140,8 @@ public sealed partial class MainViewModel
             };
             if (result.OverlaysImported.Count > 0) parts.Add($"{result.OverlaysImported.Count} props");
             if (result.LayoutsImported.Count > 0) parts.Add($"{result.LayoutsImported.Count} stage layouts");
+            if (result.Combos.Count > 0) parts.Add($"{result.Combos.Count} macros");
+            if (result.ScheduleTriggers.Count > 0) parts.Add($"{result.ScheduleTriggers.Count} calendar events");
             Notice = $"Imported {string.Join(", ", parts)} from ProPresenter"
                 + (result.SkippedEdited.Count > 0 ? $"; kept {result.SkippedEdited.Count} you've changed here" : "")
                 + (result.Warnings.Count > 0 ? ". Details are in the log." : ".");
@@ -155,6 +158,30 @@ public sealed partial class MainViewModel
         {
             IsImporting = false;
         }
+    }
+
+    /// <summary>
+    /// What the importer maps but leaves to the app: macros become action combos (with their
+    /// collections as folders on the combo board) and calendar events become schedule triggers.
+    /// Ones already in the library are kept as they are.
+    /// </summary>
+    private void SaveProPresenterExtras(ProWorkspaceImportResult result)
+    {
+        foreach (var combo in result.Combos.Where(c => Library.Get<ActionCombo>(c.Id) is null)) Library.Save(combo);
+        if (result.ComboFolders.Count > 0)
+        {
+            var board = Library.Get<ControlBoard>(Core.Automation.ControlBoardLogic.ComboBoardId)
+                ?? new ControlBoard { Id = Core.Automation.ControlBoardLogic.ComboBoardId };
+            foreach (var folder in result.ComboFolders.Where(f => board.Folders.All(existing => existing.Name != f.Name)))
+            {
+                var id = Core.Automation.ControlBoardLogic.AddFolder(board, folder.Name);
+                board.Folders.First(f => f.Id == id).ItemIds.AddRange(folder.ComboIds);
+            }
+            Library.Save(board);
+        }
+        foreach (var trigger in result.ScheduleTriggers.Where(t => Library.Get<ScheduleTrigger>(t.Id) is null)) Library.Save(trigger);
+        if (result.Combos.Count + result.ScheduleTriggers.Count > 0)
+            Log.Info($"ProPresenter library import: {result.Combos.Count} macros as action combos, {result.ScheduleTriggers.Count} calendar events as schedule triggers");
     }
 
     /// <summary>Called on the import's worker thread; the question is asked on the UI thread.</summary>

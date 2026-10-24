@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Streaming and recording: the port of the Mac's StreamEngine (RTMP/RTMPS and
+       HLS sessions, health), OutputEngine/Recording (the MP4 recorder) and the
+       stream-destination logic from PresenterCore, plus the non-UI half of the Mac's
+       StreamingController and RecordingController. Encoding uses Windows' own
+       Media Foundation (hand-written COM interop, no packages). RTMP is written here
+       because no .NET library does what HaishinKit does for the Mac. No WPF. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>MxU.Slides.Broadcast</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- DPAPI, to keep stream keys encrypted for the Windows user (the Mac keeps secrets in the Keychain). -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MxU.Slides.Broadcast.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Hls\Vendored\LICENSE-HaishinKit.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

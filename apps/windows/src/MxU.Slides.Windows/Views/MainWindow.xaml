@@ -100,6 +100,29 @@
                         <TextBlock Text="Screens &amp; Settings" />
                     </StackPanel>
                 </Button>
+                <Button DockPanel.Dock="Right" Click="Broadcast_Click" Margin="0,0,6,0" ToolTip="Record the service, or stream it live (YouTube, Facebook, RTMP)">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="9" Height="9" Margin="0,0,7,0" VerticalAlignment="Center">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Fill" Value="{StaticResource FaintText}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding BroadcastTint}" Value="Green">
+                                            <Setter Property="Fill" Value="#E5484D" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding BroadcastTint}" Value="Orange">
+                                            <Setter Property="Fill" Value="#F5A623" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding BroadcastTint}" Value="Red">
+                                            <Setter Property="Fill" Value="#E5484D" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <TextBlock Text="{Binding BroadcastButtonText}" />
+                    </StackPanel>
+                </Button>
                 <Button DockPanel.Dock="Right" Click="StageOutput_Click" Margin="0,0,6,0" ToolTip="Turn the stage display on or off">
                     <StackPanel Orientation="Horizontal">
                         <Ellipse x:Name="StageDot" Width="9" Height="9" Fill="{StaticResource FaintText}" Margin="0,0,7,0" VerticalAlignment="Center" />
@@ -288,6 +311,10 @@
                                 <Button Click="Background_Click" ToolTip="Set or clear a background for the whole song">
                                     <TextBlock Text="Background" />
                                 </Button>
+                                <ToggleButton IsChecked="{Binding TimelineBarOpen}" Margin="6,0,0,0" Padding="8,2"
+                                              ToolTip="The song's timeline: slides that change by themselves, in time with the music">
+                                    <TextBlock Text="Timeline" />
+                                </ToggleButton>
                             </StackPanel>
                             <StackPanel>
                                 <TextBlock Text="{Binding CurrentTitle}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
@@ -522,6 +549,72 @@
                         </ScrollViewer>
                     </Border>
 
+                    <!-- Song timeline: shows when the song has one, or from the Timeline button -->
+                    <Border DockPanel.Dock="Bottom" Padding="12,8" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0"
+                            Visibility="{Binding ShowsTimelineBar, Converter={StaticResource Visible}}">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Command="{Binding TimelineRewindCommand}" Width="34" Margin="0,0,4,0" ToolTip="Stop and go back to the start">
+                                    <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE892;" />
+                                </Button>
+                                <Button Command="{Binding TimelinePlayPauseCommand}" Width="34" Margin="0,0,4,0"
+                                        ToolTip="Play the timeline: the slides change by themselves, in time with the song">
+                                    <TextBlock FontFamily="{StaticResource Icons}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="&#xE768;" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding TimelinePlaying}" Value="True">
+                                                        <Setter Property="Text" Value="&#xE769;" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Button>
+                                <Button Command="{Binding TimelineRecordCommand}" Padding="8,2"
+                                        ToolTip="Record: play the song and click each slide when it should change. Press again to finish.">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock FontFamily="{StaticResource Icons}" Foreground="#E5484D" VerticalAlignment="Center" Margin="0,0,6,0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="&#xE7C8;" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding TimelineRecording}" Value="True">
+                                                            <Setter Property="Text" Value="&#xE71A;" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="Record" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding TimelineRecording}" Value="True">
+                                                            <Setter Property="Text" Value="Finish" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                            <Button DockPanel.Dock="Right" Width="34" Click="TimelineMenu_Click" ToolTip="Music, timecode, undo, clear">
+                                <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE712;" />
+                            </Button>
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding TimelineClock}" FontFamily="Consolas" Margin="10,0" VerticalAlignment="Center" />
+                            <StackPanel VerticalAlignment="Center" Margin="12,0,0,0">
+                                <Slider x:Name="TimelineSlider" Minimum="0" Maximum="{Binding TimelineLength}" Value="{Binding TimelinePosition}"
+                                        IsMoveToPointEnabled="True" ToolTip="The playhead: click or drag to move it"
+                                        PreviewMouseLeftButtonDown="TimelineSlider_MouseDown" PreviewMouseLeftButtonUp="TimelineSlider_MouseUp" />
+                                <TextBlock Text="{Binding TimelineStatus}" Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
                     <Grid>
                         <v:SlideCanvasEditor x:Name="CanvasEditor" Margin="10"
                                              Visibility="{Binding IsEditing, Converter={StaticResource Visible}}" />
@@ -703,13 +796,30 @@
         <Border Grid.Row="4" Style="{StaticResource Panel}" Margin="8,0,8,8" AllowDrop="True" Drop="MediaBin_Drop" DragOver="MediaBin_DragOver">
             <DockPanel>
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                    <ToggleButton Content="Media" Padding="12,3" IsChecked="{Binding ShowingOverlays, Converter={StaticResource Not}}" />
-                    <ToggleButton Content="Overlays" Padding="12,3" Margin="4,0,12,0" IsChecked="{Binding ShowingOverlays}"
+                    <ToggleButton Content="Media" Padding="12,3" IsChecked="{Binding ShowingMedia}" />
+                    <ToggleButton Content="Overlays" Padding="12,3" Margin="4,0,0,0" IsChecked="{Binding ShowingOverlays}"
                                   ToolTip="Lower thirds, tickers and bars that sit on top of the slide (F4 clears them)" />
+                    <ToggleButton Content="Music" Padding="12,3" Margin="4,0,0,0" IsChecked="{Binding ShowingMusic}"
+                                  ToolTip="Songs and playlists for walk-in, offering and walk-out (F5 stops the music)" />
+                    <ToggleButton Content="Combos" Padding="12,3" Margin="4,0,12,0" IsChecked="{Binding ShowingCombos}"
+                                  ToolTip="Action combos: one click runs several steps (a background, a message, a timer…)" />
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding ShowingMusic, Converter={StaticResource Visible}}">
+                        <TextBlock Text="{Binding NowPlaying}" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,10,0" FontSize="11" />
+                        <Button Command="{Binding MusicPreviousCommand}" Content="⏮" ToolTip="Previous song" Margin="0,0,4,0" />
+                        <Button Command="{Binding MusicPlayPauseCommand}" Content="⏯" ToolTip="Play / pause" Margin="0,0,4,0" />
+                        <Button Command="{Binding MusicNextCommand}" Content="⏭" ToolTip="Next song" Margin="0,0,4,0" />
+                        <Button Command="{Binding MusicStopCommand}" Content="⏹" ToolTip="Stop (fades out)" Margin="0,0,12,0" />
+                        <Button Click="ImportAudio_Click" Content="+ Import music" />
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding ShowingCombos, Converter={StaticResource Visible}}">
+                        <TextBlock Text="Click to run · MIDI &quot;Run Action Combo&quot; with velocity n runs the nth" Style="{StaticResource Muted}"
+                                   VerticalAlignment="Center" FontSize="11" />
+                    </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
-                                Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}, ConverterParameter=invert}">
+                                Visibility="{Binding ShowingMedia, Converter={StaticResource Visible}}">
                         <TextBlock Text="Click to show · right-click for options · drop files here" Style="{StaticResource Muted}"
                                    VerticalAlignment="Center" Margin="0,0,12,0" FontSize="11" />
+                        <Button Click="VideoInputs_Click" Content="Video inputs…" Margin="0,0,6,0" ToolTip="Cameras, capture cards and NDI sources" />
                         <Button Command="{Binding ImportMediaCommand}" Content="+ Import images &amp; videos" />
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}}">
@@ -718,10 +828,11 @@
                         <Button Command="{Binding DuplicateOverlayCommand}" Content="Duplicate" ToolTip="Make your own copy of the selected overlay" />
                     </StackPanel>
                     <TextBox Text="{Binding MediaSearch, UpdateSourceTrigger=PropertyChanged}" Width="180" HorizontalAlignment="Left" Tag="Search media…"
-                             Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}, ConverterParameter=invert}" />
+                             Visibility="{Binding ShowingMedia, Converter={StaticResource Visible}}" />
                     <ComboBox ItemsSource="{Binding OverlayPacks}" SelectedItem="{Binding SelectedOverlayPack}" Width="180" HorizontalAlignment="Left"
                               Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}}" />
                 </DockPanel>
+                <Grid>
                 <!-- Overlays -->
                 <Grid Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}}">
                     <Grid.ColumnDefinitions>
@@ -772,9 +883,88 @@
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
-                <!-- Media -->
+                <!-- Music -->
                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
-                              Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}, ConverterParameter=invert}">
+                              Visibility="{Binding ShowingMusic, Converter={StaticResource Visible}}">
+                    <ItemsControl ItemsSource="{Binding AudioTiles}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:AudioTileViewModel}">
+                                <Border x:Name="Frame" Width="170" Height="92" Margin="0,0,8,0" CornerRadius="5" BorderThickness="2" BorderBrush="Transparent"
+                                        Background="#1A2233" Cursor="Hand" MouseLeftButtonUp="AudioTile_Click" ToolTip="{Binding Name}">
+                                    <DockPanel Margin="10,8">
+                                        <TextBlock DockPanel.Dock="Bottom" Text="{Binding Detail}" FontSize="11" Foreground="{StaticResource MutedText}" />
+                                        <TextBlock DockPanel.Dock="Left" FontFamily="{StaticResource Icons}" Text="&#xEC4F;" FontSize="18" Margin="0,0,8,0" VerticalAlignment="Top" />
+                                        <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" />
+                                    </DockPanel>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                        <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Live}" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                <!-- Combos -->
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                              Visibility="{Binding ShowingCombos, Converter={StaticResource Visible}}">
+                    <ItemsControl ItemsSource="{Binding Combos}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Width="150" Height="92" Margin="0,0,8,0" Command="{Binding DataContext.RunComboCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}" ToolTip="{Binding Name}">
+                                    <StackPanel>
+                                        <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE768;" FontSize="18" HorizontalAlignment="Center" Margin="0,0,0,6" />
+                                        <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                <!-- Media (live inputs first, then the media items) -->
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                              Visibility="{Binding ShowingMedia, Converter={StaticResource Visible}}">
+                    <StackPanel Orientation="Horizontal">
+                    <ItemsControl ItemsSource="{Binding InputTiles}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:InputTileViewModel}">
+                                <Border x:Name="Frame" Width="170" Margin="0,0,8,0" CornerRadius="5" BorderThickness="2" BorderBrush="Transparent" Background="#141414"
+                                        Cursor="Hand" MouseLeftButtonUp="InputTile_Click" ToolTip="Click to show it under the slides (click again to take it off)">
+                                    <Grid>
+                                        <r:SceneView StaticScene="{Binding Preview}" PlaysVideo="False" Height="92" />
+                                        <Border VerticalAlignment="Bottom" Background="#B0000000" Padding="5,2">
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Kind}" FontSize="10" Foreground="{StaticResource MutedText}" Margin="4,0,0,0" />
+                                                <TextBlock Text="{Binding Name}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsLive}" Value="True">
+                                        <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Live}" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <ItemsControl ItemsSource="{Binding MediaItems}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -817,7 +1007,9 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    </StackPanel>
                 </ScrollViewer>
+                </Grid>
             </DockPanel>
         </Border>
     </Grid>

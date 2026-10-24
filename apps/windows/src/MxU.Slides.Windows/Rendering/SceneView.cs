@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
+using System.Windows.Media.Media3D;
 using MxU.Slides.Core.Animation;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Windows.Infrastructure;
@@ -43,16 +44,25 @@ public sealed class SceneView : FrameworkElement
     /// <summary>Where an item sits this frame; when equal, its transform, clip and mask stay.</summary>
     private sealed record PoseKey(SceneRect Frame, double Rotation, bool FlipH, bool FlipV, AnimationMotion Motion);
 
-    /// <summary>One item: Outer (canvas space) carries the matte clip, Inner (moves with the item) the pose, opacity, wipe and blur.</summary>
+    /// <summary>
+    /// One item: Outer (canvas space) carries the matte clip, Inner (moves with the item) the
+    /// pose, opacity, wipe and blur, and between Inner and the drawing sits one layer per
+    /// picture effect (first effect innermost, as the Mac applies them in order).
+    /// </summary>
     private sealed class Slot
     {
         public Slot() => Outer.Children.Add(Inner);
         public ContainerVisual Outer { get; } = new();
         public ContainerVisual Inner { get; } = new();
+        public List<(ContainerVisual Layer, ItemEffect Effect)> EffectLayers { get; } = [];
+        public ItemVisual? Drawing;
         public ContentKey? Content;
         public PoseKey? Pose;
         public double Blur;
         public Geometry? Matte;
+
+        /// <summary>Where the drawing goes: the innermost effect layer, or Inner when there are none.</summary>
+        public ContainerVisual Host => EffectLayers.Count > 0 ? EffectLayers[0].Layer : Inner;
     }
 
     private sealed class Root
@@ -116,6 +126,12 @@ public sealed class SceneView : FrameworkElement
     /// <summary>Which media layers may play sound. Background loops stay silent.</summary>
     public Func<string, bool> IsAudible { get; set; } = itemId => itemId == "live-media-videos";
 
+    /// <summary>
+    /// A view that is never on screen (the program feed): it still plays transitions and
+    /// animations, which an ordinary hidden view skips.
+    /// </summary>
+    public bool Offscreen { get; set; }
+
     /// <summary>Colour outside the scene when the view's shape differs from the canvas.</summary>
     public Brush Letterbox { get; set; } = Brushes.Black;
 
@@ -142,7 +158,7 @@ public sealed class SceneView : FrameworkElement
         var next = scene is null ? null : new Root(scene);
         if (next is not null) Render(next, Now);
 
-        if (transition.Style == TransitionStyle.Cut || transition.Seconds <= 0.01 || !IsVisible)
+        if (transition.Style == TransitionStyle.Cut || transition.Seconds <= 0.01 || !IsVisible && !Offscreen)
         {
             FinishTransition();
             Detach(current);
@@ -343,7 +359,7 @@ public sealed class SceneView : FrameworkElement
                 try
                 {
                     if (!root.Slots.TryGetValue(id, out var slot)) root.Slots[id] = slot = new Slot();
-                    Apply(slot, resolvedItem, root, ppd, mattes, canvasRect);
+                    Apply(slot, resolvedItem, root, ppd, mattes, canvasRect, now);
                     order.Add(slot.Outer);
                 }
                 catch (Exception ex)
@@ -373,7 +389,7 @@ public sealed class SceneView : FrameworkElement
         return still;
     }
 
-    private void Apply(Slot slot, ResolvedItem resolved, Root root, double ppd, Dictionary<string, Geometry> mattes, Rect canvasRect)
+    private void Apply(Slot slot, ResolvedItem resolved, Root root, double ppd, Dictionary<string, Geometry> mattes, Rect canvasRect, double now)
     {
         var item = resolved.Item;
         var render = item.Render;
@@ -388,10 +404,12 @@ public sealed class SceneView : FrameworkElement
             {
                 if (root.Keys.Add(key)) media?.Retain(key);
             });
-            slot.Inner.Children.Clear();
-            slot.Inner.Children.Add(drawing);
+            slot.Host.Children.Clear();
+            slot.Host.Children.Add(drawing);
+            slot.Drawing = drawing;
             slot.Content = content;
         }
+        ApplyEffects(slot, item.Effects, now);
 
         var opacity = Math.Clamp(render.Opacity, 0, 1);
         if (slot.Inner.Opacity != opacity) slot.Inner.Opacity = opacity;
@@ -419,6 +437,44 @@ public sealed class SceneView : FrameworkElement
         {
             slot.Outer.Clip = matte;
             slot.Matte = matte;
+        }
+    }
+
+    /// <summary>Keeps one effect layer per drawable pass and sets each pass's parameters for this frame.</summary>
+    private void ApplyEffects(Slot slot, IReadOnlyList<AnimationEffect> effects, double now)
+    {
+        var passes = new List<(int Mode, Point4D Parameters, double Opacity)>();
+        if (effects.Count > 0 && ItemEffect.IsSupported)
+        {
+            var pixelsPerUnit = RenderScale();
+            foreach (var effect in effects)
+                if (ItemEffect.Pass(effect, now, pixelsPerUnit) is { } pass) passes.Add((pass.Mode, pass.Parameters, effect.Opacity));
+        }
+        if (passes.Count != slot.EffectLayers.Count)
+        {
+            // Rebuild the chain: Inner → last effect → … → first effect → drawing.
+            foreach (var (layer, _) in slot.EffectLayers) layer.Children.Clear();
+            slot.Inner.Children.Clear();
+            slot.EffectLayers.Clear();
+            ContainerVisual outer = slot.Inner;
+            var chain = new List<(ContainerVisual, ItemEffect)>();
+            for (var i = passes.Count - 1; i >= 0; i--)
+            {
+                var effect = new ItemEffect();
+                var layer = new ContainerVisual { Effect = effect };
+                outer.Children.Add(layer);
+                chain.Insert(0, (layer, effect));
+                outer = layer;
+            }
+            slot.EffectLayers.AddRange(chain);
+            if (slot.Drawing is { } drawing) outer.Children.Add(drawing);
+        }
+        for (var i = 0; i < passes.Count; i++)
+        {
+            var effect = slot.EffectLayers[i].Effect;
+            var modeOpacity = new Point4D(passes[i].Mode, passes[i].Opacity, 0, 0);
+            if (effect.ModeOpacity != modeOpacity) effect.ModeOpacity = modeOpacity;
+            if (effect.Parameters != passes[i].Parameters) effect.Parameters = passes[i].Parameters;
         }
     }
 
@@ -769,6 +825,15 @@ public sealed class SceneView : FrameworkElement
         dc.PushClip(clip);
         try
         {
+            if (MediaHub.IsLiveInput(mediaId))
+            {
+                // A camera or NDI source: its picture updates in place as frames arrive.
+                if (media.LiveInputPicture(mediaId) is { } picture)
+                    dc.DrawImage(picture, Place(new Size(picture.PixelWidth, picture.PixelHeight), frame, mode));
+                else
+                    DrawPlaceholder(dc, frame, $"Waiting for {media.LiveInputName?.Invoke(mediaId) ?? "the input"}…", failed: false);
+                return;
+            }
             switch (media.KindOf(mediaId))
             {
                 case Core.Model.MediaKind.Image:

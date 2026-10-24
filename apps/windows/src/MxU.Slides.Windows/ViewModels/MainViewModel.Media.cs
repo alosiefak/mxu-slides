@@ -83,8 +83,11 @@ public sealed partial class MainViewModel
     public void FireMedia(MediaItem item)
     {
         var cue = MediaCueRouting.Dropped(item);
-        Show.Fire(cue, SlideSceneBuilder.LayerKindOf(cue.Layer));
+        var layer = SlideSceneBuilder.LayerKindOf(cue.Layer);
+        Actions.ApplyPresetSwitches(item, null);
+        Show.Fire(cue, layer);
         RenderOutputs(DefaultTransition());
+        Actions.MediaDidFire(item, layer);
         if (Show.Live is null)
         {
             LiveTitle = item.Name;

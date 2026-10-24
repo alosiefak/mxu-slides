@@ -13,14 +13,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Audio\MxU.Slides.Audio.csproj" />
+    <ProjectReference Include="..\MxU.Slides.Broadcast\MxU.Slides.Broadcast.csproj" />
     <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
     <ProjectReference Include="..\MxU.Slides.LocalApi\MxU.Slides.LocalApi.csproj" />
     <ProjectReference Include="..\MxU.Slides.PptxImport\MxU.Slides.PptxImport.csproj" />
     <ProjectReference Include="..\MxU.Slides.ProImport\MxU.Slides.ProImport.csproj" />
+    <ProjectReference Include="..\MxU.Slides.VideoIO\MxU.Slides.VideoIO.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
   </ItemGroup>
 
   <ItemGroup>

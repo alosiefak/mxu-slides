@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Video in and out: NDI senders and receivers, Blackmagic DeckLink outputs (with
+       keying) and captures, cameras and capture cards, the lip-sync delay and the
+       inventory of named video inputs. Port of the Mac's NDIKit, DeckLinkKit, the
+       capture half of MediaEngine and Sources/VideoInputInventory.swift.
+       Nothing here ships a vendor binary: NDI is loaded from the installed NDI Tools
+       runtime, DeckLink through the COM API the Desktop Video driver registers.
+       No WPF either; the app draws the frames these classes hand it. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>MxU.Slides.VideoIO</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MxU.Slides.VideoIO.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -189,6 +189,7 @@ public sealed partial class MainViewModel
     {
         if (string.IsNullOrWhiteSpace(AlertText)) return;
         Show.FireAlert(AlertText.Trim(), AlertOnAudience, AlertOnStage);
+        liveAlertPresetId = null;
         RenderOutputs(DefaultTransition());
     }
 
@@ -247,6 +248,7 @@ public sealed partial class MainViewModel
             Alert = alert,
             Timers = Timers.Timers,
             VideoCountdown = LiveVideoCountdown(),
+            Timecode = publishedTimecode,
             SlidePosition = position,
             CurrentItemName = currentItem ?? presentationName,
             NextItemName = nextItem,

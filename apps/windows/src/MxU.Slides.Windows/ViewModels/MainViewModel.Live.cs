@@ -60,13 +60,16 @@ public sealed partial class MainViewModel
     /// <summary>Set while a "skip builds" advance fires, so the slide arrives with its automatic builds already played.</summary>
     private bool fireSettled;
 
-    private void Fire(Presentation presentation, string? arrangementId, int occurrence, string? itemId)
+    /// <param name="runActions">False when a timeline jumps (lands on a slide without running its actions, as on the Mac).</param>
+    private void Fire(Presentation presentation, string? arrangementId, int occurrence, string? itemId, bool runActions = true)
     {
         var arranged = SlideSceneBuilder.ArrangedSlides(presentation, arrangementId);
         if (occurrence < 0 || occurrence >= arranged.Count) return;
         var slide = arranged[occurrence];
         var theme = Library.Get<Theme>(presentation.ThemeId);
         var wasLive = Show.Live is not null;
+        // A slide (or its service item) can switch the output preset first, as on the Mac.
+        if (runActions) Actions.ApplyPresetSwitches(slide, itemId);
         Show.Fire(slide, presentation, theme, arrangementId, arrivesSettled: fireSettled);
         Live = new LiveContext(itemId, presentation.Id, arrangementId, occurrence);
         RenderOutputs(TransitionFor(slide, presentation, wasLive));
@@ -76,6 +79,10 @@ public sealed partial class MainViewModel
         Session.LiveArrangementId = arrangementId;
         Session.Save();
         CanRestoreLive = false;
+        // A timeline being recorded turns the slide into a cue at the playhead.
+        timeline?.NoteSlideLanded(TimelineItemId(itemId, presentation.Id), occurrence);
+        // Then the slide's own actions: fire media, an overlay, a message, a timer, a combo…
+        if (runActions) Actions.SlideDidFire(slide, itemId);
     }
 
     private void UpdateLiveLabels(Presentation presentation, Slide slide, int occurrence, int count)
@@ -235,8 +242,16 @@ public sealed partial class MainViewModel
 
     // MARK: Clearing (F1–F6, as on the Mac)
 
+    /// <summary>F1: everything off, and any slide-action steps still waiting on a delay are cancelled.</summary>
     [RelayCommand]
-    private void ClearAll() => Clear(() => Show.ClearAll());
+    private void ClearAll()
+    {
+        Actions.CancelPendingDelayedActions();
+        timeline?.Stop();
+        audio?.Stop();
+        Clear(() => Show.ClearAll());
+        UpdateNowPlaying();
+    }
 
     // Slides and overlays with Out animations play them on the way off (Clear All always cuts).
     [RelayCommand]
@@ -249,7 +264,13 @@ public sealed partial class MainViewModel
     private void ClearOverlays() => Clear(() => Show.Clear(ShowFunction.Overlays, ShowState.HostClock()));
 
     [RelayCommand]
-    private void ClearAudio() => Clear(() => Show.Clear(ShowFunction.Audio));
+    private void ClearAudio()
+    {
+        timeline?.ClearTracks();
+        audio?.Stop();
+        Clear(() => Show.Clear(ShowFunction.Audio));
+        UpdateNowPlaying();
+    }
 
     [RelayCommand]
     private void ClearAlerts() => Clear(() => Show.Clear(ShowFunction.Alerts));
@@ -301,11 +322,13 @@ public sealed partial class MainViewModel
             {
                 Outputs?.Update(OutputRole.Audience, audience);
                 AudiencePreview?.Update(audience);
+                Program?.Update(audience);
             }
             else
             {
                 Outputs?.Present(OutputRole.Audience, audience, transition);
                 AudiencePreview?.Present(audience, transition);
+                Program?.Present(audience, transition);
             }
             RenderStage(refreshOnly ? SceneTransition.Cut : transition, refreshOnly);
             EnsureTicking();

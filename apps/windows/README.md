@@ -62,7 +62,13 @@ GitHub Actions (`.github/workflows/windows.yml`) runs all of this on every push,
 | Timers | ▶/❚❚ and ↺ in **Timers**; double-click a name to set `Sermon, 35` or `Service starts, 10:30` |
 | Phone, tablet or Companion remote | **Screens & Settings › Network & API**: turn it on, press **Copy default key**, then connect to the address shown (e.g. `http://192.168.1.20:6980`). **Open API docs** lists every command. Allow MxU Slides through the Windows firewall on Private networks when asked |
 | MIDI control | **Screens & Settings** › MIDI: turn it on, pick a channel. The note map matches ProPresenter's (Next Slide = C-1 / note 12, Clear All = C-2 / note 0, Trigger Slide = G-1 with velocity = slide number…) |
-| Choose screens | **Screens & Settings**: pick the projector for Audience and the confidence monitor for Stage |
+| Choose screens | **Screens & Settings**: pick the projector for Audience and the confidence monitor for Stage. **More screens, NDI, DeckLink, edge blending…** sets up any number of screens, projector blends, LED walls and NDI or DeckLink outputs |
+| Music | Bottom bin › **Music**: **+ Import music**, click a song or playlist to play it; F5 stops it |
+| Cameras and NDI sources | **Media › Video inputs…**: name an input and pick a camera, NDI source or DeckLink input. Its tile in the Media tab puts it under the slides |
+| Action combos | Bottom bin › **Combos**: click one to run its actions (ProPresenter macros import as combos) |
+| Slides that change by themselves | Open a song › **Timeline** › **Record**, click each slide as the song plays, **Finish**. ▶ plays it back. **⋯** adds the song's music or follows timecode |
+| Timecode | **Screens & Settings › Timecode in**: LTC from a sound input or MTC from MIDI |
+| Record or stream | **Stream & Record** in the toolbar: pick a preset and press **Start recording** or **Go live**. Add YouTube, Facebook or any RTMP server with its stream key |
 
 **On a laptop with one screen**, click **Audience** or **Stage** in the toolbar to open that output as a normal window. It shows exactly what the projector would. When you plug in a projector, choose it under **Screens & Settings**. The output then goes full screen there, stays on top, hides the mouse and never steals the keyboard.
 
@@ -102,10 +108,17 @@ Phase 2 adds:
 - the Local API for phone, tablet and Companion remotes;
 - MIDI control and ProPresenter-style group hot keys.
 
-Still to come:
+Phase 3 adds:
 
-- **Phase 3:** NDI, DeckLink, recording and streaming, multitrack audio.
-- **Gaps:** theme-override looks, text paging, per-item transitions, GPU-only effects (keystone, burn, glitch, tint) and an overlay editor. See [docs/PORTING.md](docs/PORTING.md).
+- any number of screens: mirrors, grouped projectors, edge blending, LED walls, keystone and colour correction;
+- NDI and DeckLink outputs, and cameras, NDI and DeckLink as live inputs;
+- music playlists, and multitrack stems on timelines;
+- recording to MP4 and streaming over RTMP/RTMPS or HLS;
+- song timelines (record a take, play it back), timecode in (LTC/MTC);
+- slide actions, action combos, the scheduler and MIDI out;
+- GPU effects (colour, hue, pixelate, vignette, warp, glitch, burn, tint…).
+
+Still to come: theme-override looks, text paging, per-item transitions, echo and ghost trails, and editors for overlays, combos, schedules and timelines. See [docs/PORTING.md](docs/PORTING.md).
 
 See [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) to learn the code, and [docs/PORTING.md](docs/PORTING.md) for which Swift file each C# file comes from.
 

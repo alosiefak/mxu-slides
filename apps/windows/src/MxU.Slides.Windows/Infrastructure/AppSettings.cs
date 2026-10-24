@@ -40,10 +40,29 @@ public sealed class AppSettings
 
     public MxU.Slides.Core.Control.MidiCommandMap MidiMap { get; set; } = new();
 
+    /// <summary>The MIDI output (Windows port id) slide actions send to when they don't name one.</summary>
+    public string? MidiOutputId { get; set; }
+
     /// <summary>Lets phones, tablets and other apps on the network control the show (the Local API). Off by default.</summary>
     public bool LocalApiEnabled { get; set; }
 
     public int LocalApiPort { get; set; } = MxU.Slides.LocalApi.LocalApiServer.DefaultPort;
+
+    /// <summary>
+    /// The screens: name, size, job (audience or stage), what carries them (a display, NDI or DeckLink),
+    /// slices and corrections, in the Mac's shape. Null until first run, when the old Audience and
+    /// Stage display choices become two screens.
+    /// </summary>
+    public List<MxU.Slides.Core.Outputs.PlaceholderScreenConfig>? Screens { get; set; }
+
+    /// <summary>The output preset last switched to (by an action or the Screens window), or null.</summary>
+    public string? ActiveOutputPresetId { get; set; }
+
+    /// <summary>Timecode in on this PC (its sound or MIDI input, channel, offset, follow); null until first set.</summary>
+    public MxU.Slides.Core.Automation.TimecodeSettings? Timecode { get; set; }
+
+    /// <summary>Where recordings go; null = Videos\MxU Slides.</summary>
+    public string? RecordingsFolder { get; set; }
 
     private static readonly JsonSerializerOptions Json = new()
     {

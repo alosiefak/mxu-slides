@@ -1,6 +1,8 @@
 using System.Windows.Threading;
 using Windows.Devices.Enumeration;
 using Windows.Devices.Midi;
+using Windows.Storage.Streams;
+using MxU.Slides.Core.Scene;
 
 namespace MxU.Slides.Windows.Infrastructure;
 
@@ -20,6 +22,27 @@ public sealed class MidiInputService : IDisposable
     public event Action<byte, byte, byte>? NoteOn;
 
     public event Action? DevicesChanged;
+
+    /// <summary>
+    /// Every message's bytes, raised on the MIDI thread the moment it arrives (timecode
+    /// needs the exact time): the device id, the bytes and the <see cref="ShowState.HostClock"/> time.
+    /// </summary>
+    public event Action<string, byte[], double>? Message;
+
+    /// <summary>The MIDI inputs connected now: (Windows device id, name).</summary>
+    public static async Task<IReadOnlyList<(string Id, string Name)>> ListAsync()
+    {
+        try
+        {
+            var devices = await DeviceInformation.FindAllAsync(MidiInPort.GetDeviceSelector());
+            return [.. devices.Select(d => (d.Id, d.Name))];
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Listing MIDI inputs failed: {ex.Message}");
+            return [];
+        }
+    }
 
     public IReadOnlyList<string> DeviceNames
     {
@@ -67,6 +90,7 @@ public sealed class MidiInputService : IDisposable
             if (port is null) return;
             port.MessageReceived += (_, args) =>
             {
+                if (Message is { } raw) raw(info.Id, Bytes(args.Message.RawData), ShowState.HostClock());
                 if (args.Message is MidiNoteOnMessage on)
                     dispatcher.BeginInvoke(() => NoteOn?.Invoke((byte)(0x90 | on.Channel), on.Note, on.Velocity));
             };
@@ -78,6 +102,14 @@ public sealed class MidiInputService : IDisposable
         {
             Log.Warn($"Could not open MIDI input {info.Name}: {ex.Message}");
         }
+    }
+
+    private static byte[] Bytes(IBuffer buffer)
+    {
+        var bytes = new byte[buffer.Length];
+        using var reader = DataReader.FromBuffer(buffer);
+        reader.ReadBytes(bytes);
+        return bytes;
     }
 
     private void Close(string id)

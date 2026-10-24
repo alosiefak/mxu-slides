@@ -3,7 +3,12 @@ using MxU.Slides.Core.Scene;
 
 namespace MxU.Slides.Core.Animation;
 
-/// <summary>A pass the animation engine adds to an item (a subset of the Mac's SceneEffect).</summary>
+/// <summary>
+/// A picture pass on an item: the object's own effects (colour adjust, pixelate,
+/// stained glass…) and the ones animations add (blur, burn, glitch, tint).
+/// <see cref="Opacity"/> blends the result with the untouched picture. Distances are
+/// in canvas units. Port of the Mac's SceneEffect.
+/// </summary>
 public abstract record AnimationEffect
 {
     private readonly double opacity = 1;
@@ -12,10 +17,86 @@ public abstract record AnimationEffect
 
     public double Opacity { get => opacity; init => opacity = Math.Clamp(value, 0, 1); }
 
+    /// <summary>True for effects that change every frame (noise and shimmer), so the renderer keeps drawing.</summary>
+    public virtual bool VariesWithTime => false;
+
     public sealed record Blur(double Radius) : AnimationEffect;
     public sealed record Burn(double Amount, double Phase) : AnimationEffect;
     public sealed record Glitch(double Amount, double Phase) : AnimationEffect;
     public sealed record Tint(SceneColor Color, double Amount) : AnimationEffect;
+
+    /// <summary>Brightness and contrast (0 = unchanged), saturation (1 = unchanged), hue in degrees.</summary>
+    public sealed record ColorAdjust(double Brightness, double Contrast, double Saturation, double Hue) : AnimationEffect;
+    public sealed record HueRotate(double Degrees) : AnimationEffect;
+    public sealed record Invert : AnimationEffect;
+    public sealed record Posterize(double Levels) : AnimationEffect;
+    public sealed record Pixelate(double Size) : AnimationEffect;
+    public sealed record Vignette(double Strength) : AnimationEffect;
+
+    public sealed record Warp(double Amount, double Scale, double Speed) : AnimationEffect
+    {
+        public override bool VariesWithTime => Speed > 0;
+    }
+
+    /// <summary>Needs the previous frame; not drawn on Windows yet.</summary>
+    public sealed record Echo(double Fade) : AnimationEffect;
+
+    public sealed record Scatter(double Amount, double Size, double Speed, double Smooth) : AnimationEffect
+    {
+        public override bool VariesWithTime => Speed > 0.001;
+    }
+
+    public sealed record StainedGlass(double CellSize, double Leading, double Jitter, double Speed) : AnimationEffect
+    {
+        public override bool VariesWithTime => Speed > 0;
+    }
+
+    public sealed record Grain(double Amount, double Size, double Speed) : AnimationEffect
+    {
+        public override bool VariesWithTime => Speed > 0.001;
+    }
+
+    /// <summary>Needs the previous frame; not drawn on Windows yet.</summary>
+    public sealed record GhostTrails(double Fade, double Drift, double Scale, double Speed) : AnimationEffect;
+
+    /// <summary>
+    /// An object's effect list as passes, skipping disabled, invisible and do-nothing ones.
+    /// Blur is left out: it travels as <see cref="RenderItem.BlurRadius"/>. Port of
+    /// SlideSceneBuilder.sceneEffects (same defaults and limits).
+    /// </summary>
+    public static List<AnimationEffect> From(IReadOnlyList<Effect>? effects)
+    {
+        var passes = new List<AnimationEffect>();
+        foreach (var effect in effects ?? [])
+        {
+            if (!(effect.Enabled ?? true)) continue;
+            var opacity = Math.Clamp(effect.Opacity ?? 1, 0, 1);
+            if (opacity <= 0.001) continue;
+            AnimationEffect? pass = effect.EffectKind switch
+            {
+                EffectKind.ColorAdjust => new ColorAdjust(effect.Brightness ?? 0, effect.Contrast ?? 0, effect.Saturation ?? 1, effect.Hue ?? 0),
+                EffectKind.HueRotate when Math.Abs(effect.Amount ?? 90) > 0.1 => new HueRotate(effect.Amount ?? 90),
+                EffectKind.Invert => new Invert(),
+                EffectKind.Posterize => new Posterize(Math.Clamp(effect.Amount ?? 6, 2, 32)),
+                EffectKind.Pixelate when (effect.Amount ?? 16) >= 1 => new Pixelate(effect.Amount ?? 16),
+                EffectKind.Vignette when Math.Clamp(effect.Amount ?? 0.8, 0, 1.5) > 0.001 => new Vignette(Math.Clamp(effect.Amount ?? 0.8, 0, 1.5)),
+                EffectKind.Warp when Math.Max(effect.Amount ?? 40, 0) >= 0.5 =>
+                    new Warp(Math.Max(effect.Amount ?? 40, 0), Math.Max(effect.Scale ?? 240, 1), Math.Max(effect.Speed ?? 0.5, 0)),
+                EffectKind.Echo when Math.Clamp(effect.Amount ?? 1, 0, 20) > 0.01 => new Echo(Math.Clamp(effect.Amount ?? 1, 0, 20)),
+                EffectKind.Scatter when Math.Max(effect.Amount ?? 8, 0) >= 0.5 =>
+                    new Scatter(Math.Max(effect.Amount ?? 8, 0), Math.Max(effect.Scale ?? 1, 1), Math.Clamp(effect.Speed ?? 1, 0, 1), Math.Clamp(effect.Smooth ?? 0, 0, 1)),
+                EffectKind.StainedGlass => new StainedGlass(Math.Clamp(effect.Scale ?? 80, 4, 2000), Math.Max(effect.Radius ?? 3, 0),
+                    Math.Clamp(effect.Amount ?? 0.8, 0, 1), Math.Max(effect.Speed ?? 0, 0)),
+                EffectKind.Grain when Math.Clamp(effect.Amount ?? 0.3, 0, 1) > 0.001 =>
+                    new Grain(Math.Clamp(effect.Amount ?? 0.3, 0, 1), Math.Max(effect.Scale ?? 1, 1), Math.Clamp(effect.Speed ?? 1, 0, 1)),
+                EffectKind.GhostTrails when Math.Clamp(effect.Fade ?? 1.5, 0, 20) > 0.01 =>
+                    new GhostTrails(Math.Clamp(effect.Fade ?? 1.5, 0, 20), Math.Max(effect.Amount ?? 6, 0), Math.Max(effect.Scale ?? 160, 1), Math.Max(effect.Speed ?? 0.5, 0)),
+                _ => null,
+            };
+            if (pass is not null) passes.Add(pass with { Opacity = opacity });
+        }
+        return passes;
+    }
 }
 
 /// <summary>How much of a shape's outline is stroked (the Draw animation). Start and length are fractions of the perimeter.</summary>
@@ -96,7 +177,8 @@ public sealed class AnimatedScene
     /// <summary>Whether frames differ over time, so the view must redraw on a display link.</summary>
     public bool AnimatesOnHostTime => Layers.Any(layer => !layer.IsHidden && layer.Items.Any(item =>
         (item.AnimationContext is not null && item.AnimationSteps.Count > 0)
-        || (item.Render.Content is ItemContent.Text && item.Scroll is { Speed: > 0 })));
+        || (item.Render.Content is ItemContent.Text && item.Scroll is { Speed: > 0 })
+        || item.Effects.Any(e => e.VariesWithTime)));
 
     public AnimatedScene Copy()
     {

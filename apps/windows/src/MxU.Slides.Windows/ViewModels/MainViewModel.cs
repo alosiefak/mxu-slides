@@ -32,6 +32,8 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshServices();
         RefreshMedia();
         RefreshOverlays();
+        RefreshAudio();
+        RefreshCombos();
         InitializeStage();
 
         if (App.RecoveredFromCrash)
@@ -46,6 +48,18 @@ public sealed partial class MainViewModel : ObservableObject
         CanRestoreLive = App.RecoveredFromCrash && Library.Get<Presentation>(session.LivePresentationId) is not null;
         ApplyMidiSettings();
         ApplyApiSettings();
+        StartScheduler();
+        StartInputs();
+        StartTimecode();
+        _ = RefreshMidiOutputsAsync();
+        // Combos marked "run on startup" go once the window has settled, as on the Mac.
+        var startup = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        startup.Tick += (_, _) =>
+        {
+            startup.Stop();
+            Actions.RunStartupCombos();
+        };
+        startup.Start();
     }
 
     public LibraryStore Library { get; }
@@ -57,6 +71,27 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Set by the main window once it exists.</summary>
     public OutputManager? Outputs { get; set; }
     public SceneView? AudiencePreview { get; set; }
+
+    /// <summary>The hidden copy of the audience output that recording, streaming, NDI and DeckLink take (set by the main window).</summary>
+    public ProgramFeed? Program
+    {
+        get => program;
+        set
+        {
+            if (program is not null) program.ActiveChanged -= OnProgramActiveChanged;
+            program = value;
+            if (program is not null) program.ActiveChanged += OnProgramActiveChanged;
+        }
+    }
+
+    private ProgramFeed? program;
+
+    // A destination just started listening: give the feed what's live now, and its sound.
+    private void OnProgramActiveChanged()
+    {
+        RenderOutputs(SceneTransition.Cut);
+        UpdateProgramAudio();
+    }
     public SceneView? StagePreview { get; set; }
 
     [ObservableProperty]
@@ -90,6 +125,8 @@ public sealed partial class MainViewModel : ObservableObject
         else if (type == typeof(MediaItem)) RefreshMedia();
         else if (type == typeof(Theme)) RefreshThemes();
         else if (type == typeof(ConfidenceLayout)) RefreshStageLayouts();
+        else if (type == typeof(AudioItem) || type == typeof(Playlist)) RefreshAudio();
+        else if (type == typeof(ActionCombo)) RefreshCombos();
         else if (type == typeof(Overlay) && !suppressOverlayRefresh) RefreshOverlays();
     }
 
@@ -265,6 +302,7 @@ public sealed partial class MainViewModel : ObservableObject
             }
         }
         MarkLiveTiles();
+        UpdateTimelineBar();
         SelectedSlide = Slides.FirstOrDefault(s => s.Slide.Id == selectedId) ?? (IsEditing ? Slides.FirstOrDefault() : null);
         OnPropertyChanged(nameof(CurrentTitle));
         OnPropertyChanged(nameof(CurrentSubtitle));

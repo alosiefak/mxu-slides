@@ -50,9 +50,34 @@ public sealed partial class MainViewModel
 
     public ObservableCollection<SlideTextFieldViewModel> OverlayTextFields { get; } = [];
 
-    /// <summary>The bottom bin shows media (false) or overlays (true).</summary>
+    /// <summary>Which tab the bottom bin shows.</summary>
     [ObservableProperty]
-    public partial bool ShowingOverlays { get; set; }
+    public partial BinTab Bin { get; set; }
+
+    partial void OnBinChanged(BinTab value)
+    {
+        OnPropertyChanged(nameof(ShowingMedia));
+        OnPropertyChanged(nameof(ShowingOverlays));
+        OnPropertyChanged(nameof(ShowingMusic));
+        OnPropertyChanged(nameof(ShowingCombos));
+    }
+
+    // One flag per tab, for the tab buttons (setting one true switches to it).
+    public bool ShowingMedia { get => Bin == BinTab.Media; set { if (value) Bin = BinTab.Media; } }
+
+    public bool ShowingOverlays
+    {
+        get => Bin == BinTab.Overlays;
+        set
+        {
+            if (value) Bin = BinTab.Overlays;
+            else if (Bin == BinTab.Overlays) Bin = BinTab.Media;
+        }
+    }
+
+    public bool ShowingMusic { get => Bin == BinTab.Music; set { if (value) Bin = BinTab.Music; } }
+
+    public bool ShowingCombos { get => Bin == BinTab.Combos; set { if (value) Bin = BinTab.Combos; } }
 
     partial void OnSelectedOverlayChanged(OverlayTileViewModel? value)
     {
@@ -176,3 +201,6 @@ public sealed partial class MainViewModel
 
     private bool suppressOverlayRefresh;
 }
+
+/// <summary>The bottom bin's tabs.</summary>
+public enum BinTab { Media, Overlays, Music, Combos }

@@ -26,6 +26,9 @@ The code is split into projects:
 - **`src/MxU.Slides.Windows`** is the WPF app: windows, buttons, drawing, video playback, and putting outputs on displays.
 - **`src/MxU.Slides.LocalApi`** is the remote-control server (section 15).
 - **`src/MxU.Slides.PptxImport`** and **`src/MxU.Slides.ProImport`** read PowerPoint and ProPresenter files (section 16).
+- **`src/MxU.Slides.Audio`** plays music and captures the app's own sound (section 21).
+- **`src/MxU.Slides.VideoIO`** sends to and receives from NDI and DeckLink, and reads cameras (sections 20 and 22).
+- **`src/MxU.Slides.Broadcast`** records the program to MP4 and streams it over RTMP/RTMPS or HLS (section 25).
 
 Each has its own test project under `tests/`. The Core/app split is the most important design decision. The Mac app has the same shape: its `PresenterCore` and `SlideScene` packages are the "core", and its SwiftUI/Metal code is the "app".
 
@@ -229,11 +232,129 @@ Both importers are ports of the Mac's and save straight into the `LibraryStore`.
 - **`.pro`** is also ChordPro's extension. `MainViewModel.IsProPresenterFile` tells them apart: ProPresenter's is binary, ChordPro's is text.
 - **A whole ProPresenter library**: **Screens & Settings › Import ProPresenter library…** opens at `Documents\ProPresenter`. Run it again later to pick up changes; anything you've edited here is kept.
 
-## 17. Keeping it running
+## 17. The program feed (Phase 3)
+
+Recording, streaming, NDI and DeckLink all need the audience picture as a stream of frames, not just a window. `Outputs/ProgramFeed.cs` makes that stream, the way the Mac's OutputMirror does.
+
+1. When something starts listening, it opens a hidden **program window** with its own `SceneView`. It's given exactly the same scenes as the projector, so transitions, animations and videos match. Videos share the projector's player (same playback key), so they stay in step.
+2. `Outputs/WindowCapture.cs` reads that window's picture through the graphics card (Windows.Graphics.Capture plus Direct3D 11, via the Vortice library) and copies it into memory.
+3. A pacing thread hands the newest picture to every destination 30 times a second. It repeats the last one when nothing changed, because encoders want a steady rate.
+
+Destinations implement one small interface, `IProgramSink` in `Core/Media/ProgramFeed.cs`: `WriteVideo(VideoFrame)` and `WriteAudio(AudioBuffer)`. They must return quickly; if one falls behind, frames are skipped and counted rather than slowing your screen.
+
+Two things learnt the hard way, both checked by the self-test:
+
+- **WPF's own `RenderTargetBitmap` draws on the CPU.** It managed 13 frames a second at 1080p and stalled the operator screen. Capturing a real window uses the GPU and holds 30.
+- **Windows doesn't draw windows that are entirely off-screen.** So the program window sits at the top-left of the main screen, behind everything, fully transparent (alpha 0) and click-through. You never see it, but Windows keeps its picture current.
+
+## 18. GPU shaders (Phase 3)
+
+Some looks can only be drawn pixel by pixel on the graphics card: keystone correction, edge blending, and effects like pixelate or stained glass. WPF allows that through a `ShaderEffect` with an HLSL pixel shader.
+
+- `Rendering/ShaderCompiler.cs` compiles the shader source when the app starts, with the compiler that's part of Windows (`d3dcompiler_47.dll`). The repo holds readable shader code and no compiled binaries.
+- `Rendering/ItemEffect.cs` holds all of an object's picture effects in one shader: colour adjust, hue rotate, invert, posterize, pixelate, vignette, warp, scatter, stained glass and grain, plus the animation passes glitch, burn and tint. Each is a line-for-line port of the Mac's Metal shader in `RenderEngine/ShaderSource.swift`.
+- `SceneView` gives each item one layer per effect, first effect innermost. Effects that move (warp, scatter, grain, stained glass) keep the frame loop running.
+- `Rendering/OutputAdjustEffect.cs` is the per-screen correction pass: corner-pin keystone, brightness, contrast, gamma, black level, RGB levels, edge-blend ramps and masks. It's a port of `output_adjust_fragment`.
+- Echo and ghost trails need the previous frame as an input, which WPF effects can't get, so they aren't drawn yet.
+- On a PC without a graphics card that supports pixel shader 3.0, effects and corrections are skipped; the picture still shows.
+
+## 19. Screens (Phase 3)
+
+The Windows app used to have exactly two outputs, Audience and Stage. It now has the Mac's screen model, in `src/MxU.Slides.Core/Outputs/`:
+
+- A **screen** has a name, a size (1920×1080, 4K, an odd LED-wall size…), a job (the audience program or the stage display) and a fit (show everything, or fill and trim).
+- A screen has one or more **slices**: the part of its picture an output shows. One slice is the whole screen.
+  - **Mirror** makes several outputs show the same thing.
+  - **Grouped** splits a wide picture across side-by-side projectors.
+  - **Edge blend** does the same with an overlap that ramps down so the seam disappears.
+  - **LED wall** places the picture at an exact spot on a processor's input.
+- Each slice is **carried** by a device id: `display:\\.\DISPLAY2`, `ndi:MxU Slides Stage`, or `decklink:<card>`.
+- Each slice can be **corrected**: corner-pin keystone, rotation, brightness, contrast, gamma, black level, red/green/blue, edge-blend ramps and masks.
+- `ScreenSetup` saves the whole thing in `settings.json` in the Mac's own JSON shape. On first run your old Audience and Stage display choices become two screens.
+
+The WPF half is in `src/MxU.Slides.Windows/Outputs/`:
+
+- `OutputManager` opens one `OutputWindow` per display that carries slices, and one `DeviceFeed` per NDI source or DeckLink card. It sends every screen its picture: the program reshaped to its size (`Config.Program`), the stage display, or the alignment grid while you line projectors up.
+- A `SliceView` shows its part of the screen's picture at full resolution: the scene is drawn larger than the slice and clipped. Then the correction shader runs on it (section 18). The maths (warp matrix, blend uniforms) comes from `Core/Outputs/OutputPass.cs`, so it's tested without a graphics card.
+- `Views/ScreensWindow` is where you set it all up (**Screens & Settings › More screens, NDI, DeckLink, edge blending…**). Changes apply live and save themselves.
+
+## 20. NDI and DeckLink (Phase 3)
+
+`src/MxU.Slides.VideoIO/` is a port of the Mac's NDIKit and DeckLinkKit.
+
+- **NDI:** nothing is shipped with the app. `NdiLibrary` loads the NDI runtime that NDI Tools installs, through a table of functions it checks against the DLL's exports. Without NDI Tools it reports "NDI runtime not installed" and nothing else changes.
+  - A screen carried by `ndi:<name>` becomes a source other NDI programs (OBS, vMix, NDI Studio Monitor) can pick. The self-test checks it appears on the network.
+- **DeckLink:** the app talks to Blackmagic's Desktop Video driver through COM. The interfaces are declared by hand in `DeckLinkInterop.cs`, with the IDs from Blackmagic's headers. Frames go out as BGRA, or are converted to 10-bit-safe 8-bit YUV (BT.709) when a mode needs it. Keying uses the picture's alpha.
+- **Cards:** a DeckLink card shows up in the Screens window as an output if one is installed.
+
+## 21. Music (Phase 3)
+
+`src/MxU.Slides.Audio/` is a port of the Mac's AudioEngine, built on NAudio (MIT) and Windows' WASAPI.
+
+- `AudioController` is the Audio function: playlists with crossfades, single songs, fades when stopping, next/previous/seek. The **Music** tab in the bottom bin plays them, and F5 stops them.
+- Each output runs on its own sound device stream. With **no** sound device (a server, or speakers unplugged) the engine keeps time anyway, so playlists still advance and streams still get sound. It recovers when the device comes back.
+- `ProgramAudioTap` records *this app's* sound only, through Windows' "process loopback". That includes video sound and music, but not system sounds or other apps. It's what recordings and streams hear.
+- Multitrack (stems and click tracks) is ported too: `MultitrackEngine`, and a separate tracks-player process so heavy decoding can't stall the show. The timeline UI that drives it is still to come.
+
+## 22. Live video inputs (Phase 3)
+
+Cameras, capture cards, NDI sources and DeckLink inputs are **inputs**: named entries ("Pulpit camera") kept in `video-inputs.json` by `VideoInputInventory`.
+
+- Set them up with **Media › Video inputs…**. Each one then appears as a tile at the start of the Media tab; clicking it puts it on the Video Input layer, under the slides.
+- Their cue ids start with `input::item::`, as on the Mac. `MediaHub.LiveInputs` copies each input's newest frame into one `WriteableBitmap` per refresh, and every view showing it draws that bitmap, so all outputs stay in step.
+- `LiveInputDelay` can hold an input back a few frames so lips line up with the sound.
+
+## 23. Show automation (Phase 3)
+
+`src/MxU.Slides.Core/Automation/` is a port of the Mac's ActionRouter, scheduler, timecode readers and presentation timelines.
+
+- **Slide actions:** a slide (or a media item) can carry actions that run when it goes live, such as firing a background, putting up a message, starting a timer, switching the output preset or sending MIDI. `ActionRouter.SlideDidFire` runs them, with their delays. Clear All (F1) cancels any still waiting.
+- **Action combos:** a named list of actions. Run one from the **Combos** tab, with MIDI "Run Action Combo" (velocity = number), or with `POST /v1/action-combos/{id}/fire`. ProPresenter macros import as combos.
+- **What actions can do:** the router never touches the show directly. It calls `IShowActions`, which `ViewModels/MainViewModel.Actions.cs` implements over the live show, timers, overlays, music, inputs and MIDI out. Anything this PC can't do yet is logged and skipped, so one missing piece doesn't stop a combo.
+- **Scheduler:** schedule triggers run their actions on chosen days at a time, once on a date, or when a timer reaches a value. The scheduler's memory (`scheduler.json`) remembers what has fired, so a restart never fires anything twice. It looks again when the clock changes or the PC wakes. ProPresenter calendar events import as triggers.
+- **Timecode and timelines:** see the next section.
+
+## 24. Song timelines and timecode (Phase 3)
+
+A **timeline** belongs to a song (one per arrangement). It is a list of cues at times in seconds: "slide 3 at 0:42", "this background at 1:10", "the music from 0:00", "run these actions at 2:05". `TimelinePlayer` (in `Core/Automation/Timelines/`, ported from the Mac's PresentationTimelineController) plays one song's timeline on its own clock, 30 ticks a second. Each tick it asks `PresentationTimelines.Crossing` what the playhead passed since the last tick and does it.
+
+- **In the app:** the bar under the slides (**Timeline** in the song's header, or it shows by itself when the song has a timeline). ▶ plays, ⏮ goes back to the start, the slider moves the playhead.
+- **Recording a take:** press **Record**, then click each slide when it should change while the song plays. `Fire` in `MainViewModel.Live.cs` calls `NoteSlideLanded`, and the player turns each click into a cue at the playhead. Press **Finish** to save it. **⋯ › Undo the last take** puts the timeline back as it was.
+- **Music:** **⋯ › Play this music with the timeline** puts a song from the Music tab on the timeline's music lane, so pressing ▶ starts the music and the slides together. The music plays through the same `AudioController` as the Music tab (`TimelineMusic` in the Audio project is the adapter).
+- **Where a slide cue points:** not at "slide 7" but at "the 2nd time the chorus plays, its first slide" (`TimelineSlideAnchor`). So changing the arrangement doesn't move cues onto the wrong words.
+- **The app's half** is `ViewModels/MainViewModel.Timeline.cs`. It implements `ITimelineHost` (find a presentation, fire a slide, run actions, what's live) and draws the bar. A presentation opened from the library rather than a service gets an item id of `presentation:<id>`, so it can still have a timeline.
+- **Stems (multitrack):** a timeline can carry stems (click, guide, pads). They play on a separate `MultitrackEngine`, made only the first time a song has stems (`LazyTracksPlayer`). The Mac's editor makes them; Windows plays them.
+
+**Timecode in.** A playback rig (Ableton, QLab, a video playback machine) can send timecode, and the app follows it: each song whose timeline has **⋯ › Follow timecode** on, and a start time (**⋯ › Timecode start**, e.g. `01:00:00:00`), plays when the timecode reaches it.
+
+- Choose the input in **Screens & Settings › Timecode in**: **LTC** from one channel of a sound input, or **MTC** from a MIDI input. The readout there shows the timecode and Locked / Stopped / No timecode.
+- `TimecodeFollower` (Core) reads the input 30 times a second and drives the `TimelinePlayer`. The app supplies the readers (`ITimecodeInputs` in `MainViewModel.Timeline.cs`):
+  - LTC: `AudioInputHub` captures the device; one channel goes to `LtcReader`, which decodes the audio waveform into frames.
+  - MTC: `MidiInputService` hands every MIDI message's bytes to `MtcReader`, stamped with the time it arrived.
+- The stage display can show the timecode (a Timecode text link), and `GET /v1/timecode` reports it to remotes.
+- These settings belong to this PC (they name its devices), so they're kept in `settings.json`, not in the library.
+
+## 25. Recording and streaming (Phase 3)
+
+`src/MxU.Slides.Broadcast/` is a port of the Mac's StreamEngine and recorder. It has no WPF in it; the app gives it pictures and sound.
+
+- **Pictures** come from the program feed (section 17): each recording or stream is one more `IProgramSink`. `FramePacer` thins the feed to the preset's frame rate, and each sink scales the picture to its own size.
+- **Sound** comes from `ProgramAudioTap` (section 21). `UpdateProgramAudio` in `MainViewModel.Broadcast.cs` connects it whenever the program feed has anyone listening, so recordings hear the videos and music this app plays, and nothing else on the PC.
+- **Encoding** uses Windows' own Media Foundation encoders (H.264 video, AAC sound), through hand-written COM declarations in `Media/MediaFoundationInterop.cs`. A hardware encoder (Intel Quick Sync, NVIDIA, AMD) is tried first; if it fails the rest of the run uses the software one.
+- **Recordings** are MP4 files in `Videos\MxU Slides`. The file is written as `name.partial.mp4` in fragments, so a crash or power cut still leaves a file that plays. It's renamed when the recording stops, and leftovers are renamed at the next launch (`RecoverInterrupted`).
+- **Streams** go out over RTMP or RTMPS (YouTube, Facebook, Restream, any RTMP server: `Rtmp/RtmpPublisher.cs`, written from scratch) or HLS. A dropped connection reconnects with back-off; the status line says "Reconnecting (try 2)". When the network can't keep up, video is dropped until the next keyframe rather than letting a delay build up.
+- **Stream keys are secrets.** `StreamKeyVault` keeps them encrypted for your Windows user (DPAPI) in `%LOCALAPPDATA%\MxU Slides\StreamKeys`. They are never written into the library, so a backup or a shared library never leaks them.
+- **In the app:** **Stream & Record** in the toolbar opens `Views/BroadcastWindow.cs`. A **preset** says what to do: record only, or stream to the ticked destinations (and maybe record too), at what size, frame rate and bitrate. While anything runs, the toolbar button shows "REC 12:03" or "LIVE 4:10 · REC 4:10". It turns orange if a stream is struggling and red if one failed.
+- **Automation:** the slide/combo actions "Start capture" and "Stop capture" start and stop presets (`StartBroadcast` in `MainViewModel.Broadcast.cs`).
+- **Quitting** while recording asks first, then waits for the files to finish before closing.
+
+Not on Windows (yet): SRT, HDR/HEVC streaming, ProRes recording, streaming a media file, and per-screen stream canvases (every preset records the audience program).
+
+## 26. Keeping it running
 
 - `App.xaml.cs` catches unexpected errors, logs them (`Infrastructure/Log.cs`) and keeps going.
 - A `running.marker` file shows when the last session crashed.
-- `Infrastructure/SelfTest.cs` drives the real app through a service and checks what's on screen. It covers lyrics, builds, overlays, video, the Local API (over real HTTP and a WebSocket) and both importers. Run `scripts/self-test.ps1` after any change.
+- `Infrastructure/SelfTest.cs` drives the real app through a service and checks what's on screen. It covers lyrics, builds, overlays, video, the Local API (over real HTTP and a WebSocket), both importers, the program feed, screens, NDI, music, live inputs, actions, timelines and recording. Run `scripts/self-test.ps1` after any change. Checks that need hardware this PC doesn't have (a graphics card, NDI Tools) report SKIP, not FAIL.
 
 ## Things to try, to learn by doing
 
@@ -243,4 +364,5 @@ Both importers are ports of the Mac's and save straight into the `LibraryStore`.
 4. **Make a stage layout.** Copy `CurrentAndNext` in `Stage/ConfidenceLayoutTemplate.cs`, move the boxes, and add it to `WorkspaceStarters`. It appears in the Stage menu on a new library.
 5. **Script the show.** Turn on the Local API, then write a PowerShell loop that calls `POST /v1/show/advance` with `{"steps":1,"settled":true}` every 5 seconds: an instant announcement loop.
 6. **Slow an animation down.** In `Library/StarterPacks.cs`, find `TextIn` and double its duration. Delete `starter-revision.txt` in your *test* library so the themes are rebuilt, then fire a lyric slide.
-7. **Follow an upstream change.** When MxU changes a Swift file, find its C# twin in [PORTING.md](PORTING.md), compare the two, and port the change.
+7. **Record a timeline.** Open a song, press **Timeline › Record**, and click through the slides while you sing it in your head. Press ▶ and watch it run itself. Then look at the cues it wrote: open the song's JSON in your *test* library and find `timelines`.
+8. **Follow an upstream change.** When MxU changes a Swift file, find its C# twin in [PORTING.md](PORTING.md), compare the two, and port the change.

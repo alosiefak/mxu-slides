@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The audio engine: playlist decks with crossfades, the multitrack stems player,
+       input capture, mix feeds, meters and the program audio tap. Port of the Mac's
+       Packages/AudioEngine plus the audio parts of PresenterCore. WASAPI output and
+       capture and file decoding come from NAudio; nothing here knows about WPF. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>MxU.Slides.Audio</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
+  </ItemGroup>
+
+  <!-- NAudio (MIT): WASAPI output/capture, Media Foundation decoding, WAV/AIFF readers
+       and a resampler. Only the two Windows-neutral assemblies, not the WinForms one. -->
+  <ItemGroup>
+    <PackageReference Include="NAudio.Core" Version="2.2.1" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MxU.Slides.Audio.Tests" />
+  </ItemGroup>
+</Project>

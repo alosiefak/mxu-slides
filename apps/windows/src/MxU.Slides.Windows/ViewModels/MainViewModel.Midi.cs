@@ -11,26 +11,29 @@ public sealed partial class MainViewModel
 {
     private MidiInputService? midi;
 
+    /// <summary>Timecode reads MTC from a MIDI input, so the listener runs while it does, even with MIDI control off.</summary>
+    private bool timecodeWantsMidi;
+
+    private MidiInputService MidiIn
+    {
+        get
+        {
+            if (midi is not null) return midi;
+            midi = new MidiInputService();
+            midi.NoteOn += OnMidiNoteOn;
+            midi.DevicesChanged += UpdateMidiStatus;
+            return midi;
+        }
+    }
+
     [ObservableProperty]
     public partial string MidiStatus { get; set; } = "Off";
 
     /// <summary>Starts or stops listening to MIDI to match Settings.</summary>
     public void ApplyMidiSettings()
     {
-        if (Settings.MidiInputEnabled)
-        {
-            if (midi is null)
-            {
-                midi = new MidiInputService();
-                midi.NoteOn += OnMidiNoteOn;
-                midi.DevicesChanged += UpdateMidiStatus;
-            }
-            midi.Start();
-        }
-        else
-        {
-            midi?.Stop();
-        }
+        if (Settings.MidiInputEnabled || timecodeWantsMidi) MidiIn.Start();
+        else midi?.Stop();
         UpdateMidiStatus();
     }
 
@@ -43,6 +46,7 @@ public sealed partial class MainViewModel
 
     private void OnMidiNoteOn(byte status, byte note, byte velocity)
     {
+        if (!Settings.MidiInputEnabled) return;
         if (Settings.MidiMap.Resolve(status, note, velocity) is not { } hit) return;
         Log.Info($"MIDI {MidiCommandMap.NoteName(note)} v{velocity} → {hit.Command.DisplayName()}");
         try
@@ -105,6 +109,13 @@ public sealed partial class MainViewModel
                 break;
             case MidiCommand.ResetTimer when index >= 0 && index < TimerRows.Count:
                 Timers.Reset(TimerRows[index].Id);
+                break;
+            case MidiCommand.TriggerActionCombo when ActionComboOrder() is var combos && index >= 0 && index < combos.Count:
+                RunActionCombo(combos[index].Id);
+                break;
+            case MidiCommand.FireAlert when Library.All<AlertPreset>().OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList() is var alerts
+                                            && index >= 0 && index < alerts.Count:
+                ShowAlertPreset(alerts[index]);
                 break;
             default:
                 Log.Info($"MIDI {command.DisplayName()} ({velocity}) has nothing to do here yet");
