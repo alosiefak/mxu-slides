@@ -91,15 +91,19 @@ public sealed class TracksPlayerTests
     {
         var path = SocketPath();
         var exited = new Box<int?>(null);
-        var server = new TracksPlayerServer(path, new MultitrackEngine(), orphanLimit: 0.3, exit: code => exited.Value = code);
+        // Two seconds alone (the app uses ten minutes): long enough that a reconnect on a slow
+        // CI machine isn't mistaken for the app going away, short enough for a test.
+        var server = new TracksPlayerServer(path, new MultitrackEngine(), orphanLimit: 2, exit: code => exited.Value = code);
         Assert.True(server.Start());
         var client = new TracksPlayerClient(path, () => { });
         var connected = new Box<bool>(false);
+        var drops = new Box<List<string>>([]);
         client.OnStatus = _ => connected.Value = true;
+        client.OnDisconnect = reason => drops.Update(list => [.. list, reason]);
         client.Reattach();
-        // Connecting to a pipe can take a few seconds on a small CI machine.
         Assert.True(TestAudio.WaitFor(() => connected.Value, seconds: 10));
-        Thread.Sleep(500);
+        Thread.Sleep(2500);
+        Assert.True(drops.Value.Count == 0, $"the connection dropped: {string.Join(", ", drops.Value)}");
         Assert.Null(exited.Value);
         client.Disconnect();
         Assert.True(TestAudio.WaitFor(() => exited.Value == 0, seconds: 10));
