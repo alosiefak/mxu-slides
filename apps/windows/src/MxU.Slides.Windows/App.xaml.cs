@@ -19,11 +19,15 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        singleInstance = new Mutex(true, @"Local\MxU.Slides.Windows.SingleInstance", out var isFirst);
+        // One copy per data folder: two copies writing one library would fight, but a self-test
+        // (on its own throwaway folders) can run beside the real app, and the other way round.
+        singleInstance = new Mutex(true, InstanceName(), out var isFirst);
         if (!isFirst)
         {
-            MessageBox.Show("MxU Slides is already running.", "MxU Slides", MessageBoxButton.OK, MessageBoxImage.Information);
-            Shutdown();
+            // A self-test never waits on a dialog nobody will answer.
+            if (SelfTest.FolderFromArgs(e.Args) is null)
+                MessageBox.Show("MxU Slides is already running.", "MxU Slides", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown(2);
             return;
         }
 
@@ -77,6 +81,14 @@ public partial class App : Application
                 "MxU Slides", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
         }
+    }
+
+    /// <summary>The single-copy lock's name, from this copy's data folder (its settings and logs).</summary>
+    private static string InstanceName()
+    {
+        var folder = Path.GetFullPath(AppPaths.LocalRoot).TrimEnd('\\').ToUpperInvariant();
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(folder)))[..16];
+        return $@"Local\MxU.Slides.Windows.SingleInstance.{hash}";
     }
 
     private static LibraryStore? OpenLibrary(AppSettings settings)

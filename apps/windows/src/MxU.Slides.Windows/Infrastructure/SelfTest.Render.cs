@@ -203,7 +203,8 @@ public sealed partial class SelfTest
             FireSlide(song, 2);
             double peak = 0;
             byte[]? peakFrame = null;
-            while (DateTime.UtcNow - startedAt < TimeSpan.FromSeconds(1.1))
+            // The whole 1.6 s fade (and a little more): a busy PC can capture the white middle late.
+            while (DateTime.UtcNow - startedAt < TimeSpan.FromSeconds(2.0))
             {
                 await Delay(40);
                 if (sink.Last is { } frame && sink.Width > 0)
@@ -216,7 +217,7 @@ public sealed partial class SelfTest
                     }
                 }
             }
-            await Delay(1500);
+            await Delay(800);
             if (peakFrame is not null && sink.Last is { } landed)
             {
                 Write(BitmapSource.Create(sink.Width, sink.Height, 96, 96, PixelFormats.Pbgra32, null, peakFrame, sink.Width * 4), "22-transition-fade-white-middle");

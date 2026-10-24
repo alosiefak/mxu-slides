@@ -23,6 +23,10 @@ public sealed class AppSettings
     public OutputTransition Transition { get; set; } = OutputTransition.Dissolve;
     public double TransitionSeconds { get; set; } = 0.4;
 
+    /// <summary>How backgrounds and videos change when they don't name a transition (the Mac's default: dissolve, 0.7 s).</summary>
+    public OutputTransition MediaTransition { get; set; } = OutputTransition.Dissolve;
+    public double MediaTransitionSeconds { get; set; } = 0.7;
+
     public int LinesPerSlide { get; set; } = 2;
     public string DefaultThemeId { get; set; } = StarterPack.CleanGeometric.ThemeId();
     public string? StageLayoutId { get; set; }

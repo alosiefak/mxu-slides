@@ -123,9 +123,9 @@ public sealed partial class MainViewModel
     private void SlideEdited()
     {
         if (CurrentPresentation is not { } p || SelectedSlide is not { } tile) return;
-        tile.Scene = SlideSceneBuilder.Scene(tile.Slide, CurrentTheme, p, SelectedArrangement?.Id);
+        tile.Scene = SlideSceneBuilder.Scene(tile.Slide, CurrentTheme, p, SelectedArrangement?.Id, pager: Rendering.TextLayout.Pager);
         foreach (var other in Slides.Where(t => t != tile && t.Slide.Id == tile.Slide.Id))
-            other.Scene = SlideSceneBuilder.Scene(other.Slide, CurrentTheme, p, SelectedArrangement?.Id);
+            other.Scene = SlideSceneBuilder.Scene(other.Slide, CurrentTheme, p, SelectedArrangement?.Id, pager: Rendering.TextLayout.Pager);
         Show.PresentationEdited(p);
         if (Show.Live?.Slide.Id == tile.Slide.Id) RenderOutputs(Rendering.SceneTransition.Cut, refreshOnly: true);
         saveTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(600), DispatcherPriority.Background, (_, _) => FlushPendingSave(), Dispatcher.CurrentDispatcher);

@@ -326,19 +326,18 @@ public sealed partial class MainViewModel
     private static SceneTransition DefaultTransition() => SceneTransition.Automatic;
 
     /// <summary>
-    /// The room defaults from Settings › Transition: what a slide does when neither it nor its
-    /// presentation names a transition. Media takes the Mac's default (dissolve, 0.7 s) unless
-    /// Settings says Cut, which cuts media too (Windows has one setting where the Mac has two).
+    /// The room defaults from Settings › Transitions, as on the Mac: what a slide does when
+    /// neither it nor its presentation names a transition, and what a background or video does
+    /// when it doesn't name one.
     /// </summary>
-    private RoomTransitions RoomDefaults() => Settings.Transition switch
+    private RoomTransitions RoomDefaults() =>
+        new(RoomTransition(Settings.Transition, Settings.TransitionSeconds), RoomTransition(Settings.MediaTransition, Settings.MediaTransitionSeconds));
+
+    private static Transition? RoomTransition(OutputTransition kind, double seconds) => kind switch
     {
-        OutputTransition.Cut => new(null, null),
-        OutputTransition.FadeThroughBlack => new(
-            new Transition { TransitionKind = TransitionKind.FadeBlack, DurationSeconds = Settings.TransitionSeconds * 2 },
-            Core.Animation.RoomTransitions.MacDefault.Media),
-        _ => new(
-            new Transition { TransitionKind = TransitionKind.Dissolve, DurationSeconds = Settings.TransitionSeconds },
-            Core.Animation.RoomTransitions.MacDefault.Media),
+        OutputTransition.Cut => null,
+        OutputTransition.FadeThroughBlack => new Transition { TransitionKind = TransitionKind.FadeBlack, DurationSeconds = seconds * 2 },
+        _ => new Transition { TransitionKind = TransitionKind.Dissolve, DurationSeconds = seconds },
     };
 
     /// <summary>Long text turns its pages the way slides change (ServiceControls.apply on the Mac).</summary>

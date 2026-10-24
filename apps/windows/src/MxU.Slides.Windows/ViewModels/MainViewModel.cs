@@ -299,7 +299,7 @@ public sealed partial class MainViewModel : ObservableObject
             for (var i = 0; i < arranged.Count; i++)
             {
                 var slide = arranged[i];
-                var scene = SlideSceneBuilder.Scene(slide, CurrentTheme, p, arrangementId);
+                var scene = SlideSceneBuilder.Scene(slide, CurrentTheme, p, arrangementId, pager: Rendering.TextLayout.Pager);
                 Slides.Add(new SlideTileViewModel(i, slide, scene, GroupNames.For(slide, p), GroupNames.ColorFor(slide, p),
                     starts.Contains(i) || i == 0));
             }
