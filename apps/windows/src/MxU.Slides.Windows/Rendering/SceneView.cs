@@ -91,9 +91,30 @@ public sealed class SceneView : FrameworkElement
     }
 
     /// <summary>
+    /// A keystoned item: what it looks like untouched lives in <see cref="Source"/> (not in the
+    /// visual tree) and <see cref="Face"/> paints that over <see cref="Region"/>, where the
+    /// <see cref="KeystoneEffect"/> warps it into its trapezoid (the trail passes' trick).
+    /// </summary>
+    private sealed class KeystonePass
+    {
+        public KeystonePass()
+        {
+            Layer.Effect = Shader;
+            Layer.Children.Add(Face);
+        }
+
+        public ContainerVisual Layer { get; } = new();
+        public ContainerVisual Source { get; } = new();
+        public DrawingVisual Face { get; } = new();
+        public KeystoneEffect Shader { get; } = new();
+        public Rect Region;
+        public (SceneRect Frame, double Top, double Bottom, bool Stretch)? Warp;
+    }
+
+    /// <summary>
     /// One item: Outer (canvas space) carries the matte clip, Inner (moves with the item) the
-    /// pose, opacity, wipe and blur, and between Inner and the drawing sits one layer per
-    /// picture effect (first effect innermost, as the Mac applies them in order).
+    /// pose, opacity, wipe and blur, and between Inner and the drawing sits the keystone warp (if
+    /// any), then one layer per picture effect (first effect innermost, as the Mac applies them in order).
     /// </summary>
     private sealed class Slot
     {
@@ -101,6 +122,7 @@ public sealed class SceneView : FrameworkElement
         public ContainerVisual Outer { get; } = new();
         public ContainerVisual Inner { get; } = new();
         public List<EffectPass> Passes { get; } = [];
+        public KeystonePass? Keystone;
         public string PassShape = "";
         public ItemVisual? Drawing;
         public ContentKey? Content;
@@ -111,8 +133,8 @@ public sealed class SceneView : FrameworkElement
         /// <summary>The video players its drawing uses (released when the item goes).</summary>
         public HashSet<string> Keys { get; } = new(StringComparer.Ordinal);
 
-        /// <summary>Where the drawing goes: under the innermost effect pass, or Inner when there are none.</summary>
-        public ContainerVisual Host => Passes.Count > 0 ? Passes[0].Host : Inner;
+        /// <summary>Where the drawing goes: under the innermost effect pass, else under the keystone warp, else Inner.</summary>
+        public ContainerVisual Host => Passes.Count > 0 ? Passes[0].Host : Keystone?.Source ?? Inner;
     }
 
     private sealed class Root
@@ -545,7 +567,7 @@ public sealed class SceneView : FrameworkElement
             slot.Drawing = drawing;
             slot.Content = content;
         }
-        ApplyEffects(slot, item, now);
+        ApplyEffects(slot, item, motion, now);
 
         var opacity = Math.Clamp(render.Opacity, 0, 1);
         if (slot.Inner.Opacity != opacity) slot.Inner.Opacity = opacity;
@@ -585,8 +607,8 @@ public sealed class SceneView : FrameworkElement
     /// <summary>One pass to draw this frame: a shader pass (mode and parameters) or a trail pass (the effect and its index in the list).</summary>
     private readonly record struct PassPlan(AnimationEffect Effect, int Index, int Mode, Point4D Parameters, bool Trail);
 
-    /// <summary>Keeps one effect layer per drawable pass and sets each pass's parameters for this frame.</summary>
-    private void ApplyEffects(Slot slot, AnimatedItem item, double now)
+    /// <summary>Keeps one effect layer per drawable pass (and the keystone warp) and sets each pass's parameters for this frame.</summary>
+    private void ApplyEffects(Slot slot, AnimatedItem item, AnimationMotion motion, double now)
     {
         var effects = item.Effects;
         var passes = new List<PassPlan>();
@@ -607,8 +629,10 @@ public sealed class SceneView : FrameworkElement
                 }
             }
         }
-        var shape = string.Concat(passes.Select(p => p.Trail ? 'T' : 'S'));
-        if (shape != slot.PassShape) RebuildPasses(slot, passes);
+        var keystone = BuildProjector.HasKeystone(motion) && KeystoneEffect.IsSupported;
+        var shape = string.Concat(passes.Select(p => p.Trail ? 'T' : 'S')) + (keystone ? "K" : "");
+        if (shape != slot.PassShape) RebuildPasses(slot, passes, keystone);
+        if (slot.Keystone is { } warp) ApplyKeystone(warp, item.Render.Frame, motion);
         for (var i = 0; i < passes.Count; i++)
         {
             var plan = passes[i];
@@ -626,17 +650,29 @@ public sealed class SceneView : FrameworkElement
         }
     }
 
-    /// <summary>Rebuilds the chain: Inner → last effect → … → first effect → drawing (a trail pass holds what's under it in its Source).</summary>
-    private static void RebuildPasses(Slot slot, List<PassPlan> passes)
+    /// <summary>
+    /// Rebuilds the chain: Inner → keystone → last effect → … → first effect → drawing (a trail pass and
+    /// the keystone hold what's under them in their Source). The keystone goes outermost because the Mac
+    /// warps the item after its effects.
+    /// </summary>
+    private static void RebuildPasses(Slot slot, List<PassPlan> passes, bool keystone = false)
     {
         foreach (var pass in slot.Passes)
         {
             pass.Layer.Children.Clear();
             pass.Source?.Children.Clear();
         }
+        slot.Keystone?.Source.Children.Clear();
         slot.Inner.Children.Clear();
         slot.Passes.Clear();
         ContainerVisual outer = slot.Inner;
+        slot.Keystone = null;
+        if (keystone)
+        {
+            slot.Keystone = new KeystonePass();
+            outer.Children.Add(slot.Keystone.Layer);
+            outer = slot.Keystone.Source;
+        }
         var chain = new List<EffectPass>();
         for (var i = passes.Count - 1; i >= 0; i--)
         {
@@ -668,8 +704,28 @@ public sealed class SceneView : FrameworkElement
             outer = pass.Host;
         }
         slot.Passes.AddRange(chain);
-        slot.PassShape = string.Concat(passes.Select(p => p.Trail ? 'T' : 'S'));
+        slot.PassShape = string.Concat(passes.Select(p => p.Trail ? 'T' : 'S')) + (keystone ? "K" : "");
         if (slot.Drawing is { } drawing) outer.Children.Add(drawing);
+    }
+
+    /// <summary>
+    /// The keystone warp this frame: the face shows the untouched item over the warp's region, and the
+    /// shader squeezes it into its trapezoid. Only redrawn when the frame or the keystone changes.
+    /// </summary>
+    private static void ApplyKeystone(KeystonePass pass, SceneRect frame, AnimationMotion motion)
+    {
+        var warp = (frame, motion.KeystoneTop, motion.KeystoneBottom, motion.KeystoneStretch);
+        if (pass.Warp == warp) return;
+        var region = KeystoneEffect.Region(frame, motion.KeystoneTop, motion.KeystoneBottom);
+        if (pass.Region != region)
+        {
+            var brush = new VisualBrush(pass.Source) { Viewbox = region, ViewboxUnits = BrushMappingMode.Absolute, Stretch = Stretch.Fill };
+            using (var dc = pass.Face.RenderOpen()) dc.DrawRectangle(brush, null, region);
+            pass.Region = region;
+        }
+        // A trapezoid folded flat (an edge at 0%) has nothing to show.
+        pass.Layer.Opacity = pass.Shader.Set(frame, region, motion.KeystoneTop, motion.KeystoneBottom, motion.KeystoneStretch) ? 1 : 0;
+        pass.Warp = warp;
     }
 
     /// <summary>
@@ -715,7 +771,8 @@ public sealed class SceneView : FrameworkElement
 
     /// <summary>
     /// Skew, flip, scale (with the 3-D swing and tilt flattened to a squash), rotation
-    /// about the frame centre, then the animated move. Keystone isn't drawn.
+    /// about the frame centre, then the animated move. Keystone is drawn inside this, by
+    /// the keystone pass (<see cref="ApplyKeystone"/>), as the Mac warps before it skews.
     /// </summary>
     private static Transform? ItemTransform(RenderItem render, AnimationMotion motion)
     {
