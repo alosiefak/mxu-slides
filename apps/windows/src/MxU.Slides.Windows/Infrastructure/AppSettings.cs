@@ -71,6 +71,9 @@ public sealed class AppSettings
     /// <summary>Where recordings go; null = Videos\MxU Slides.</summary>
     public string? RecordingsFolder { get; set; }
 
+    /// <summary>This PC's audio outputs, where music and video sound play, and the music's fades.</summary>
+    public SoundSettings Sound { get; set; } = new();
+
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,

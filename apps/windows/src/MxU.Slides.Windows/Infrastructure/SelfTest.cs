@@ -245,6 +245,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await TimelineEditorCheck();
             await OverlayEditorChecks();
             await BroadcastExtrasCheck();
+            await SoundCheck();
         }
         catch (Exception ex)
         {

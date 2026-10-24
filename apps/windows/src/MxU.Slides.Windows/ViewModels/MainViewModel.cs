@@ -26,6 +26,7 @@ public sealed partial class MainViewModel : ObservableObject
         Media = new MediaHub(ResolveMedia) { VideoVolume = settings.VideoVolume, PosterCache = Path.Combine(AppPaths.LocalRoot, "Posters") };
         SceneView.DefaultMedia = Media;
         Library.Changed += OnLibraryChanged;
+        InitializeSound();
 
         RefreshThemes();
         RefreshLibrary();

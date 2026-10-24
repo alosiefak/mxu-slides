@@ -265,8 +265,10 @@ public sealed partial class MediaHub
 
         var player = new Player { MediaPlayer = new MediaPlayer(), MediaId = mediaId, Loops = loops };
         var mp = player.MediaPlayer;
-        mp.Volume = audible ? VideoVolume : 0;
-        mp.IsMuted = !audible;
+        // A video with sound plays its sound through our engine (MediaHub.Sound.cs), on the video sound's device.
+        var ownSound = audible && TakeSound(playbackKey, player, media.Path);
+        mp.Volume = audible && !ownSound ? VideoVolume : 0;
+        mp.IsMuted = !audible || ownSound;
         mp.ScrubbingEnabled = false;
         mp.MediaOpened += (_, _) =>
         {
@@ -300,11 +302,13 @@ public sealed partial class MediaHub
             {
                 mp.Position = TimeSpan.Zero;
                 mp.Play();
+                SoundJumped(playbackKey, TimeSpan.Zero);
             }
             else
             {
                 mp.Pause();
                 player.Playing = false;
+                SoundTransportChanged(playbackKey);
                 VideoEnded?.Invoke(playbackKey);
             }
         };
@@ -344,6 +348,7 @@ public sealed partial class MediaHub
             if (player.References > 0) return;
             player.CloseTimer?.Stop();
             players.Remove(playbackKey);
+            ReleaseSound(playbackKey);
             try
             {
                 player.MediaPlayer.Stop();
@@ -372,6 +377,7 @@ public sealed partial class MediaHub
         if (!players.TryGetValue(playbackKey, out var p)) return;
         p.MediaPlayer.Pause();
         p.Playing = false;
+        SoundTransportChanged(playbackKey);
     }
 
     public void Play(string playbackKey)
@@ -379,6 +385,7 @@ public sealed partial class MediaHub
         if (!players.TryGetValue(playbackKey, out var p)) return;
         p.MediaPlayer.Play();
         p.Playing = true;
+        SoundTransportChanged(playbackKey);
     }
 
     public void Restart(string playbackKey)
@@ -387,6 +394,7 @@ public sealed partial class MediaHub
         p.MediaPlayer.Position = TimeSpan.Zero;
         p.MediaPlayer.Play();
         p.Playing = true;
+        SoundJumped(playbackKey, TimeSpan.Zero);
     }
 
     /// <summary>Jumps to a position, clamped to the video's length; playing or paused stays as it was.</summary>
@@ -396,12 +404,14 @@ public sealed partial class MediaHub
         var mp = p.MediaPlayer;
         if (mp.NaturalDuration.HasTimeSpan && position > mp.NaturalDuration.TimeSpan) position = mp.NaturalDuration.TimeSpan;
         mp.Position = position < TimeSpan.Zero ? TimeSpan.Zero : position;
+        SoundJumped(playbackKey, position < TimeSpan.Zero ? TimeSpan.Zero : position);
     }
 
     public void ApplyVolume()
     {
         foreach (var p in players.Values)
             if (!p.MediaPlayer.IsMuted) p.MediaPlayer.Volume = VideoVolume;
+        ApplySoundVolume();
     }
 
     /// <summary>Forgets cached decodes for a media item (after it is replaced or relinked).</summary>

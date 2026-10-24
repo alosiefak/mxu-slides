@@ -100,6 +100,9 @@ public sealed class VideoSoundPlayer : IAudioRenderSource, IDisposable
     private int madeFor;
     private Segment? segment;
     private SeekRequest? seek;
+    private int seekCounter;
+    private volatile int latestRequest;
+    private double lastRate = 1;
     private volatile bool opened;
     private volatile bool disposed;
     private volatile string? problem;
@@ -122,7 +125,6 @@ public sealed class VideoSoundPlayer : IAudioRenderSource, IDisposable
     private double speed = 1;
     private double position = double.NaN;
     private Segment? playing;
-    private int requestedSeek;
     private float envelope;
     private float appliedGain;
     private readonly MultitrackVarispeed varispeed = new(1, MaxSlice);
@@ -280,6 +282,7 @@ public sealed class VideoSoundPlayer : IAudioRenderSource, IDisposable
     /// <summary>What the video's clock says now; the sound holds, lands or steers to match.</summary>
     public void Follow(VideoClockSample sample)
     {
+        Volatile.Write(ref lastRate, sample.Rate);
         SoundClockReading? reading;
         lock (clockGate) reading = heard;
         VideoSoundCommand command;
@@ -287,10 +290,15 @@ public sealed class VideoSoundPlayer : IAudioRenderSource, IDisposable
         Volatile.Write(ref latest, new CommandBox(command));
     }
 
-    /// <summary>The video jumped (a seek, a restart, a loop): land again once it moves.</summary>
-    public void Discontinuity()
+    /// <summary>
+    /// The video jumped (a seek, a restart, a loop): land again once it moves. Given where it
+    /// jumped to (<paramref name="to"/>, file seconds), decoding starts there straight away, so
+    /// the sound is ready when the picture moves (a loop doesn't lose its first moments).
+    /// </summary>
+    public void Discontinuity(double? to = null)
     {
         lock (gate) follower.Discontinuity();
+        if (to is { } position && opened && problem is null) Request(position, Volatile.Read(ref lastRate));
     }
 
     // MARK: Decoding (decode thread)
@@ -484,7 +492,7 @@ public sealed class VideoSoundPlayer : IAudioRenderSource, IDisposable
         // The sound decoded for this moment starts a little ahead of the picture: start part way
         // through the block when it gets there, or wait for it (a seek asks for SeekLead ahead).
         var behind = -ahead;
-        if (current.Id == requestedSeek)
+        if (current.Id == latestRequest)
         {
             var offset = (int)Math.Round(behind * SampleRate / anchorRate);
             if (offset < frames)
@@ -512,11 +520,18 @@ public sealed class VideoSoundPlayer : IAudioRenderSource, IDisposable
     // Asks the decode thread for sound from just past `wanted` (unless it's already working on about that).
     private void RequestSeek(double wanted, double rate)
     {
-        if (Volatile.Read(ref seek) is { } pending && pending.Id == requestedSeek && Volatile.Read(ref segment)?.Id != pending.Id
+        if (Volatile.Read(ref seek) is { } pending && pending.Id == latestRequest && Volatile.Read(ref segment)?.Id != pending.Id
             && Math.Abs(pending.Position - SeekLead - wanted) < 1 && Math.Abs(pending.Rate - rate) < 1e-6)
             return;
-        requestedSeek++;
-        Volatile.Write(ref seek, new SeekRequest(requestedSeek, Math.Max(0, wanted + SeekLead), rate));
+        Request(wanted + SeekLead, rate);
+    }
+
+    // A new place for the decode thread to read from (the audio thread's seeks, and the caller's on a jump).
+    private void Request(double position, double rate)
+    {
+        var id = Interlocked.Increment(ref seekCounter);
+        Volatile.Write(ref seek, new SeekRequest(id, Math.Max(0, position), rate));
+        latestRequest = id;
         wake.Set();
     }
 

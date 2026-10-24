@@ -45,6 +45,7 @@ public sealed partial class MainViewModel
         {
             if (audio is not null) return audio;
             audio = new AudioController(new LibraryAudioSource(Library), SynchronizationContext.Current);
+            ConfigureMusic(audio);
             audio.PlayersChanged += UpdateNowPlaying;
             audio.TransportChanged += UpdateNowPlaying;
             audio.OutputStatusChanged += status => Log.Info($"Audio output: {status}");
@@ -63,11 +64,13 @@ public sealed partial class MainViewModel
     public void RefreshAudio()
     {
         AudioTiles.Clear();
-        foreach (var playlist in Library.All<Playlist>().Where(p => p.PlaylistKind == PlaylistKind.Audio).OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase))
+        // Playlists that don't say their kind are music unless their first track is media (the Mac's effectiveKind).
+        foreach (var playlist in Library.All<Playlist>().Where(Core.Library.PlaylistLibrary.IsMusic).OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase))
             AudioTiles.Add(new AudioTileViewModel(playlist));
         foreach (var item in Library.All<AudioItem>().OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase))
             AudioTiles.Add(new AudioTileViewModel(item));
         UpdateNowPlaying();
+        RefreshMusicTracks();
     }
 
     /// <summary>Plays an audio file; <paramref name="repeatOverride"/> true repeats it.</summary>

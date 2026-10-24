@@ -83,8 +83,8 @@ public sealed class VideoSound : IDisposable
     /// <summary>The video's clock now; its sound follows.</summary>
     public void Follow(string key, VideoClockSample sample) => Player(key)?.Follow(sample);
 
-    /// <summary>The video jumped (a seek, a restart, a loop).</summary>
-    public void Discontinuity(string key) => Player(key)?.Discontinuity();
+    /// <summary>The video jumped (a seek, a restart, a loop), to <paramref name="to"/> seconds into the file when known.</summary>
+    public void Discontinuity(string key, double? to = null) => Player(key)?.Discontinuity(to);
 
     /// <summary>Stops a video's sound, with a short fade.</summary>
     public void Detach(string key)

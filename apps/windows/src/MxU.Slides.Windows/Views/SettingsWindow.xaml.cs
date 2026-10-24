@@ -284,11 +284,12 @@ public partial class SettingsWindow : Window
         LoadDisplays();
     }
 
+    // (The sliders first report a value while the window is still being built, before their labels exist.)
     private void TransitionSeconds_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) =>
-        TransitionLabel.Text = $"{e.NewValue:0.0} seconds";
+        TransitionLabel?.Text = $"{e.NewValue:0.0} seconds";
 
     private void MediaTransitionSeconds_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) =>
-        MediaTransitionLabel.Text = $"{e.NewValue:0.0} seconds";
+        MediaTransitionLabel?.Text = $"{e.NewValue:0.0} seconds";
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {

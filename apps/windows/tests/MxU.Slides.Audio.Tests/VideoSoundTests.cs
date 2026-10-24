@@ -94,6 +94,22 @@ public class VideoSoundTests
     }
 
     [Fact]
+    public void AJumpTheVideoAnnouncesIsDecodedBeforeThePictureMoves()
+    {
+        // A loop or a seek says where it went, so the sound is ready the moment the picture moves on.
+        var path = Ramp();
+        using var player = Opened(path);
+        Start(player);
+        player.Discontinuity(to: 3.0);
+        player.DecodeForTests();
+        player.Follow(new VideoClockSample(3.0, Host + 1.0, true));
+        player.Follow(new VideoClockSample(3.04, Host + 1.04, true));
+        Assert.Contains(Render(player, Host + 1.05), sample => sample != 0);
+        AssertPlays(Render(player, Host + 1.06), 3.06);
+        TestAudio.Delete(path);
+    }
+
+    [Fact]
     public void NoSoundPlaysPastTheOutPoint()
     {
         var path = Ramp();
