@@ -85,6 +85,8 @@ public sealed partial class MainViewModel
                     TryDeleteFolder(scratch);
                 }
             }
+            // Fonts that came in a file are drawn straight away (MainViewModel.Rendering.cs loads them).
+            ActivateLibraryFonts();
             RefreshThemes();
             RefreshLibrary();
             RefreshMedia();
