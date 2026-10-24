@@ -265,7 +265,9 @@ public sealed class RecorderTests : IDisposable
                 recorder.AppendAudio(Synthetic.AudioBuffer(48_000, 2, 1600, sample, seconds));
                 sample += 1600;
             }
-            await Task.Delay(15, Ct);
+            // Real time, as the app sends them: twice as fast overflowed the recorder's small queue
+            // (it drops rather than fall behind) whenever the PC was busy.
+            await Task.Delay(33, Ct);
         }
         await recorder.FinishAsync();
         Assert.Equal(RecorderStateKind.Finished, recorder.Status.State.Kind);
