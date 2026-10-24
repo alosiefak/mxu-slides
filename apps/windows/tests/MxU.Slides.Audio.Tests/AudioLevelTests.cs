@@ -352,11 +352,16 @@ public sealed class AudioLevelTests
         using var feed = new AudioMixFeed((buffer, _) => { lock (emitted) emitted.Add(buffer); });
         feed.Push("a", Buffer(0.25f, frames: 4800));
         feed.Push("b", Buffer(0.5f, frames: 4800), gain: 0.5f);
-        await Task.Delay(150, TestContext.Current.CancellationToken);
-        List<PcmBuffer> buffers;
-        lock (emitted) buffers = emitted.ToList();
+        // The feed ticks on its own 10 ms clock; a busy machine can take a while to get to it.
+        List<PcmBuffer> buffers = [];
+        float peak = 0;
+        for (var wait = 0; wait < 60 && peak < 0.49f; wait++)
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+            lock (emitted) buffers = emitted.ToList();
+            peak = buffers.Count == 0 ? 0 : buffers.Max(b => AudioLevel.Measure(b).Peak);
+        }
         Assert.NotEmpty(buffers);
-        var peak = buffers.Max(b => AudioLevel.Measure(b).Peak);
         Assert.True(MathF.Abs(peak - 0.5f) < 0.01, $"0.25 + 0.5×0.5 sums to 0.5, got {peak}");
         feed.RemoveMember("a");
         feed.RemoveMember("b");

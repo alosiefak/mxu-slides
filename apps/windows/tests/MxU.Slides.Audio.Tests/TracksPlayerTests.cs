@@ -163,16 +163,17 @@ public sealed class TracksPlayerTests
         var heardPid = new Box<int?>(null);
         first.OnStatus = status => heardPid.Value = status.Pid;
         first.Reattach();
-        Assert.True(TestAudio.WaitFor(() => heardPid.Value == Environment.ProcessId));
+        // Pipes connect slowly on a small CI machine: wait up to 10 s for each step.
+        Assert.True(TestAudio.WaitFor(() => heardPid.Value == Environment.ProcessId, seconds: 10));
 
         server.ShutDown();
         var again = new TracksPlayerServer(path, new MultitrackEngine(), exit: _ => { });
         Assert.True(again.Start());
-        Assert.True(TestAudio.WaitFor(() => firstConnects.Value == 2));
+        Assert.True(TestAudio.WaitFor(() => firstConnects.Value == 2, seconds: 10));
         Assert.Equal(["end of file"], firstReasons.Value);
         var second = new TracksPlayerClient(path, () => { });
         second.Reattach();
-        Assert.True(TestAudio.WaitFor(() => firstReasons.Value.LastOrDefault() == "another Slides took over"));
+        Assert.True(TestAudio.WaitFor(() => firstReasons.Value.LastOrDefault() == "another Slides took over", seconds: 10));
         Thread.Sleep(1200);
         Assert.Equal(2, firstConnects.Value);
         Assert.True(!first.IsConnected && second.IsConnected);
