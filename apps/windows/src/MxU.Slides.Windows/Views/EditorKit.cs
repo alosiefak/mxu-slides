@@ -221,7 +221,7 @@ internal static class EditorKit
 
     private static object MenuEntry(ActionMenuItem item, Action<SlideAction> picked)
     {
-        if (item.IsSeparator) return new Separator();
+        if (item.IsSeparator) return Separator();
         var entry = new MenuItem { Header = item.Title, Style = (Style)Styles["CascadingMenuItem"] };
         if (item.Children is { } children)
             foreach (var child in children) entry.Items.Add(MenuEntry(child, picked));
@@ -229,6 +229,12 @@ internal static class EditorKit
             entry.Click += (_, _) => picked(make());
         return entry;
     }
+
+    /// <summary>
+    /// A menu separator in the app's style. Inside a menu WPF gives separators its own
+    /// built-in style (a line indented for an icon column) unless one is set, so it is set here.
+    /// </summary>
+    public static Separator Separator() => new() { Style = (Style)Application.Current.FindResource(typeof(Separator)) };
 
     /// <summary>A plain menu item for the editors' own menus.</summary>
     public static MenuItem Command(string title, Action click, bool enabled = true)
@@ -267,6 +273,11 @@ internal static class EditorKit
         window.Background = Res<Brush>("BasePlane");
         window.WindowStartupLocation = owner is null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner;
         if (owner is not null && owner.IsLoaded) window.Owner = owner;
+        // Closing with the cursor still in a box saves what was typed (the boxes save when they lose focus).
+        window.Closing += (_, _) =>
+        {
+            if (window.IsKeyboardFocusWithin) Keyboard.ClearFocus();
+        };
         // Keep it on a small laptop screen.
         var area = SystemParameters.WorkArea;
         if (window.Width > area.Width - 24) window.Width = Math.Max(window.MinWidth, area.Width - 24);

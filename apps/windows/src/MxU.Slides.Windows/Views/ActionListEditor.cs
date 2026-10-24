@@ -61,12 +61,24 @@ public sealed class ActionListEditor : StackPanel
         Rebuild();
     }
 
-    /// <summary>Reads the pickers' choices again (after the library changed) and redraws.</summary>
+    /// <summary>
+    /// Reads the pickers' choices again (the library may have changed while another window had
+    /// focus) and redraws, but only when something did change, so the cursor stays where it is.
+    /// </summary>
     public void RefreshChoices()
     {
-        choices = loadChoices();
-        Rebuild();
+        var fresh = loadChoices();
+        var changed = Fingerprint(fresh) != Fingerprint(choices);
+        choices = fresh;
+        if (changed) Rebuild();
     }
+
+    private static string Fingerprint(ActionChoices c) => string.Join(" ; ",
+        new[]
+        {
+            c.OutputPresets, c.Media, c.Presentations, c.AudioItems, c.AudioPlaylists, c.Alerts, c.Overlays, c.LiveInputs,
+            c.AudioInputs, c.ConfidenceLayouts, c.ConfidenceScreens, c.Timers, c.Combos, c.CapturePresets, c.MidiDevices,
+        }.Select(list => string.Join("|", list.Select(e => e.Id + "=" + e.Name))));
 
     /// <summary>The Add Action menu for this list, as the Core builds it.</summary>
     public IReadOnlyList<ActionMenuItem> AddMenu() => ActionEditing.AddMenu(choices, EditingComboId);
@@ -169,15 +181,15 @@ public sealed class ActionListEditor : StackPanel
         body.Children.Add(DelayRow(action));
 
         var card = EditorKit.Card(body);
-        card.ContextMenu = new ContextMenu
+        // The right-click menu is filled as it opens, so Move Up / Move Down know where the step is now.
+        card.ContextMenu = new ContextMenu();
+        card.ContextMenuOpening += (_, _) =>
         {
-            Items =
-            {
-                EditorKit.Command("Move Up", () => Move(id, -1), actions.FirstOrDefault()?.Id != id),
-                EditorKit.Command("Move Down", () => Move(id, 1), actions.LastOrDefault()?.Id != id),
-                new Separator(),
-                EditorKit.Command("Remove", () => Remove(id)),
-            },
+            card.ContextMenu.Items.Clear();
+            card.ContextMenu.Items.Add(EditorKit.Command("Move Up", () => Move(id, -1), actions.FirstOrDefault()?.Id != id));
+            card.ContextMenu.Items.Add(EditorKit.Command("Move Down", () => Move(id, 1), actions.LastOrDefault()?.Id != id));
+            card.ContextMenu.Items.Add(EditorKit.Separator());
+            card.ContextMenu.Items.Add(EditorKit.Command("Remove", () => Remove(id)));
         };
         return card;
     }
@@ -194,7 +206,7 @@ public sealed class ActionListEditor : StackPanel
                 var title = ActionEditing.CurrentTitle(pick, action, choices);
                 var button = new Button
                 {
-                    Content = new TextBlock { Text = title, TextTrimming = TextTrimming.CharacterEllipsis },
+                    Content = new TextBlock { Text = title, TextTrimming = TextTrimming.CharacterEllipsis, MinWidth = 176 },
                     HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 200, MaxWidth = 340, HorizontalContentAlignment = HorizontalAlignment.Left,
                     ToolTip = $"{title}: click to choose from the library (you can search)",
                 };
@@ -204,7 +216,8 @@ public sealed class ActionListEditor : StackPanel
             case PickField pick:
             {
                 var entries = ActionEditing.Entries(pick, action, choices, EditingComboId);
-                var picker = EditorKit.Picker(entries, pick.Get(action), picked => Edit(id, a => pick.Apply(a, picked)));
+                // A Fire Combo step wears its combo's icon, so picking a combo redraws the card.
+                var picker = EditorKit.Picker(entries, pick.Get(action), picked => Edit(id, a => pick.Apply(a, picked), reshape: pick.Source == ActionPickSource.Combo));
                 return EditorKit.Row(field.Label, picker);
             }
             case NumberField number:

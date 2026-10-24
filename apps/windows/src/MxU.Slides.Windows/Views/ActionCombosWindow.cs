@@ -264,11 +264,11 @@ public sealed class ActionCombosWindow : Window
             Items =
             {
                 EditorKit.Command("Run", () => Run(id), combo.Actions.Count > 0),
-                new Separator(),
+                EditorKit.Separator(),
                 EditorKit.Command("Duplicate", () => Duplicate(id)),
                 EditorKit.Command("Copy", () => Copy(id)),
                 EditorKit.Command("Paste", Paste, CanPaste()),
-                new Separator(),
+                EditorKit.Separator(),
                 EditorKit.Command("Delete", () => DeleteCombos([id])),
             },
         };

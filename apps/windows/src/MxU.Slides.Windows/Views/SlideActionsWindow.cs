@@ -155,7 +155,7 @@ public sealed class SlideActionsWindow : Window
 
         if (actions.Count > 0)
         {
-            menu.Items.Add(new Separator());
+            menu.Items.Add(EditorKit.Separator());
             menu.Items.Add(new MenuItem { Header = "On This Slide", Style = style, IsEnabled = false });
             var names = model.ActionLabelNames();
             foreach (var action in actions)
@@ -170,7 +170,7 @@ public sealed class SlideActionsWindow : Window
         }
         if (ActionEditing.OffersEditAll(actions.Count))
         {
-            menu.Items.Add(new Separator());
+            menu.Items.Add(EditorKit.Separator());
             menu.Items.Add(EditorKit.Command("Edit All…", () => Edit(owner, model, stored, deck)));
             menu.Items.Add(EditorKit.Command("Remove All", () => model.SaveSlideActions(deckId, slideId, [])));
         }

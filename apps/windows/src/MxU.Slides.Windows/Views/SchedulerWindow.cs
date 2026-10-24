@@ -42,6 +42,8 @@ public sealed class SchedulerWindow : Window
     private string? shownSelection;
     private bool refreshing;
     private int ownSaves;
+    private int menusOpen;
+    private bool refreshWhenMenusClose;
     private TextBlock? nextFireLine;
     private TextBox? nameBox;
 
@@ -154,7 +156,7 @@ public sealed class SchedulerWindow : Window
         model.Library.Changed += OnLibraryChanged;
         model.Schedule.Changed += OnScheduleChanged;
         // The "until 10:30" and "today/tomorrow" texts move on with the clock (this is display only, not show timing).
-        tick.Tick += (_, _) => Refresh(rebuildDetail: false);
+        tick.Tick += (_, _) => RefreshSoon();
         tick.Start();
         Closed += (_, _) =>
         {
@@ -188,7 +190,31 @@ public sealed class SchedulerWindow : Window
     }
 
     /// <summary>After each sweep: the next times may have moved, a one-off may have been archived.</summary>
-    private void OnScheduleChanged() => Dispatcher.BeginInvoke(() => Refresh(rebuildDetail: false));
+    private void OnScheduleChanged() => Dispatcher.BeginInvoke(RefreshSoon);
+
+    /// <summary>
+    /// A redraw nobody asked for (the clock moved on, the scheduler swept). It waits while a
+    /// row's right-click menu is open, so the menu isn't pulled away from under the mouse.
+    /// </summary>
+    private void RefreshSoon()
+    {
+        if (menusOpen > 0) refreshWhenMenusClose = true;
+        else Refresh(rebuildDetail: false);
+    }
+
+    private void Track(ContextMenu menu)
+    {
+        menu.Opened += (_, _) => menusOpen++;
+        menu.Closed += (_, _) =>
+        {
+            menusOpen = Math.Max(0, menusOpen - 1);
+            if (menusOpen == 0 && refreshWhenMenusClose)
+            {
+                refreshWhenMenusClose = false;
+                Dispatcher.BeginInvoke(() => Refresh(rebuildDetail: false));
+            }
+        };
+    }
 
     private void Save(Action save, bool rebuildDetail = false)
     {
@@ -318,10 +344,11 @@ public sealed class SchedulerWindow : Window
                 enable,
                 EditorKit.Command("Rename…", () => SelectOnly(new Row(id, true), focusName: true)),
                 EditorKit.Command("Duplicate", () => DuplicateFolder(id)),
-                new Separator(),
+                EditorKit.Separator(),
                 EditorKit.Command("Delete Folder", () => DeleteFolder(id)),
             },
         };
+        Track(item.ContextMenu);
         list.Items.Add(item);
     }
 
@@ -367,6 +394,7 @@ public sealed class SchedulerWindow : Window
         row.Children.Add(left);
         var item = new ListBoxItem { Content = row, Tag = new Row(id, false), Padding = new Thickness(6, 5, 6, 5) };
         item.ContextMenu = TriggerMenu(trigger);
+        Track(item.ContextMenu);
         list.Items.Add(item);
     }
 
@@ -381,14 +409,14 @@ public sealed class SchedulerWindow : Window
         var enabled = new MenuItem { Header = ScheduleEditing.EnabledTitle(trigger, now, Zone), Style = style };
         enabled.Items.Add(EditorKit.Command("On", () => Edit(id, t => ScheduleTriggers.SetEnabled(t, true), rebuildDetail: true)));
         enabled.Items.Add(EditorKit.Command("Off", () => Edit(id, t => ScheduleTriggers.SetEnabled(t, false), rebuildDetail: true)));
-        enabled.Items.Add(new Separator());
+        enabled.Items.Add(EditorKit.Separator());
         if (ScheduleMath.NextDue(trigger, now, Zone) is { } due && ScheduleEditing.SkipNextFireUntil(trigger, now, Zone) is { } skipUntil)
             enabled.Items.Add(EditorKit.Command($"Skip Next Fire ({ScheduleConditionFormat.WeekdayTime(ScheduleConditionFormat.Wall(due, Zone), Culture)})",
                 () => Edit(id, t => ScheduleEditing.Snooze(t, skipUntil), rebuildDetail: true)));
         enabled.Items.Add(EditorKit.Command("Off Until…", () => OffUntil(id)));
         if (ScheduleMath.Snoozed(trigger, now, Zone))
             enabled.Items.Add(EditorKit.Command("Resume Now", () => Edit(id, t => t.DisabledUntil = null, rebuildDetail: true)));
-        enabled.Items.Add(new Separator());
+        enabled.Items.Add(EditorKit.Separator());
         enabled.Items.Add(EditorKit.Command("On Until…", () => OnUntil(id)));
         if (ScheduleMath.PlannedEnd(trigger, Zone) is { } end)
             enabled.Items.Add(EditorKit.Command($"Clear End Date ({ScheduleConditionFormat.ShortMonthDay(ScheduleConditionFormat.Wall(end, Zone), Culture)})",
@@ -400,7 +428,7 @@ public sealed class SchedulerWindow : Window
                 EditorKit.Command("Run Now", () => RunNow(id)),
                 enabled,
                 EditorKit.Command("Duplicate", () => DuplicateTrigger(id)),
-                new Separator(),
+                EditorKit.Separator(),
                 EditorKit.Command("Delete Trigger", () => DeleteTrigger(id)),
             },
         };
