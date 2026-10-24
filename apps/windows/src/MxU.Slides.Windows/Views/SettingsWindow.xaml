@@ -49,15 +49,17 @@
             </Grid.RowDefinitions>
             <TextBlock Text="Slides" VerticalAlignment="Center" ToolTip="When a slide and its presentation don't choose a transition" />
             <ComboBox x:Name="TransitionCombo" Grid.Column="1" />
-            <Slider x:Name="TransitionSeconds" Grid.Column="3" Minimum="0.1" Maximum="2" TickFrequency="0.1" IsSnapToTickEnabled="True"
+            <Slider x:Name="TransitionSeconds" Grid.Column="3" Minimum="0.1" Maximum="3" TickFrequency="0.1" IsSnapToTickEnabled="True"
                     VerticalAlignment="Center" ValueChanged="TransitionSeconds_ValueChanged" />
             <TextBlock x:Name="TransitionLabel" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Style="{StaticResource Muted}" Margin="0,4,0,8" FontSize="11" />
             <TextBlock Grid.Row="2" Text="Media" VerticalAlignment="Center" ToolTip="When a background or video doesn't choose a transition" />
             <ComboBox x:Name="MediaTransitionCombo" Grid.Row="2" Grid.Column="1" />
-            <Slider x:Name="MediaTransitionSeconds" Grid.Row="2" Grid.Column="3" Minimum="0.1" Maximum="2" TickFrequency="0.1" IsSnapToTickEnabled="True"
+            <Slider x:Name="MediaTransitionSeconds" Grid.Row="2" Grid.Column="3" Minimum="0.1" Maximum="3" TickFrequency="0.1" IsSnapToTickEnabled="True"
                     VerticalAlignment="Center" ValueChanged="MediaTransitionSeconds_ValueChanged" />
             <TextBlock x:Name="MediaTransitionLabel" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Style="{StaticResource Muted}" Margin="0,4,0,0" FontSize="11" />
         </Grid>
+        <!-- Present: the Mac's "Show a repeated chord-only section once" and "Confidence NEXT skips blank slides" (Views/Operator). -->
+        <v:PresentSettingsSection xmlns:v="clr-namespace:MxU.Slides.Windows.Views" />
 
         <TextBlock Text="NEW SONGS" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
         <Grid>

@@ -299,8 +299,9 @@ public sealed partial class MainViewModel
         UpdateNowPlaying();
     }
 
+    // A themed alert with Outs plays them on the way off, as on the Mac.
     [RelayCommand]
-    private void ClearAlerts() => Clear(() => Show.Clear(ShowFunction.Alerts));
+    private void ClearAlerts() => Clear(() => Show.Clear(ShowFunction.Alerts, ShowState.HostClock()));
 
     /// <param name="settle">False for the ticker tidying up after Outs finish (that never cuts through a waiting hand-off).</param>
     private void Clear(Action clear, bool settle = true)
@@ -337,6 +338,8 @@ public sealed partial class MainViewModel
     {
         OutputTransition.Cut => null,
         OutputTransition.FadeThroughBlack => new Transition { TransitionKind = TransitionKind.FadeBlack, DurationSeconds = seconds * 2 },
+        OutputTransition.FadeThroughWhite => new Transition { TransitionKind = TransitionKind.FadeWhite, DurationSeconds = seconds * 2 },
+        OutputTransition.BlurDissolve => new Transition { TransitionKind = TransitionKind.BlurDissolve, DurationSeconds = seconds },
         _ => new Transition { TransitionKind = TransitionKind.Dissolve, DurationSeconds = seconds },
     };
 
@@ -345,6 +348,8 @@ public sealed partial class MainViewModel
     {
         OutputTransition.Cut => Paging.Turn.Cut,
         OutputTransition.FadeThroughBlack => Paging.Turn.Following(TransitionKind.FadeBlack, Settings.TransitionSeconds * 2),
+        OutputTransition.FadeThroughWhite => Paging.Turn.Following(TransitionKind.FadeWhite, Settings.TransitionSeconds * 2),
+        OutputTransition.BlurDissolve => Paging.Turn.Following(TransitionKind.BlurDissolve, Settings.TransitionSeconds),
         _ => Paging.Turn.Following(TransitionKind.Dissolve, Settings.TransitionSeconds),
     };
 
@@ -387,7 +392,7 @@ public sealed partial class MainViewModel
                 lookScenes[key] = Show.AnimatedScene(resolveLinkedText: ResolveLinkedText, slideThemeOverride: look);
             var push = LayerTransitions(transition, refreshOnly);
             Outputs?.Present(OutputRole.Audience, audience, push, lookScenes);
-            AudiencePreview?.Present(audience, push);
+            ShowPreviews(OutputRole.Audience, audience, push);
             Program?.Present(audience, push);
             // Recordings and streams of one screen: after the outputs, which they copy (looks included).
             ScreenFeeds?.Show(OutputRole.Audience, audience, refreshOnly ? null : push);

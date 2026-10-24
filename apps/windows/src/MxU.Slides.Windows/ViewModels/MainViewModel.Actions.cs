@@ -86,24 +86,15 @@ public sealed partial class MainViewModel : IShowActions
     /// <summary>The alert preset up now (a timeline's alert cue takes down only its own alert).</summary>
     private string? liveAlertPresetId;
 
-    /// <summary>Puts an alert preset up: its message with timer tokens filled, on the screens it names.</summary>
-    private void ShowAlertPreset(AlertPreset preset, IReadOnlyDictionary<string, string>? tokens = null, string? message = null, string? target = null)
+    /// <summary>
+    /// Puts an alert preset up as the Mac's fire(alertPreset:) does: its message (timer tokens kept
+    /// live), its behaviour (Flash or Persist), target, layer and theme. A combo, MIDI or a schedule
+    /// trigger has no one to fill the other blanks, so they go out empty.
+    /// </summary>
+    private void ShowAlertPreset(AlertPreset preset, IReadOnlyDictionary<string, string>? tokens = null, string? message = null)
     {
-        var values = tokens?.ToDictionary() ?? [];
-        foreach (var name in AlertTokens.TokenNames(preset.Message)
-                     .Where(n => Timers.Timers.Any(t => string.Equals(t.Name, n, StringComparison.OrdinalIgnoreCase))))
-            values.TryAdd(name, $"{{{name}}}");
-        var text = message ?? AlertTokens.Compose(preset.Message, values);
-        var audience = target is "audience" or "both";
-        var stage = target is null or "confidence" or "both";
-        if (target is null && preset.Target is { } presetTarget)
-        {
-            audience = presetTarget is AlertTarget.Audience or AlertTarget.Both;
-            stage = presetTarget is AlertTarget.Confidence or AlertTarget.Both;
-        }
-        Show.FireAlert(text, audience, stage);
-        liveAlertPresetId = preset.Id;
-        RenderOutputs(DefaultTransition());
+        var text = message ?? AlertEditing.Compose(preset.Message, tokens, Timers.Timers.Select(t => t.Name));
+        FireAlert(preset.Id, text, preset.Behavior, AlertEditing.Target(preset), preset.ThemeId, preset.Layer);
     }
 
     void IShowActions.DismissAlert() => ClearAlertsCommand.Execute(null);
@@ -209,9 +200,6 @@ public sealed partial class MainViewModel : IShowActions
 
     bool IShowActions.HasConfidenceMonitors => Outputs?.Config.Screens.Any(s => Outputs.Config.Role(s.Id) == ScreenRole.Confidence) == true;
 
-    void IShowActions.SetConfidenceLayout(string? layoutId, Guid? screenId)
-    {
-        var layout = layoutId is null ? StageLayouts.FirstOrDefault() : StageLayouts.FirstOrDefault(l => l.Id == layoutId);
-        if (layout is not null) SelectedStageLayout = layout;
-    }
+    /// <summary>One stage screen's layout, or every stage screen's (no layout: the built-in one), as on the Mac.</summary>
+    void IShowActions.SetConfidenceLayout(string? layoutId, Guid? screenId) => ApplyConfidenceLayout(layoutId, screenId);
 }
