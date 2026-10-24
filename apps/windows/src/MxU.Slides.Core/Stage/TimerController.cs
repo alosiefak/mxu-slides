@@ -16,10 +16,11 @@ public sealed record PersistedTimer(
     [property: JsonPropertyName("warnings")] IReadOnlyList<TimerWarning>? Warnings = null);
 
 /// <summary>
-/// Owns the show's timers and their transport (start, pause, reset, configure).
-/// Port of the Mac app's TimersController minus the timer board, undo and storage:
-/// <see cref="Changed"/> fires after every edit so the app can publish
-/// <see cref="Timers"/> into <see cref="ConfidenceInfo.Timers"/> and save <see cref="Export"/>.
+/// Owns the show's timers, their transport (start, pause, reset, configure) and the board
+/// that files them in folders on the Timers panel. Port of the Mac app's TimersController
+/// minus undo and storage: <see cref="Changed"/> fires after every edit so the app can
+/// publish <see cref="Timers"/> into <see cref="ConfidenceInfo.Timers"/> and save
+/// <see cref="Export"/> and <see cref="Board"/>. The timers are kept in board order.
 /// Not thread-safe; drive it from the UI thread.
 /// </summary>
 public sealed class TimerController(TimeProvider? clock = null)
@@ -28,10 +29,14 @@ public sealed class TimerController(TimeProvider? clock = null)
     public const string PermanentIdPrefix = "service_tracking.";
 
     private readonly List<TimerSnapshot> timers = [];
+    private TimerBoard board = new();
 
     public TimeProvider Clock { get; } = clock ?? ShowTimeProvider.Shared;
 
     public IReadOnlyList<TimerSnapshot> Timers => timers;
+
+    /// <summary>A copy of the board (folders and order). Change it through the methods below, which keep it in step.</summary>
+    public TimerBoard Board => board.Copy();
 
     public event Action? Changed;
 
@@ -44,13 +49,17 @@ public sealed class TimerController(TimeProvider? clock = null)
     public List<TimerSnapshot> Snapshots(IEnumerable<string> ids) =>
         ids.Select(Snapshot).OfType<TimerSnapshot>().ToList();
 
-    /// <summary>Replaces the service-tracking timers (permanent ids), keeping the user's timers first.</summary>
+    /// <summary>
+    /// Replaces the service-tracking timers (permanent ids). They are filed in the Service
+    /// Tracking folder and everything keeps its place on the board (<see cref="ServiceTrackingTimers.MergeInto"/>).
+    /// </summary>
     public void SetSystemTimers(IEnumerable<TimerSnapshot> system)
     {
-        var merged = timers.Where(t => !IsPermanent(t.Id)).Concat(system).ToList();
-        if (merged.SequenceEqual(timers)) return;
+        var merged = ServiceTrackingTimers.MergeInto([.. system], timers, board);
+        if (!merged.TimersChanged && !merged.BoardChanged) return;
         timers.Clear();
-        timers.AddRange(merged);
+        timers.AddRange(merged.Timers);
+        board = merged.Board;
         Push();
     }
 
@@ -66,6 +75,7 @@ public sealed class TimerController(TimeProvider? clock = null)
         var existing = timers.FindIndex(t => t.Id == id);
         if (existing >= 0) timers[existing] = snapshot;
         else timers.Add(snapshot);
+        ReconcileBoard();
         Push();
     }
 
@@ -83,6 +93,7 @@ public sealed class TimerController(TimeProvider? clock = null)
     private string Add(TimerSnapshot snapshot)
     {
         timers.Add(snapshot);
+        ReconcileBoard();
         Push();
         return snapshot.Id;
     }
@@ -117,7 +128,110 @@ public sealed class TimerController(TimeProvider? clock = null)
     public void Remove(string id)
     {
         if (IsPermanent(id)) return;
-        if (timers.RemoveAll(t => t.Id == id) > 0) Push();
+        if (timers.RemoveAll(t => t.Id == id) == 0) return;
+        ReconcileBoard();
+        Push();
+    }
+
+    // MARK: The board (folders and order)
+
+    /// <summary>Moves a timer before a node (into that node's folder when it is in one); null moves it to the end.</summary>
+    public void MoveTimer(string id, string? beforeNode)
+    {
+        if (IsPermanent(id)) return;
+        board.MoveTimer(id, beforeNode);
+        ApplyBoardOrder();
+    }
+
+    /// <summary>Files a timer at the end of a folder. Nothing goes into the Service Tracking folder by hand.</summary>
+    public void MoveTimerIntoFolder(string id, string folderId)
+    {
+        if (IsPermanent(id) || folderId == ServiceTrackingTimers.FolderId) return;
+        board.MoveTimerIntoFolder(id, folderId);
+        ApplyBoardOrder();
+    }
+
+    public void MoveFolder(string id, string? beforeNode)
+    {
+        board.MoveFolder(id, beforeNode);
+        ApplyBoardOrder();
+    }
+
+    /// <summary>Windows: Move up / Move down for a timer, within its folder or at the top level (the Mac drags).</summary>
+    public bool StepTimer(string id, int offset)
+    {
+        if (IsPermanent(id) || !board.StepTimer(id, offset)) return false;
+        ApplyBoardOrder();
+        return true;
+    }
+
+    /// <summary>Windows: Move up / Move down for a folder among the top-level entries.</summary>
+    public bool StepFolder(string id, int offset)
+    {
+        if (!board.StepFolder(id, offset)) return false;
+        ApplyBoardOrder();
+        return true;
+    }
+
+    /// <summary>Windows: the Folder picker (null takes the timer out to the top level).</summary>
+    public void PutInFolder(string id, string? folderId)
+    {
+        if (IsPermanent(id) || folderId == ServiceTrackingTimers.FolderId) return;
+        board.PutInFolder(id, folderId);
+        ApplyBoardOrder();
+    }
+
+    public string AddFolder(string name = "Folder")
+    {
+        var id = board.AddFolder(name);
+        Push();
+        return id;
+    }
+
+    public void RenameFolder(string id, string name)
+    {
+        if (id == ServiceTrackingTimers.FolderId) return;
+        board.RenameFolder(id, name);
+        Push();
+    }
+
+    public void SetFolderCollapsed(string id, bool collapsed)
+    {
+        board.SetCollapsed(id, collapsed);
+        Push();
+    }
+
+    /// <summary>Deletes a folder; its timers go back to the top level where it was.</summary>
+    public void RemoveFolder(string id)
+    {
+        if (id == ServiceTrackingTimers.FolderId) return;
+        board.RemoveFolder(id);
+        ApplyBoardOrder();
+    }
+
+    /// <summary>Puts back a saved board (folders and order), keeping it in step with the timers there are.</summary>
+    public void RestoreBoard(TimerBoard saved)
+    {
+        board = saved.Copy();
+        ReconcileBoard();
+        SortByBoard();
+        Push();
+    }
+
+    private void ReconcileBoard() => board.Reconcile([.. timers.Select(t => t.Id)]);
+
+    private void SortByBoard()
+    {
+        var order = board.AllTimerIds;
+        var sorted = timers.OrderBy(t => order.IndexOf(t.Id) is var at && at >= 0 ? at : int.MaxValue).ToList();
+        timers.Clear();
+        timers.AddRange(sorted);
+    }
+
+    private void ApplyBoardOrder()
+    {
+        SortByBoard();
+        Push();
     }
 
     /// <summary>
@@ -204,6 +318,8 @@ public sealed class TimerController(TimeProvider? clock = null)
         timers.Clear();
         timers.AddRange(restored);
         timers.AddRange(system);
+        ReconcileBoard();
+        SortByBoard();
         Push();
     }
 

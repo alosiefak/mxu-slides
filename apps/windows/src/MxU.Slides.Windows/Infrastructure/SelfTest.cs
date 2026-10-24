@@ -249,6 +249,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await RenderFixesCheck();
             await LibraryCheck();
             await ShowFlowChecks();
+            await OperatorCheck();
         }
         catch (Exception ex)
         {

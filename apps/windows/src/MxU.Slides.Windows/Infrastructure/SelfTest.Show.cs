@@ -45,7 +45,6 @@ public sealed partial class SelfTest
     private async Task ShowFlowChecks()
     {
         var previousService = model.SelectedService?.Id;
-        var previousLayout = model.SelectedStageLayout;
         var video = model.Library.All<MediaItem>().FirstOrDefault(m => m.MediaKind == MediaKind.Video && m.Name.StartsWith("MxU self-test video", StringComparison.Ordinal));
         var tone = model.Library.All<AudioItem>().FirstOrDefault(a => a.Name.StartsWith("MxU self-test tone", StringComparison.Ordinal));
         var videoBefore = video is null ? null : Core.Json.MxuJson.Clone(video);
@@ -102,7 +101,6 @@ public sealed partial class SelfTest
             model.ChooseServiceVersion(FlowServiceId, null);
             model.RefreshServices();
             model.SelectedService = model.Services.FirstOrDefault(s => s.Id == previousService) ?? model.Services.FirstOrDefault();
-            if (previousLayout is not null) model.SelectedStageLayout = model.StageLayouts.FirstOrDefault(l => l.Id == previousLayout.Id) ?? previousLayout;
             await Delay(300);
         }
     }
@@ -335,10 +333,10 @@ public sealed partial class SelfTest
             ],
         };
         model.Library.Save(layout);
-        model.SelectedStageLayout = model.StageLayouts.FirstOrDefault(l => l.Id == layout.Id);
-        var stage = StageText();
+        // Each stage screen has its own layout now; drawing this one is what a screen showing it would show.
+        var stage = TextOf(model.StageScene(layout));
         Check($"a stage layout shows Item Remaining (stage reads \"{stage.Replace('\n', ' ')}\")", stage.Contains("1:59") || stage.Contains("2:00"));
-        await Snapshot("76-show-stage-tracking", model.StageScene());
+        await Snapshot("76-show-stage-tracking", model.StageScene(layout));
         // The panel sits below the fold of the live column: scroll it into view for its picture.
         window.TrackingPanel.BringIntoView();
         await Step("77-show-tracking-panel", () => { }, settle: 500);

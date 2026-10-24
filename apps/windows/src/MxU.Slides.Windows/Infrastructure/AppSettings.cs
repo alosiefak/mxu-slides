@@ -4,7 +4,8 @@ using MxU.Slides.Core.Library;
 
 namespace MxU.Slides.Windows.Infrastructure;
 
-public enum OutputTransition { Cut, Dissolve, FadeThroughBlack }
+/// <summary>A room default transition. Fade Through White and Blur Dissolve are the header chips' other two choices, as on the Mac.</summary>
+public enum OutputTransition { Cut, Dissolve, FadeThroughBlack, FadeThroughWhite, BlurDissolve }
 
 /// <summary>Per-computer preferences, saved as settings.json next to the library.</summary>
 public sealed partial class AppSettings
@@ -70,6 +71,24 @@ public sealed partial class AppSettings
 
     /// <summary>Where recordings go; null = Videos\MxU Slides.</summary>
     public string? RecordingsFolder { get; set; }
+
+    // Operator panels (Phase 5). These four keep the Mac's own setting names.
+
+    /// <summary>"Show a repeated chord-only section once": an Interlude played twice shows once. Off unless turned on.</summary>
+    [JsonPropertyName("present.emptyRepeatsOnce")]
+    public bool EmptyRepeatsOnce { get; set; }
+
+    /// <summary>"Confidence NEXT skips blank slides": the stage's NEXT shows the next slide with words. On unless turned off.</summary>
+    [JsonPropertyName("confidence.nextSkipsBlankSlides")]
+    public bool NextSkipsBlanks { get; set; } = true;
+
+    /// <summary>Each confidence screen's stage layout: screen id (upper-case UUID) → layout id. Null until first made from <see cref="StageLayoutId"/>.</summary>
+    [JsonPropertyName("confidence.screenLayouts")]
+    public Dictionary<string, string>? ConfidenceScreenLayouts { get; set; }
+
+    /// <summary>What the operator preview shows: a screen id, or "layout::" and a stage layout id. Null: the first screen.</summary>
+    [JsonPropertyName("preview.screenTarget")]
+    public string? PreviewTarget { get; set; }
 
     private static readonly JsonSerializerOptions Json = new()
     {

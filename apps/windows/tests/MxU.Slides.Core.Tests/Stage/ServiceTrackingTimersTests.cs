@@ -4,10 +4,9 @@ using static MxU.Slides.Core.Stage.ServiceTrackingTimers;
 
 namespace MxU.Slides.Core.Tests.Stage;
 
-// Port of SlideSceneTests/ServiceTrackingTimersTests.swift. The merge cases file the timers
-// into the Mac's timer board, which Windows doesn't have; TimerControllerTests covers how
-// SetSystemTimers keeps them after the user's timers. The ServiceTiming cases check the C#
-// port of the non-UI half of Sources/ServiceTimingController.swift.
+// Port of SlideSceneTests/ServiceTrackingTimersTests.swift, including the merge cases that file
+// the timers into the Timers board's Service Tracking folder. The ServiceTiming cases check the
+// C# port of the non-UI half of Sources/ServiceTimingController.swift.
 public class ServiceTrackingTimersTests
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000);
@@ -103,6 +102,71 @@ public class ServiceTrackingTimersTests
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    // MARK: Filing them on the Timers board
+
+    private static List<TimerSnapshot> SystemSet(DateTimeOffset at, bool running) =>
+    [
+        Remaining(Subject.Item, plannedSeconds: 300, remainingSeconds: 200, running, at),
+        Idle(Subject.Video, Face.Remaining),
+    ];
+
+    [Fact]
+    public void RetiredIdsDropOffTheBoardToo()
+    {
+        var retired = new TimerSnapshot("Pre-Service Remaining", TimerMode.Countdown, id: "service_tracking.pre_service.remaining");
+        var board = new TimerBoard([TimerBoardNode.Timer(retired.Id)]);
+        var merged = MergeInto(SystemSet(Now, running: false), [retired], board);
+        Assert.DoesNotContain(merged.Timers, t => t.Id == retired.Id);
+        Assert.DoesNotContain(retired.Id, merged.Board.AllTimerIds);
+        Assert.False(merged.UserTimersChanged);
+    }
+
+    [Fact]
+    public void MergeFilesThePermanentSetAndFlagsEveryStoreTheFirstTime()
+    {
+        var user = new TimerSnapshot("Walk-in", TimerMode.Countdown, id: "user-1", durationSeconds: 600);
+        var merged = MergeInto(SystemSet(Now, running: false), [user], new TimerBoard());
+
+        Assert.Equal(["service_tracking.item.remaining", "service_tracking.video.remaining", "user-1"], merged.Timers.Select(t => t.Id));
+        Assert.Equal(["service_tracking.item.remaining", "service_tracking.video.remaining"], merged.Board.Folder(FolderId)?.TimerIds);
+        Assert.True(merged.TimersChanged);
+        Assert.True(merged.BoardChanged);
+        Assert.False(merged.UserTimersChanged); // one user timer has nowhere to move
+    }
+
+    [Fact]
+    public void TheSameSetAgainMovesNothing()
+    {
+        var user = new TimerSnapshot("Walk-in", TimerMode.Countdown, id: "user-1", durationSeconds: 600);
+        var first = MergeInto(SystemSet(Now, running: false), [user], new TimerBoard());
+        var again = MergeInto(SystemSet(Now.AddSeconds(5), running: false), first.Timers, first.Board);
+        Assert.Equal(first.Timers, again.Timers);
+        Assert.False(again.TimersChanged); // idle faces carry no anchor, so a later refresh is the same list
+        Assert.False(again.UserTimersChanged);
+        Assert.False(again.BoardChanged);
+    }
+
+    [Fact]
+    public void ANewAnchorRepublishesWithoutSavingAnything()
+    {
+        var first = MergeInto(SystemSet(Now, running: true), [], new TimerBoard());
+        var later = MergeInto(SystemSet(Now.AddSeconds(5), running: true), first.Timers, first.Board);
+        Assert.True(later.TimersChanged); // a running face re-anchors at the refresh
+        Assert.False(later.UserTimersChanged);
+        Assert.False(later.BoardChanged);
+    }
+
+    [Fact]
+    public void UserTimersReorderedByTheBoardAreSaved()
+    {
+        var a = new TimerSnapshot("A", TimerMode.Countdown, id: "a");
+        var b = new TimerSnapshot("B", TimerMode.Countdown, id: "b");
+        var board = new TimerBoard([TimerBoardNode.Timer("b"), TimerBoardNode.Timer("a")]);
+        var merged = MergeInto([], [a, b], board);
+        Assert.Equal(["b", "a"], merged.Timers.Select(t => t.Id));
+        Assert.True(merged.UserTimersChanged);
     }
 
     // MARK: Timing a service

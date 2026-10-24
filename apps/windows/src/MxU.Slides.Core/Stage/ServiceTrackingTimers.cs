@@ -5,14 +5,14 @@ namespace MxU.Slides.Core.Stage;
 /// <summary>
 /// The service-tracking timers: Item, Section, Service, Video and Timeline, each as Remaining
 /// and Elapsed. The app keeps them (they're never edited), so a stage layout can show "Item
-/// Remaining" like any timer, by its id (<c>service_tracking.item.remaining</c>).
-/// Port of SlideScene/ServiceTrackingTimers.swift. The Mac files them into a "Service Tracking"
-/// folder on its timer board; Windows has no timer board, so <see cref="TimerController.SetSystemTimers"/>
-/// keeps them after the user's timers instead.
+/// Remaining" like any timer, by its id (<c>service_tracking.item.remaining</c>), and they are
+/// filed in a read-only "Service Tracking" folder on the Timers board (<see cref="MergeInto"/>).
+/// Port of SlideScene/ServiceTrackingTimers.swift.
 /// </summary>
 public static class ServiceTrackingTimers
 {
     public const string IdPrefix = TimerController.PermanentIdPrefix;
+    public const string FolderId = "service_tracking";
     public const string FolderName = "Service Tracking";
 
     public enum Subject { Item, Section, Service, Video, Timeline }
@@ -137,5 +137,33 @@ public static class ServiceTrackingTimers
             if (Math.Abs(a.Value(at) - b.Value(at)) >= tolerance) return false;
         }
         return true;
+    }
+
+    /// <param name="TimersChanged">Something to publish (the list or an anchor moved).</param>
+    /// <param name="UserTimersChanged">The operator's own timers moved: save them.</param>
+    /// <param name="BoardChanged">The board changed: save it.</param>
+    public sealed record Merge(List<TimerSnapshot> Timers, TimerBoard Board, bool TimersChanged, bool UserTimersChanged, bool BoardChanged);
+
+    /// <summary>
+    /// Puts a fresh set of service-tracking timers in place of the old ones: they are filed in
+    /// the Service Tracking folder (made if missing), every timer is ordered as the board shows
+    /// it, and permanent ids no longer sent (retired faces) drop out.
+    /// </summary>
+    public static Merge MergeInto(IReadOnlyList<TimerSnapshot> system, IReadOnlyList<TimerSnapshot> timers, TimerBoard board)
+    {
+        var user = timers.Where(t => !IsPermanent(t.Id)).ToList();
+        var merged = user.Concat(system).ToList();
+        var next = board.Copy();
+        next.EnsureFolder(FolderId, FolderName);
+        next.Reconcile([.. merged.Select(t => t.Id)]);
+        foreach (var timer in system.Where(t => next.FolderContaining(t.Id)?.Id != FolderId))
+            next.MoveTimerIntoFolder(timer.Id, FolderId);
+        var order = next.AllTimerIds;
+        merged = [.. merged.OrderBy(t => order.IndexOf(t.Id) is var at && at >= 0 ? at : int.MaxValue)];
+        return new Merge(
+            merged, next,
+            TimersChanged: !merged.SequenceEqual(timers),
+            UserTimersChanged: !merged.Where(t => !IsPermanent(t.Id)).SequenceEqual(user),
+            BoardChanged: !next.Equals(board));
     }
 }

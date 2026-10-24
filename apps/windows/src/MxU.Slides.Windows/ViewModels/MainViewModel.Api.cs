@@ -199,8 +199,8 @@ public sealed partial class MainViewModel : IApiBridge
             liveSlide, next, layers,
             Show.LiveOverlays.Select(o => new ApiLiveOverlay(o.Id, o.Name, o.Layer)).ToList(),
             info.Alert is { } alert
-                ? new ApiLiveAlert("alert", alert.Message, "persist",
-                    alert.Target switch { AlertTarget.Audience => "audience", AlertTarget.Both => "both", _ => "confidence" }, null)
+                ? new ApiLiveAlert(alert.Id, alert.Message, AlertBehaviorJsonConverter.ToRaw(alert.Behavior),
+                    Core.Model.AlertTargetJsonConverter.ToRaw(alert.Target), alert.Layer)
                 : null,
             SelectedService?.Id,
             SelectedService is { } s ? new ApiServiceRef(s.Id, s.Name) : null,
@@ -297,36 +297,23 @@ public sealed partial class MainViewModel : IApiBridge
         if (Show.LiveOverlays.FirstOrDefault(o => o.Id == id) is { } overlay) SetOverlay(overlay, up: false);
     }
 
+    /// <summary>
+    /// As the Mac's bridge: a preset fires as itself (its behaviour, target, layer and theme) with
+    /// the blanks sent filled in and timer tokens kept live; a bare message fires with the
+    /// behaviour, target and theme sent (steady, on the confidence monitors, by default).
+    /// </summary>
     void IApiBridge.FireAlert(ApiFireAlertCommand command)
     {
-        string message;
-        var audience = command.Target is "audience" or "both";
-        var stage = command.Target is null or "confidence" or "both";
         if (command.PresetId is { } presetId)
         {
             var preset = Library.Get<AlertPreset>(presetId) ?? throw ApiError.NotFound($"No alert preset '{presetId}'.");
-            var values = command.Tokens?.ToDictionary() ?? [];
-            foreach (var name in AlertTokens.TokenNames(preset.Message)
-                         .Where(n => Timers.Timers.Any(t => string.Equals(t.Name, n, StringComparison.OrdinalIgnoreCase))))
-                values[name] = $"{{{name}}}";
-            message = command.Message ?? AlertTokens.Compose(preset.Message, values);
-            if (command.Target is null && preset.Target is { } presetTarget)
-            {
-                audience = presetTarget is Core.Model.AlertTarget.Audience or Core.Model.AlertTarget.Both;
-                stage = presetTarget is Core.Model.AlertTarget.Confidence or Core.Model.AlertTarget.Both;
-            }
+            ShowAlertPreset(preset, command.Tokens, command.Message);
+            return;
         }
-        else if (command.Message is { Length: > 0 } adHoc)
-        {
-            message = adHoc;
-        }
-        else
-        {
-            throw ApiError.BadRequest("Provide 'presetId' or 'message'.");
-        }
-        Show.FireAlert(message, audience, stage);
-        liveAlertPresetId = command.PresetId;
-        RenderOutputs(DefaultTransition());
+        if (command.Message is not { Length: > 0 } message) throw ApiError.BadRequest("Provide 'presetId' or 'message'.");
+        var behavior = AlertBehaviorJsonConverter.TryParse(command.Behavior, out var b) ? b : AlertBehavior.Persist;
+        var target = Core.Model.AlertTargetJsonConverter.TryParse(command.Target, out var t) ? t : Core.Model.AlertTarget.Confidence;
+        FireAlert(LibraryStore.NewId(), message, behavior, target, command.ThemeId);
     }
 
     void IApiBridge.DismissAlert() => ClearAlertsCommand.Execute(null);

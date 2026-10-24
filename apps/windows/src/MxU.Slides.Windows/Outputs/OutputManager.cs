@@ -33,8 +33,14 @@ public sealed class OutputManager
     private readonly DispatcherTimer displayDebounce;
     private AnimatedScene? audience;
     private AnimatedScene? stage;
+    private IReadOnlyDictionary<Guid, AnimatedScene> stageScreens = new Dictionary<Guid, AnimatedScene>();
     private IReadOnlyDictionary<string, AnimatedScene> looks = new Dictionary<string, AnimatedScene>();
     private bool showing;
+
+    // Screens the operator has switched off (the Screens panel's Live/Off, or the toolbar's
+    // Audience/Stage buttons). Their outputs show nothing and a window left with nothing to show
+    // is hidden; the screen's own picture (previews, recordings of it) carries on.
+    private readonly HashSet<Guid> offScreens = [];
 
     public OutputManager(AppSettings settings, Window main, MediaHub media)
     {
@@ -42,6 +48,8 @@ public sealed class OutputManager
         this.main = main;
         this.media = media;
         Config = ScreenSetup.Load(settings.Screens ?? FirstRun(settings));
+        // Outputs that don't come on at launch start switched off, so turning one screen on doesn't bring the rest.
+        if (!settings.OutputsOnAtLaunch) offScreens.UnionWith(Config.Screens.Select(s => s.Id));
         Config.MaskPathFill = MaskCoverage;
         Config.UpdateDisplays(Snapshots());
         Config.ConfigurationChanged += () =>
@@ -109,8 +117,27 @@ public sealed class OutputManager
         else
         {
             stage = scene;
+            stageScreens = new Dictionary<Guid, AnimatedScene>();
         }
-        foreach (var target in Targets(role)) target.Present(scene is null ? null : SceneFor(target.ScreenId), transition);
+        foreach (var target in Targets(role)) target.Present(scene is null || IsOff(target.ScreenId) ? null : SceneFor(target.ScreenId), transition);
+    }
+
+    /// <summary>
+    /// The stage display, each confidence screen with its own layout (<paramref name="perScreen"/>);
+    /// a confidence screen not in it shows <paramref name="shared"/>. A refresh (a clock ticking)
+    /// redraws in place; anything else cuts, as the stage display always has.
+    /// </summary>
+    public void PresentStage(IReadOnlyDictionary<Guid, AnimatedScene> perScreen, AnimatedScene? shared, bool refreshOnly)
+    {
+        stage = shared;
+        stageScreens = perScreen;
+        foreach (var target in Targets(OutputRole.Stage))
+        {
+            if (IsOff(target.ScreenId)) continue;
+            var scene = SceneFor(target.ScreenId);
+            if (refreshOnly && scene is not null) target.View.Update(scene);
+            else target.Present(scene, SceneTransition.Cut);
+        }
     }
 
     /// <summary>A still scene (the stage display) to every screen with that job.</summary>
@@ -129,9 +156,10 @@ public sealed class OutputManager
         else
         {
             stage = scene;
+            stageScreens = new Dictionary<Guid, AnimatedScene>();
         }
         foreach (var target in Targets(role))
-            if (SceneFor(target.ScreenId) is { } shaped) target.View.Update(shaped);
+            if (!IsOff(target.ScreenId) && SceneFor(target.ScreenId) is { } shaped) target.View.Update(shaped);
     }
 
     private readonly record struct Target(Guid ScreenId, SceneView View)
@@ -163,7 +191,8 @@ public sealed class OutputManager
         {
             OutputFeedKind.AlignmentGrid => AnimatedScene.From(OutputConfiguration.AlignmentGrid(feed.CanvasSize!.Value)),
             OutputFeedKind.SyncTest => AnimatedScene.From(OutputConfiguration.SyncTestScene(feed.CanvasSize!.Value)),
-            OutputFeedKind.Confidence => stage,
+            // Each confidence screen shows its own stage layout (ConfidenceMonitorController on the Mac).
+            OutputFeedKind.Confidence => stageScreens.TryGetValue(screenId, out var own) ? own : stage,
             _ => (feed.SlideThemeKey is { } look && looks.TryGetValue(look, out var variant) ? variant : audience) is { } program
                 ? Config.Program(feed, program)
                 : null,
@@ -212,7 +241,9 @@ public sealed class OutputManager
                     if (!windows.TryGetValue(device, out var window))
                         windows[device] = window = new OutputWindow(device, display.FriendlyName, media);
                     window.SetSlices(SlicesFor(carried));
-                    window.PlaceOn(display);
+                    // A display whose every screen is switched off stays dark (its window hidden).
+                    if (carried.All(c => IsOff(c.ScreenId))) window.Hide();
+                    else window.PlaceOn(display);
                     break;
                 default:
                     if (!feeds.TryGetValue(device, out var feed))
@@ -274,7 +305,7 @@ public sealed class OutputManager
         }
         foreach (var role in Enum.GetValues<OutputRole>())
             foreach (var target in Targets(role).Where(t => changed.Contains(t.ScreenId)))
-                target.Present(SceneFor(target.ScreenId), SceneTransition.Cut);
+                target.Present(IsOff(target.ScreenId) ? null : SceneFor(target.ScreenId), SceneTransition.Cut);
         if (looksChanged) LooksChanged?.Invoke();
     }
 
@@ -336,7 +367,7 @@ public sealed class OutputManager
 
     private bool HasFeed(OutputRole role)
     {
-        var screens = ScreensFor(role).Select(s => s.Id).ToHashSet();
+        var screens = ScreensFor(role).Select(s => s.Id).Where(id => !IsOff(id)).ToHashSet();
         return feeds.Values.Any(f => f.Slices.Any(s => screens.Contains(s.ScreenId)));
     }
 
@@ -346,7 +377,7 @@ public sealed class OutputManager
         var screens = ScreensFor(role).Select(s => s.Id).ToHashSet();
         var names = windows.Values.Where(w => w.IsVisible && w.Slices.Any(s => screens.Contains(s.ScreenId)))
             .Select(w => w.Display?.FriendlyName ?? "On")
-            .Concat(feeds.Values.Where(f => f.Slices.Any(s => screens.Contains(s.ScreenId))).Select(f => f.Label))
+            .Concat(feeds.Values.Where(f => f.Slices.Any(s => screens.Contains(s.ScreenId) && !IsOff(s.ScreenId))).Select(f => f.Label))
             .ToList();
         if (names.Count > 1) return $"{names.Count} outputs";
         if (names.Count == 1) return names[0];
@@ -356,7 +387,12 @@ public sealed class OutputManager
     /// <summary>Shows the first screen with that job as an ordinary window, for a laptop with one display.</summary>
     public void ShowPreviewWindow(OutputRole role)
     {
-        if (ScreensFor(role).FirstOrDefault() is not { } screen) return;
+        if (ScreensFor(role).FirstOrDefault() is { } screen) ShowPreviewWindow(screen);
+    }
+
+    private void ShowPreviewWindow(PlaceholderScreen screen)
+    {
+        offScreens.Remove(screen.Id);
         if (!previews.TryGetValue(screen.Id, out var preview))
         {
             previews[screen.Id] = preview = new PreviewWindow(screen.Id, screen.Name, media, ScopeFor(screen.Id), main, previews.Count);
@@ -371,9 +407,7 @@ public sealed class OutputManager
     /// <summary>Takes that job's outputs off the displays and closes its preview windows.</summary>
     public void Hide(OutputRole role)
     {
-        var screens = ScreensFor(role).Select(s => s.Id).ToHashSet();
-        foreach (var window in windows.Values.Where(w => w.Slices.Any(s => screens.Contains(s.ScreenId)))) window.Hide();
-        foreach (var preview in previews.Values.Where(p => screens.Contains(p.ScreenId))) preview.Hide();
+        foreach (var screen in ScreensFor(role).ToList()) SwitchOff(screen.Id);
         UpdateKeepAwake();
         StatusChanged?.Invoke();
     }
@@ -386,11 +420,80 @@ public sealed class OutputManager
             Hide(role);
             return;
         }
-        var connected = Displays.All().Select(d => OutputDevice.Display(d.DeviceName)).ToHashSet(StringComparer.Ordinal);
-        var screens = ScreensFor(role).Select(s => s.Id).ToHashSet();
-        var hasDisplay = Config.Carries().Any(pair => connected.Contains(pair.Key) && pair.Value.Any(c => screens.Contains(c.ScreenId)));
-        if (hasDisplay) Apply();
+        var screens = ScreensFor(role).ToList();
+        foreach (var screen in screens) offScreens.Remove(screen.Id);
+        if (screens.Any(s => HasConnectedDevice(s.Id))) Apply();
         else ShowPreviewWindow(role);
+    }
+
+    // MARK: Each screen on its own (the Screens panel's Live/Off)
+
+    private bool IsOff(Guid screenId) => offScreens.Contains(screenId);
+
+    /// <summary>
+    /// Whether a screen is on air: switched on, and some output carries it (a window showing on a
+    /// display, an NDI or DeckLink feed) or its preview window is open.
+    /// </summary>
+    public bool IsScreenLive(Guid screenId) =>
+        !IsOff(screenId)
+        && (windows.Values.Any(w => w.IsVisible && w.Slices.Any(s => s.ScreenId == screenId))
+            || feeds.Values.Any(f => f.Slices.Any(s => s.ScreenId == screenId))
+            || previews.TryGetValue(screenId, out var preview) && preview.IsVisible);
+
+    /// <summary>What carries a screen, for the panel's caption: "EPSON PJ", "NDI: Stream", "2 outputs", "Preview window" or "No output".</summary>
+    public string ScreenCarrier(Guid screenId)
+    {
+        var names = Config.Slices(screenId)
+            .Select(slice => Config.Device(slice.Id) is { } device ? Config.DeviceName(slice.Id) ?? OutputDevice.Value(device) : null)
+            .OfType<string>().Distinct().ToList();
+        return names.Count switch
+        {
+            0 => previews.TryGetValue(screenId, out var preview) && preview.IsVisible ? "Preview window" : "No output",
+            1 => names[0],
+            _ => $"{names.Count} outputs",
+        };
+    }
+
+    private bool HasConnectedDevice(Guid screenId)
+    {
+        var connected = Displays.All().Select(d => OutputDevice.Display(d.DeviceName)).ToHashSet(StringComparer.Ordinal);
+        return Config.Carries().Any(pair => pair.Value.Any(c => c.ScreenId == screenId)
+            && (connected.Contains(pair.Key) || OutputDevice.Kind(pair.Key) != OutputDeviceKind.Display));
+    }
+
+    /// <summary>
+    /// Takes one screen on or off air. On: onto its display or device when one is there, else into
+    /// a preview window (a laptop with one screen). Off: its outputs go dark, a display left with
+    /// nothing to show is uncovered, and its preview window closes.
+    /// </summary>
+    public void SetScreenLive(Guid screenId, bool live)
+    {
+        if (Config.Screen(screenId) is not { } screen) return;
+        if (live)
+        {
+            offScreens.Remove(screenId);
+            if (HasConnectedDevice(screenId)) Apply();
+            else ShowPreviewWindow(screen);
+        }
+        else
+        {
+            SwitchOff(screenId);
+        }
+        UpdateKeepAwake();
+        StatusChanged?.Invoke();
+    }
+
+    private void SwitchOff(Guid screenId)
+    {
+        offScreens.Add(screenId);
+        foreach (var window in windows.Values.Where(w => w.Slices.Any(s => s.ScreenId == screenId)).ToList())
+        {
+            if (window.Slices.All(s => IsOff(s.ScreenId))) window.Hide();
+            else foreach (var slice in window.Slices.Where(s => s.ScreenId == screenId)) slice.View.Present((AnimatedScene?)null, SceneTransition.Cut);
+        }
+        foreach (var feed in feeds.Values)
+            foreach (var slice in feed.Slices.Where(s => s.ScreenId == screenId)) slice.View.Present((AnimatedScene?)null, SceneTransition.Cut);
+        if (previews.TryGetValue(screenId, out var preview)) preview.Hide();
     }
 
     /// <summary>Puts the first screen with that job on a display (or nowhere), keeping its other slices as they are.</summary>

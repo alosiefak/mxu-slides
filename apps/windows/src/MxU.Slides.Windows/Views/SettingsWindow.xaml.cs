@@ -69,6 +69,8 @@ public partial class SettingsWindow : Window
         {
             new TransitionChoice(OutputTransition.Dissolve, "Dissolve"),
             new TransitionChoice(OutputTransition.FadeThroughBlack, "Fade through black"),
+            new TransitionChoice(OutputTransition.FadeThroughWhite, "Fade through white"),
+            new TransitionChoice(OutputTransition.BlurDissolve, "Blur dissolve"),
             new TransitionChoice(OutputTransition.Cut, "Cut (instant)"),
         };
         TransitionCombo.SelectedItem = ((TransitionChoice[])TransitionCombo.ItemsSource).First(c => c.Value == s.Transition);
@@ -284,11 +286,13 @@ public partial class SettingsWindow : Window
         LoadDisplays();
     }
 
+    // The sliders report a change while the window is still loading (setting their Minimum moves their
+    // value), before the labels under them exist: that threw, and the window never opened.
     private void TransitionSeconds_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) =>
-        TransitionLabel.Text = $"{e.NewValue:0.0} seconds";
+        TransitionLabel?.Text = $"{e.NewValue:0.0} seconds";
 
     private void MediaTransitionSeconds_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) =>
-        MediaTransitionLabel.Text = $"{e.NewValue:0.0} seconds";
+        MediaTransitionLabel?.Text = $"{e.NewValue:0.0} seconds";
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {

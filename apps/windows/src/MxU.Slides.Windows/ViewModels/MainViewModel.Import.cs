@@ -205,20 +205,18 @@ public sealed partial class MainViewModel
     private ProWorkspacePlans.Summary? ApplyProPresenterPlans(ProWorkspaceImportResult result, WorkspaceImportOptions options)
     {
         if (Outputs is not { } outputs) return null;
-        string? stageLayout = null;
         var plans = new ProWorkspacePlans
         {
             Library = Library,
             Outputs = outputs.Config,
             Timers = Timers,
             ImportInput = plan => Inputs.ImportEntry(plan.NewId, plan.Name, plan.Kind, plan.SourceId),
-            // This app has one stage layout for every confidence screen: the first one ProPresenter assigns.
-            SetStageLayout = (_, layoutId) => stageLayout ??= layoutId,
+            // Each confidence screen gets the stage layout ProPresenter gave it, as on the Mac.
+            SetStageLayout = (screen, layoutId) => this.SetStageLayout(screen, layoutId),
         };
         try
         {
             var summary = plans.Apply(result, options);
-            if (stageLayout is not null && StageLayouts.FirstOrDefault(l => l.Id == stageLayout) is { } layout) SelectedStageLayout = layout;
             RefreshInputs();
             Log.Info($"ProPresenter library import: {summary}");
             return summary;

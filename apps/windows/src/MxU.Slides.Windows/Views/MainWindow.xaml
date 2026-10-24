@@ -667,6 +667,7 @@
                 <StackPanel>
                     <Border Style="{StaticResource Panel}" Margin="0,0,0,8">
                         <StackPanel>
+                            <v:LiveToolbar Margin="0,0,0,8" />
                             <DockPanel Margin="0,0,0,6">
                                 <Border DockPanel.Dock="Left" Background="{StaticResource Live}" CornerRadius="3" Padding="6,1" Margin="0,0,8,0" VerticalAlignment="Center">
                                     <TextBlock Text="AUDIENCE" FontSize="10" FontWeight="Bold" Foreground="White" />
@@ -706,93 +707,13 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Style="{StaticResource Panel}" Margin="0,0,0,8">
-                        <StackPanel>
-                            <DockPanel Margin="0,0,0,6">
-                                <Border DockPanel.Dock="Left" Background="#B45309" CornerRadius="3" Padding="6,1" Margin="0,0,8,0" VerticalAlignment="Center">
-                                    <TextBlock Text="STAGE" FontSize="10" FontWeight="Bold" Foreground="White" />
-                                </Border>
-                                <ComboBox ItemsSource="{Binding StageLayouts}" SelectedItem="{Binding SelectedStageLayout}" DisplayMemberPath="Name" />
-                            </DockPanel>
-                            <Border CornerRadius="4" ClipToBounds="True" Background="Black">
-                                <r:SceneView x:Name="StagePreview" PlaysVideo="False" PlaybackScope="stage-preview"
-                                             Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource SixteenByNine}}" />
-                            </Border>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource Panel}" Margin="0,0,0,8">
-                        <StackPanel>
-                            <TextBlock Text="TIMERS" Style="{StaticResource SectionLabel}" />
-                            <ItemsControl ItemsSource="{Binding TimerRows}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:TimerRowViewModel}">
-                                        <Grid Margin="0,0,0,6">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding Name}" Style="{StaticResource Muted}" FontSize="11" MouseLeftButtonDown="TimerName_MouseDown"
-                                                           ToolTip="Double-click to rename or set the time" Cursor="Hand" />
-                                                <TextBlock Text="{Binding Display}" Foreground="{Binding DisplayBrush}" FontSize="22" FontWeight="SemiBold"
-                                                           FontFamily="Segoe UI Variable Display, Segoe UI" />
-                                            </StackPanel>
-                                            <Button Grid.Column="1" Command="{Binding DataContext.ToggleTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                    CommandParameter="{Binding}" Margin="4,0" Width="34" ToolTip="Start / pause">
-                                                <TextBlock FontFamily="{StaticResource Icons}">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="&#xE768;" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsRunning}" Value="True">
-                                                                    <Setter Property="Text" Value="&#xE769;" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </Button>
-                                            <Button Grid.Column="2" Command="{Binding DataContext.ResetTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                    CommandParameter="{Binding}" Width="34" ToolTip="Reset">
-                                                <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE72C;" />
-                                            </Button>
-                                            <Button Grid.Column="3" Style="{StaticResource GhostButton}" Margin="4,0,0,0"
-                                                    Command="{Binding DataContext.RemoveTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                    CommandParameter="{Binding}" ToolTip="Remove timer">
-                                                <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE711;" FontSize="10" />
-                                            </Button>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                <TextBox Text="{Binding NewTimerMinutes, UpdateSourceTrigger=PropertyChanged}" Width="44" ToolTip="Minutes" />
-                                <TextBlock Text="min" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="4,0,8,0" />
-                                <Button Command="{Binding AddCountdownTimerCommand}" Content="+ Countdown" Margin="0,0,6,0" />
-                                <Button Command="{Binding AddCountUpTimerCommand}" Content="+ Count up" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
+                    <!-- The operator panels (Views/Operator): each screen's Live/Off, the stage screens' layouts, timers and alerts,
+                         and the service-tracking timers (Views/ServiceTrackingPanel). -->
+                    <Border Style="{StaticResource Panel}" Margin="0,0,0,8"><v:ScreensPanel /></Border>
+                    <Border Style="{StaticResource Panel}" Margin="0,0,0,8"><v:StagePanel /></Border>
+                    <Border Style="{StaticResource Panel}" Margin="0,0,0,8"><v:TimersPanel /></Border>
                     <v:ServiceTrackingPanel x:Name="TrackingPanel" Margin="0,0,0,8" />
-
-                    <Border Style="{StaticResource Panel}" Margin="0,0,0,8">
-                        <StackPanel>
-                            <TextBlock Text="MESSAGE" Style="{StaticResource SectionLabel}" />
-                            <TextBox Text="{Binding AlertText, UpdateSourceTrigger=PropertyChanged}" Tag="Type a message, press Enter"
-                                     ToolTip="e.g. Parent of child 47, please come to the nursery. {Sermon} shows a timer."
-                                     KeyDown="AlertText_KeyDown" />
-                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                <CheckBox Content="Stage" IsChecked="{Binding AlertOnStage}" Margin="0,0,12,0" VerticalAlignment="Center" />
-                                <CheckBox Content="Audience" IsChecked="{Binding AlertOnAudience}" Margin="0,0,12,0" VerticalAlignment="Center" />
-                                <Button Command="{Binding ShowAlertCommand}" Style="{StaticResource AccentButton}" Content="Show" Margin="0,0,6,0" />
-                                <Button Command="{Binding ClearAlertsCommand}" Content="Clear" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
+                    <Border Style="{StaticResource Panel}" Margin="0,0,0,8"><v:AlertsPanel /></Border>
                 </StackPanel>
             </ScrollViewer>
         </Grid>

@@ -34,9 +34,7 @@ public partial class MainWindow : Window
         DataContext = model;
         InitializeComponent();
         model.AudiencePreview = AudiencePreview;
-        model.StagePreview = StagePreview;
         AudiencePreview.Media = model.Media;
-        StagePreview.Media = model.Media;
         model.Canvas = CanvasEditor;
         CanvasEditor.TextEditRequested += _ => Dispatcher.BeginInvoke(FocusInspectorText, DispatcherPriority.Loaded);
         RestorePlacement();
@@ -628,31 +626,6 @@ public partial class MainWindow : Window
     private void MediaBin_Drop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files) _ = model.ImportMediaFilesAsync(files);
-    }
-
-    // MARK: Timers and messages
-
-    private void TimerName_MouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ClickCount != 2 || ContextOf<TimerRowViewModel>(sender) is not { } row) return;
-        var answer = InputDialog.Ask(this, "Timer",
-            "Name, then a length in minutes or a time to count down to. For example:  Sermon, 35   or   Service starts, 10:30",
-            $"{row.Name}, ");
-        if (answer is null) return;
-        var parts = answer.Split(',', 2, StringSplitOptions.TrimEntries);
-        if (parts[0].Length > 0) model.RenameTimer(row, parts[0]);
-        if (parts.Length < 2 || parts[1].Length == 0) return;
-        if (TimeOnly.TryParse(parts[1], out var time) && parts[1].Contains(':'))
-            model.SetTimerUntil(row, time.Hour, time.Minute);
-        else if (double.TryParse(parts[1], out var minutes))
-            model.SetTimerMinutes(row, minutes);
-    }
-
-    private void AlertText_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter) return;
-        model.ShowAlertCommand.Execute(null);
-        e.Handled = true;
     }
 
     // MARK: Outputs and settings
