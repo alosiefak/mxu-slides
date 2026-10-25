@@ -8,7 +8,7 @@ namespace MxU.Slides.Broadcast.Media;
 /// in real time, to an H.264 MP4. It's the recorder's own pipeline: <see cref="H264Encoder"/>
 /// (High profile, constant bitrate, no B-frames) and <see cref="Mp4SinkWriter"/> to pack the file.
 /// <para>
-/// Two differences from recording, both because nothing here is live:
+/// Three differences from recording, all because nothing here is live:
 /// <list type="bullet">
 /// <item>It always uses Microsoft's <b>software</b> encoder. A graphics-card encoder that is
 /// slow to ask for the next picture would make the recorder drop one rather than fall
@@ -16,6 +16,9 @@ namespace MxU.Slides.Broadcast.Media;
 /// takes each picture before it returns). It also makes the same file on every PC.</item>
 /// <item>Each frame's time stamp is worked out from its number (<see cref="LoopTiming.TimeHns"/>),
 /// not read from a clock, so frame i is exactly i ÷ frame rate seconds in.</item>
+/// <item>It's a plain MP4, not the recorder's crash-safe fragments: a fragmented file's header can
+/// leave out its last fragment (a 10-second loop said 9), and a player looping by the stated
+/// length would then cut the loop short. The file is only used once it's finished anyway.</item>
 /// </list>
 /// Use from one thread.
 /// </para>
