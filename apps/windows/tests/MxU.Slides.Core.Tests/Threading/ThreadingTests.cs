@@ -10,19 +10,23 @@ public sealed class BusyPool;
 public sealed class PoolHog : IDisposable
 {
     private readonly ManualResetEventSlim release = new(false);
+    private readonly ManualResetEventSlim busy = new(false);
+    private int toStart;
 
     public PoolHog()
     {
         ThreadPool.GetMinThreads(out var workers, out _);
-        using var running = new CountdownEvent(workers);
+        toStart = workers;
         for (var i = 0; i < workers * 4; i++)
             ThreadPool.UnsafeQueueUserWorkItem(_ =>
             {
-                try { running.Signal(); }
-                catch (InvalidOperationException) { }
+                // Exactly one job sees the count reach zero. (A CountdownEvent disposed at the end of
+                // this constructor was still signalled by jobs that started later: that threw on a
+                // pool thread, which takes the whole test process down, as it did on a CI machine.)
+                if (Interlocked.Decrement(ref toStart) == 0) busy.Set();
                 release.Wait();
             }, null);
-        running.Wait(TimeSpan.FromSeconds(5));
+        busy.Wait(TimeSpan.FromSeconds(5));
     }
 
     public void Dispose() => release.Set();
