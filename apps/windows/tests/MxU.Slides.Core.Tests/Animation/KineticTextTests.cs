@@ -39,6 +39,23 @@ public class KineticTextTests
     }
 
     [Fact]
+    public void EveryPresetFiledOnAnOverlayIsWarningFree()
+    {
+        // What the overlay editor shows next to a step ("already shown", "waits for a click") must stay empty.
+        foreach (var preset in KineticPresets.All)
+        {
+            var overlay = new Overlay { Id = "ov", Name = "O", Objects = [Text("t", "Grace upon grace\nand peace to you")] };
+            var ids = KineticText.ApplyTo(overlay, ["t"], preset, AnimationPresetApplication.Mode.Replace);
+            OverlaySteps.File(overlay, ids);
+            var warnings = AnimationEditing.OverlayWarnings(overlay);
+            Assert.True(warnings.Count == 0, $"{preset.Name}: {string.Join("; ", warnings.Values)}");
+            var groups = AnimationSequence.Groups(overlay.Objects, overlay.AnimationOrder);
+            Assert.Empty(groups.Click);
+            Assert.Equal(preset.Out.Count, groups.Exit.Count);
+        }
+    }
+
+    [Fact]
     public void WordByWordGivesEachWordItsOwnStepAStaggerApart()
     {
         var overlay = new Overlay { Id = "ov", Name = "O", Objects = [Text("t", "Grace upon grace")] };
