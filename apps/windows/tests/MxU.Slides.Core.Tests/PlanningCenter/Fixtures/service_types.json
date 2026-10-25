@@ -1,0 +1,77 @@
+{
+  "links": {
+    "self": "https://api.planningcenteronline.com/services/v2/service_types?order=sequence&per_page=100"
+  },
+  "data": [
+    {
+      "type": "ServiceType",
+      "id": "1100001",
+      "attributes": {
+        "archived_at": null,
+        "created_at": "2014-03-02T16:41:00Z",
+        "deleted_at": null,
+        "frequency": "Weekly",
+        "last_plan_from": "organization",
+        "name": "Sunday Morning",
+        "permissions": "Administrator",
+        "sequence": 0,
+        "updated_at": "2026-10-20T15:10:31Z",
+        "attachment_types_enabled": false,
+        "background_check_permissions": "default",
+        "comment_permissions": "Scheduled Viewer",
+        "custom_item_types": [],
+        "standard_item_types": [
+          { "name": "Song", "color": "#4a7dd5" },
+          { "name": "Header", "color": "#aaaaaa" },
+          { "name": "Media", "color": "#56a64b" },
+          { "name": "Item", "color": "#e3a52c" }
+        ],
+        "scheduled_publish": false
+      },
+      "relationships": {
+        "parent": { "data": { "type": "Folder", "id": "2200001" } }
+      },
+      "links": {
+        "plans": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans",
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001"
+      }
+    },
+    {
+      "type": "ServiceType",
+      "id": "1100002",
+      "attributes": {
+        "archived_at": null,
+        "created_at": "2016-08-21T18:02:17Z",
+        "deleted_at": null,
+        "frequency": "Weekly",
+        "last_plan_from": "organization",
+        "name": "Youth Night",
+        "permissions": "Editor",
+        "sequence": 1,
+        "updated_at": "2026-09-30T22:45:09Z",
+        "attachment_types_enabled": false,
+        "background_check_permissions": "default",
+        "comment_permissions": "Scheduled Viewer",
+        "custom_item_types": [],
+        "standard_item_types": [],
+        "scheduled_publish": false
+      },
+      "relationships": {
+        "parent": { "data": { "type": "Folder", "id": "2200001" } }
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100002"
+      }
+    }
+  ],
+  "included": [],
+  "meta": {
+    "total_count": 2,
+    "count": 2,
+    "can_order_by": ["sequence", "name"],
+    "can_query_by": ["id", "name"],
+    "can_include": ["time_preference_options"],
+    "can_filter": ["no_parent"],
+    "parent": { "id": "123456", "type": "Organization" }
+  }
+}

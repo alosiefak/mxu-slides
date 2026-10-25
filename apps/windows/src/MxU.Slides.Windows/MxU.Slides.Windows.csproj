@@ -25,6 +25,8 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="3.1.512801" />
+    <!-- MIT. Works out the browser remote's QR code (Views/QrCode.cs draws it). -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
   </ItemGroup>
 

@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using MxU.Slides.LocalApi.Remote;
 
 namespace MxU.Slides.LocalApi;
 
@@ -35,6 +36,9 @@ public sealed class LocalApiServer(ApiServerInfo? info = null) : IDisposable
 
     /// <summary>The event bus sockets subscribe to; see <see cref="Publish(ApiTopic)"/>.</summary>
     public ApiEventBus Events { get; } = new();
+
+    /// <summary>Windows: the pairing codes the browser remote (/remote) trades for keys. Served when the bridge is an <see cref="IRemoteBridge"/>.</summary>
+    public RemotePairing Pairing { get; } = new();
 
     public bool IsRunning => current is not null;
 
@@ -67,7 +71,8 @@ public sealed class LocalApiServer(ApiServerInfo? info = null) : IDisposable
             WebApplication? app = null;
             try
             {
-                var handler = new ApiHttpHandler(new ApiRouter(routes), Events, tokens, Info, bridgeContext, stopping.Token);
+                var handler = new ApiHttpHandler(new ApiRouter(routes), Events, tokens, Info, bridgeContext, stopping.Token,
+                    bridge as IRemoteBridge, Pairing);
                 var built = Build(port, handler.HandleAsync);
                 app = built;
                 Task.Run(() => built.StartAsync()).GetAwaiter().GetResult();
@@ -241,15 +246,27 @@ public sealed class LocalApiServer(ApiServerInfo? info = null) : IDisposable
 }
 
 /// <summary>Answers one HTTP request: the fixed endpoints, then the router. Port of LocalAPIServer's routes and handle(_:).</summary>
-internal sealed class ApiHttpHandler(
-    ApiRouter router,
-    ApiEventBus events,
-    ApiTokenStore tokens,
-    ApiServerInfo info,
-    SynchronizationContext? bridgeContext,
-    CancellationToken stopping)
+internal sealed class ApiHttpHandler
 {
+    private readonly ApiRouter router;
+    private readonly ApiEventBus events;
+    private readonly ApiTokenStore tokens;
+    private readonly ApiServerInfo info;
+    private readonly SynchronizationContext? bridgeContext;
+    private readonly CancellationToken stopping;
     private readonly int schemaVersion = OpenApiDocument.DocumentSchemaVersion();
+
+    // Windows: the browser remote, when the app's bridge offers it (Remote/RemoteSite.cs).
+    private readonly RemoteSite? remote;
+
+    public ApiHttpHandler(
+        ApiRouter router, ApiEventBus events, ApiTokenStore tokens, ApiServerInfo info, SynchronizationContext? bridgeContext,
+        CancellationToken stopping, IRemoteBridge? remoteBridge = null, RemotePairing? pairing = null)
+    {
+        (this.router, this.events, this.tokens, this.info, this.bridgeContext, this.stopping) = (router, events, tokens, info, bridgeContext, stopping);
+        if (remoteBridge is not null)
+            remote = new RemoteSite(remoteBridge, pairing ?? new RemotePairing(), tokens, router, events, InvokeAsync, OnBridgeAsync, stopping);
+    }
 
     public async Task HandleAsync(HttpContext http)
     {
@@ -257,6 +274,11 @@ internal sealed class ApiHttpHandler(
         {
             var request = http.Request;
             var path = RawPath(http);
+            if (remote is not null && RemoteSite.Owns(path))
+            {
+                await remote.HandleAsync(http, path);
+                return;
+            }
             if (HttpMethods.IsGet(request.Method))
             {
                 switch (path)
@@ -347,15 +369,18 @@ internal sealed class ApiHttpHandler(
     }
 
     /// <summary>Runs a route on the bridge's context, like the Mac's @MainActor bridge; abandoned when the server stops.</summary>
-    private Task<ApiHandlerResponse> InvokeAsync(ApiRoute route, ApiRequestContext context)
+    private Task<ApiHandlerResponse> InvokeAsync(ApiRoute route, ApiRequestContext context) => OnBridgeAsync(() => route.Handler(context));
+
+    /// <summary>Runs any work on the bridge's context (the UI thread), as <see cref="InvokeAsync"/> runs a route.</summary>
+    private Task<T> OnBridgeAsync<T>(Func<Task<T>> work)
     {
-        if (bridgeContext is null) return route.Handler(context).WaitAsync(stopping);
-        var done = new TaskCompletionSource<ApiHandlerResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (bridgeContext is null) return work().WaitAsync(stopping);
+        var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         bridgeContext.Post(async _ =>
         {
             try
             {
-                done.TrySetResult(await route.Handler(context));
+                done.TrySetResult(await work());
             }
             catch (Exception e)
             {

@@ -1,0 +1,46 @@
+{
+  "data": {
+    "type": "Organization",
+    "id": "123456",
+    "attributes": {
+      "ccli": "1234567",
+      "ccli_connected": true,
+      "created_at": "2014-03-02T16:40:12Z",
+      "date_format": "%m/%d/%Y",
+      "music_stand_enabled": true,
+      "name": "Grace Community Church",
+      "projector_enabled": true,
+      "time_zone": "America/Chicago",
+      "twenty_four_hour_time": false,
+      "updated_at": "2026-09-14T13:02:44Z",
+      "owner_name": "Jordan Reyes",
+      "required_to_set_download_permission": false,
+      "allow_mp3_download": true,
+      "calendar_starts_on_sunday": true,
+      "ccli_reporting_enabled": true,
+      "extra_file_storage_allowed": false,
+      "file_storage_exceeded": false,
+      "file_storage_size": 1048576,
+      "file_storage_size_used": 524288,
+      "file_storage_extra_enabled": false,
+      "rehearsal_mix_enabled": false,
+      "legacy_id": "98765",
+      "file_storage_extra_charges": 0,
+      "people_allowed": 500,
+      "people_remaining": 312,
+      "beta": false
+    },
+    "relationships": {},
+    "links": {
+      "attachment_types": "https://api.planningcenteronline.com/services/v2/attachment_types",
+      "service_types": "https://api.planningcenteronline.com/services/v2/service_types",
+      "songs": "https://api.planningcenteronline.com/services/v2/songs",
+      "self": "https://api.planningcenteronline.com/services/v2"
+    }
+  },
+  "included": [],
+  "meta": {
+    "can_include": ["tag_groups"],
+    "parent": { "id": "123456", "type": "Organization" }
+  }
+}

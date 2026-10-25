@@ -1,0 +1,620 @@
+{
+  "links": {
+    "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items?include=song,arrangement,key,media,item_notes&per_page=100",
+    "next": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items?include=song,arrangement,key,media,item_notes&per_page=100&offset=6"
+  },
+  "data": [
+    {
+      "type": "Item",
+      "id": "500000001",
+      "attributes": {
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-24T19:31:08Z",
+        "title": "Pre-Service",
+        "sequence": 1,
+        "length": null,
+        "item_type": "header",
+        "html_details": null,
+        "service_position": "pre",
+        "description": null,
+        "key_name": null,
+        "custom_arrangement_sequence": null,
+        "custom_arrangement_sequence_short": null,
+        "custom_arrangement_sequence_full": null
+      },
+      "relationships": {
+        "plan": {
+          "data": {
+            "type": "Plan",
+            "id": "80000001"
+          }
+        },
+        "song": {
+          "data": null
+        },
+        "arrangement": {
+          "data": null
+        },
+        "key": {
+          "data": null
+        },
+        "selected_layout": {
+          "data": null
+        },
+        "selected_background": {
+          "data": null
+        },
+        "media": {
+          "data": []
+        },
+        "item_notes": {
+          "data": []
+        }
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items/500000001"
+      }
+    },
+    {
+      "type": "Item",
+      "id": "500000002",
+      "attributes": {
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-24T19:31:08Z",
+        "title": "Countdown",
+        "sequence": 2,
+        "length": 300,
+        "item_type": "media",
+        "html_details": null,
+        "service_position": "pre",
+        "description": null,
+        "key_name": null,
+        "custom_arrangement_sequence": null,
+        "custom_arrangement_sequence_short": null,
+        "custom_arrangement_sequence_full": null
+      },
+      "relationships": {
+        "plan": {
+          "data": {
+            "type": "Plan",
+            "id": "80000001"
+          }
+        },
+        "song": {
+          "data": null
+        },
+        "arrangement": {
+          "data": null
+        },
+        "key": {
+          "data": null
+        },
+        "selected_layout": {
+          "data": null
+        },
+        "selected_background": {
+          "data": null
+        },
+        "media": {
+          "data": [
+            {
+              "type": "Media",
+              "id": "600000001"
+            }
+          ]
+        },
+        "item_notes": {
+          "data": []
+        }
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items/500000002"
+      }
+    },
+    {
+      "type": "Item",
+      "id": "500000003",
+      "attributes": {
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-24T19:31:08Z",
+        "title": "Welcome & Announcements",
+        "sequence": 3,
+        "length": 240,
+        "item_type": "item",
+        "html_details": null,
+        "service_position": "during",
+        "description": "Pastor Dan",
+        "key_name": null,
+        "custom_arrangement_sequence": null,
+        "custom_arrangement_sequence_short": null,
+        "custom_arrangement_sequence_full": null
+      },
+      "relationships": {
+        "plan": {
+          "data": {
+            "type": "Plan",
+            "id": "80000001"
+          }
+        },
+        "song": {
+          "data": null
+        },
+        "arrangement": {
+          "data": null
+        },
+        "key": {
+          "data": null
+        },
+        "selected_layout": {
+          "data": null
+        },
+        "selected_background": {
+          "data": null
+        },
+        "media": {
+          "data": []
+        },
+        "item_notes": {
+          "data": [
+            {
+              "type": "ItemNote",
+              "id": "700000001"
+            }
+          ]
+        }
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items/500000003"
+      }
+    },
+    {
+      "type": "Item",
+      "id": "500000004",
+      "attributes": {
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-24T19:31:08Z",
+        "title": "Worship",
+        "sequence": 4,
+        "length": null,
+        "item_type": "header",
+        "html_details": null,
+        "service_position": "during",
+        "description": null,
+        "key_name": null,
+        "custom_arrangement_sequence": null,
+        "custom_arrangement_sequence_short": null,
+        "custom_arrangement_sequence_full": null
+      },
+      "relationships": {
+        "plan": {
+          "data": {
+            "type": "Plan",
+            "id": "80000001"
+          }
+        },
+        "song": {
+          "data": null
+        },
+        "arrangement": {
+          "data": null
+        },
+        "key": {
+          "data": null
+        },
+        "selected_layout": {
+          "data": null
+        },
+        "selected_background": {
+          "data": null
+        },
+        "media": {
+          "data": []
+        },
+        "item_notes": {
+          "data": []
+        }
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items/500000004"
+      }
+    },
+    {
+      "type": "Item",
+      "id": "500000005",
+      "attributes": {
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-24T19:31:08Z",
+        "title": "Morning Light",
+        "sequence": 5,
+        "length": 312,
+        "item_type": "song",
+        "html_details": null,
+        "service_position": "during",
+        "description": null,
+        "key_name": "G",
+        "custom_arrangement_sequence": null,
+        "custom_arrangement_sequence_short": null,
+        "custom_arrangement_sequence_full": null
+      },
+      "relationships": {
+        "plan": {
+          "data": {
+            "type": "Plan",
+            "id": "80000001"
+          }
+        },
+        "song": {
+          "data": {
+            "type": "Song",
+            "id": "30000001"
+          }
+        },
+        "arrangement": {
+          "data": {
+            "type": "Arrangement",
+            "id": "40000001"
+          }
+        },
+        "key": {
+          "data": {
+            "type": "Key",
+            "id": "45000001"
+          }
+        },
+        "selected_layout": {
+          "data": null
+        },
+        "selected_background": {
+          "data": null
+        },
+        "media": {
+          "data": []
+        },
+        "item_notes": {
+          "data": [
+            {
+              "type": "ItemNote",
+              "id": "700000002"
+            }
+          ]
+        }
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items/500000005"
+      }
+    },
+    {
+      "type": "Item",
+      "id": "500000006",
+      "attributes": {
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-24T19:31:08Z",
+        "title": "River of Mercy",
+        "sequence": 6,
+        "length": 290,
+        "item_type": "song",
+        "html_details": null,
+        "service_position": "during",
+        "description": null,
+        "key_name": "A",
+        "custom_arrangement_sequence": null,
+        "custom_arrangement_sequence_short": null,
+        "custom_arrangement_sequence_full": null
+      },
+      "relationships": {
+        "plan": {
+          "data": {
+            "type": "Plan",
+            "id": "80000001"
+          }
+        },
+        "song": {
+          "data": {
+            "type": "Song",
+            "id": "30000002"
+          }
+        },
+        "arrangement": {
+          "data": {
+            "type": "Arrangement",
+            "id": "40000002"
+          }
+        },
+        "key": {
+          "data": {
+            "type": "Key",
+            "id": "45000002"
+          }
+        },
+        "selected_layout": {
+          "data": null
+        },
+        "selected_background": {
+          "data": null
+        },
+        "media": {
+          "data": []
+        },
+        "item_notes": {
+          "data": []
+        }
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items/500000006"
+      }
+    }
+  ],
+  "included": [
+    {
+      "type": "Media",
+      "id": "600000001",
+      "attributes": {
+        "created_at": "2025-01-05T10:00:00Z",
+        "creator_name": "Media Team",
+        "length": 300,
+        "media_type": "countdown",
+        "media_type_name": "Countdown",
+        "themes": null,
+        "thumbnail_content_type": "image/jpeg",
+        "thumbnail_file_name": "thumb.jpg",
+        "thumbnail_file_size": 20480,
+        "thumbnail_updated_at": "2025-01-05T10:00:00Z",
+        "thumbnail_url": "https://example.invalid/thumb.jpg",
+        "title": "5 Minute Countdown (Dark)",
+        "updated_at": "2025-01-05T10:00:00Z",
+        "preview_url": null
+      }
+    },
+    {
+      "type": "ItemNote",
+      "id": "700000001",
+      "attributes": {
+        "category_name": "Lighting",
+        "content": "House lights up",
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-19T16:22:04Z"
+      },
+      "relationships": {
+        "item_note_category": {
+          "data": {
+            "type": "ItemNoteCategory",
+            "id": "77"
+          }
+        }
+      }
+    },
+    {
+      "type": "ItemNote",
+      "id": "700000002",
+      "attributes": {
+        "category_name": "Audio",
+        "content": "Acoustic guitar starts alone",
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-19T16:22:04Z"
+      },
+      "relationships": {
+        "item_note_category": {
+          "data": {
+            "type": "ItemNoteCategory",
+            "id": "77"
+          }
+        }
+      }
+    },
+    {
+      "type": "Song",
+      "id": "30000001",
+      "attributes": {
+        "admin": "Grace Community Music",
+        "author": "Sam Rivers and Ada Moss",
+        "ccli_number": 9000101,
+        "copyright": "2024 Example Music Co.",
+        "created_at": "2020-01-12T18:00:00Z",
+        "hidden": false,
+        "last_scheduled_at": "2026-10-25T14:00:00Z",
+        "last_scheduled_short_dates": "Oct 25",
+        "notes": null,
+        "themes": "Hope, Morning",
+        "title": "Morning Light",
+        "updated_at": "2026-09-01T12:00:00Z"
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/songs/30000001"
+      }
+    },
+    {
+      "type": "Arrangement",
+      "id": "40000001",
+      "attributes": {
+        "archived_at": null,
+        "bpm": 72.0,
+        "chord_chart": null,
+        "chord_chart_chord_color": 3,
+        "chord_chart_columns": 2,
+        "chord_chart_font": "Helvetica",
+        "chord_chart_font_size": 11,
+        "chord_chart_key": null,
+        "created_at": "2020-01-12T18:00:00Z",
+        "has_chord_chart": false,
+        "has_chords": false,
+        "length": 312,
+        "lyrics": "Verse 1\nHere in the morning light\nWe lift our eyes to see\nAll the colours waking\nAll the hills set free\n\nChorus\nSing, sing it out\nMorning light is breaking now\nSing, sing it out\nNothing holds us down\n\nVerse 2\nEvery shadow running\nEvery heart awake\nWe were made for daylight\nHere for all our days\n\nBridge\nRise up, rise up\nLet the whole world hear",
+        "lyrics_enabled": true,
+        "meter": "4/4",
+        "name": "Default Arrangement",
+        "notes": null,
+        "number_chart_enabled": false,
+        "numeral_chart_enabled": false,
+        "print_margin": "0.5in",
+        "print_orientation": "Portrait",
+        "print_page_size": "Letter",
+        "sequence": [
+          "Verse 1",
+          "Chorus 1",
+          "Verse 2",
+          "Chorus",
+          "Bridge",
+          "Chorus"
+        ],
+        "sequence_full": [
+          {
+            "label": "Verse 1",
+            "number": null
+          },
+          {
+            "label": "Chorus 1",
+            "number": null
+          },
+          {
+            "label": "Verse 2",
+            "number": null
+          },
+          {
+            "label": "Chorus",
+            "number": null
+          },
+          {
+            "label": "Bridge",
+            "number": null
+          },
+          {
+            "label": "Chorus",
+            "number": null
+          }
+        ],
+        "sequence_short": [
+          "V1",
+          "C1",
+          "V2",
+          "C",
+          "B",
+          "C"
+        ],
+        "updated_at": "2026-09-01T12:00:00Z"
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/songs/0/arrangements/40000001"
+      }
+    },
+    {
+      "type": "Key",
+      "id": "45000001",
+      "attributes": {
+        "alternate_keys": [],
+        "created_at": "2020-01-12T18:00:00Z",
+        "ending_key": null,
+        "ending_minor": false,
+        "name": "Default",
+        "starting_key": "G",
+        "starting_minor": false,
+        "updated_at": "2026-09-01T12:00:00Z"
+      }
+    },
+    {
+      "type": "Song",
+      "id": "30000002",
+      "attributes": {
+        "admin": "Grace Community Music",
+        "author": "Jo Field",
+        "ccli_number": 9000202,
+        "copyright": "2019 Example Songs",
+        "created_at": "2020-01-12T18:00:00Z",
+        "hidden": false,
+        "last_scheduled_at": "2026-10-25T14:00:00Z",
+        "last_scheduled_short_dates": "Oct 25",
+        "notes": null,
+        "themes": "Hope, Morning",
+        "title": "River of Mercy",
+        "updated_at": "2026-09-01T12:00:00Z"
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/songs/30000002"
+      }
+    },
+    {
+      "type": "Arrangement",
+      "id": "40000002",
+      "attributes": {
+        "archived_at": null,
+        "bpm": 66.0,
+        "chord_chart": null,
+        "chord_chart_chord_color": 3,
+        "chord_chart_columns": 2,
+        "chord_chart_font": "Helvetica",
+        "chord_chart_font_size": 11,
+        "chord_chart_key": null,
+        "created_at": "2020-01-12T18:00:00Z",
+        "has_chord_chart": false,
+        "has_chords": false,
+        "length": 290,
+        "lyrics": "Verse\nMercy like a river\nRunning to the sea",
+        "lyrics_enabled": true,
+        "meter": "6/8",
+        "name": "Acoustic",
+        "notes": null,
+        "number_chart_enabled": false,
+        "numeral_chart_enabled": false,
+        "print_margin": "0.5in",
+        "print_orientation": "Portrait",
+        "print_page_size": "Letter",
+        "sequence": [
+          "Verse"
+        ],
+        "sequence_full": [
+          {
+            "label": "Verse",
+            "number": null
+          }
+        ],
+        "sequence_short": [
+          "V"
+        ],
+        "updated_at": "2026-09-01T12:00:00Z"
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/songs/0/arrangements/40000002"
+      }
+    },
+    {
+      "type": "Key",
+      "id": "45000002",
+      "attributes": {
+        "alternate_keys": [],
+        "created_at": "2020-01-12T18:00:00Z",
+        "ending_key": null,
+        "ending_minor": false,
+        "name": "Default",
+        "starting_key": "A",
+        "starting_minor": false,
+        "updated_at": "2026-09-01T12:00:00Z"
+      }
+    }
+  ],
+  "meta": {
+    "total_count": 10,
+    "count": 6,
+    "can_order_by": [
+      "sequence"
+    ],
+    "can_query_by": [],
+    "can_include": [
+      "arrangement",
+      "key",
+      "media",
+      "selected_attachment",
+      "selected_background",
+      "selected_layout",
+      "song",
+      "item_notes",
+      "item_times"
+    ],
+    "can_filter": [],
+    "parent": {
+      "id": "80000001",
+      "type": "Plan"
+    },
+    "next": {
+      "offset": 6
+    }
+  }
+}

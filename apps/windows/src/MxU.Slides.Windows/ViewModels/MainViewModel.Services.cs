@@ -130,6 +130,8 @@ public sealed partial class MainViewModel
             case ServiceItemKind.Playlist:
                 if (Library.Get<Playlist>(item.RefId) is not { } playlist) return (null, true);
                 return ($"Playlist · {playlist.Entries.Count} song{(playlist.Entries.Count == 1 ? "" : "s")}", false);
+            case ServiceItemKind.Info:
+                return (PlanRowDetail(item), false); // a plan row with nothing to play yet (MainViewModel.PlanningCenter.cs)
             default:
                 return (null, false);
         }

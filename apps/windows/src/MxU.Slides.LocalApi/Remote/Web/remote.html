@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f1f1e">
+  <meta name="color-scheme" content="dark">
+  <title>MxU Slides Remote</title>
+  <link rel="icon" href="/remote/assets/icon.svg">
+  <link rel="stylesheet" href="/remote/assets/remote.css">
+  <script src="/remote/assets/connect.js" defer></script>
+  <script src="/remote/assets/remote.js" defer></script>
+</head>
+<body>
+  <div id="pair" class="pair" hidden></div>
+
+  <div id="app" class="app" hidden>
+    <header class="top">
+      <span id="link" class="link" title="Connection"></span>
+      <div class="now">
+        <small id="now-item">Nothing live</small>
+        <strong id="now-text"></strong>
+      </div>
+      <span id="scope" class="badge" hidden>View only</span>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="service" aria-selected="true">Service</button>
+      <button role="tab" data-tab="slides">Slides</button>
+      <button role="tab" data-tab="timers">Timers</button>
+      <button role="tab" data-tab="messages">Messages</button>
+    </nav>
+
+    <main class="panes">
+      <section id="tab-service" class="pane" role="tabpanel">
+        <h2 id="service-name" class="pane-title">No service</h2>
+        <ol id="service-items" class="items"></ol>
+      </section>
+
+      <section id="tab-slides" class="pane" role="tabpanel" hidden>
+        <div class="pane-head">
+          <h2 id="slides-title" class="pane-title">No slides</h2>
+          <button id="follow" class="chip" aria-pressed="true" title="Show the live item's slides">Follow live</button>
+        </div>
+        <div id="slides" class="slides"></div>
+      </section>
+
+      <section id="tab-timers" class="pane" role="tabpanel" hidden>
+        <h2 class="pane-title">Timers</h2>
+        <ul id="timers" class="timers"></ul>
+      </section>
+
+      <section id="tab-messages" class="pane" role="tabpanel" hidden>
+        <h2 class="pane-title">Stage message</h2>
+        <form id="stage-form" class="stack">
+          <textarea id="stage-text" rows="2" maxlength="500" placeholder="Shown on the confidence monitors, e.g. “Wrap up”"></textarea>
+          <div class="row">
+            <button type="submit" class="primary control">Send to stage</button>
+            <button type="button" id="stage-clear" class="control">Take down</button>
+          </div>
+        </form>
+        <p id="alert-live" class="live-alert" hidden></p>
+        <h2 class="pane-title">Alerts</h2>
+        <ul id="alerts" class="alerts"></ul>
+      </section>
+    </main>
+
+    <footer class="transport">
+      <div class="clears" role="group" aria-label="Clear">
+        <button class="control" data-clear="slides">Slide</button>
+        <button class="control" data-clear="media">Media</button>
+        <button class="control" data-clear="overlays">Overlays</button>
+        <button class="control" data-clear="alerts">Alerts</button>
+        <button class="control danger" data-clear="all">Clear all</button>
+      </div>
+      <div class="steps">
+        <button id="prev" class="control step" aria-label="Previous">‹ Prev</button>
+        <button id="next" class="control step primary" aria-label="Next">Next ›</button>
+      </div>
+    </footer>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </div>
+</body>
+</html>
