@@ -252,6 +252,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await ShowFlowChecks();
             await OperatorCheck();
             await SoundCheck();
+            await LooksCheck();
         }
         catch (Exception ex)
         {

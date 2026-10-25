@@ -225,6 +225,33 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 <TextBlock Text="{Binding GalleryTarget}" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,10" />
+                                <!-- Presets, one step per line/word and look effects (ViewModels/OverlayEditorViewModel.Presets.cs). -->
+                                <TextBlock Text="PRESETS" Style="{StaticResource SectionLabel}" />
+                                <!-- Point at a tile to see it play; click to pick it, double-click to apply it (Views/AnimationPresetGallery.cs). -->
+                                <v:AnimationPresetGallery x:Name="PresetGallery" Margin="0,0,0,6" />
+                                <TextBlock Text="{Binding SelectedPreset.Name, FallbackValue='Pick a preset above'}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding SelectedPreset.Description}" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,4" />
+                                <WrapPanel Margin="0,0,0,8">
+                                    <Button Content="Apply" Command="{Binding ApplyPresetCommand}" CommandParameter="replace" Margin="0,0,4,4" ToolTip="Replace the selected objects' steps with the preset" />
+                                    <Button Content="Add" Command="{Binding ApplyPresetCommand}" CommandParameter="add" Margin="0,0,4,4" ToolTip="Add the preset's steps after theirs" />
+                                    <Button Content="Save as preset…" Command="{Binding SavePresetAsCommand}" Margin="0,0,4,4" ToolTip="Save the selected object's steps as a preset of your own" />
+                                    <Button Content="Delete" Command="{Binding DeletePresetCommand}" IsEnabled="{Binding CanDeletePreset}" Margin="0,0,4,4" />
+                                </WrapPanel>
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="One step per" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <Button Content="Line" Command="{Binding GenerateStepsCommand}" CommandParameter="line" Margin="0,0,4,0"
+                                            ToolTip="Each line of the selected text gets its own step (the kind chosen above), one after another" />
+                                    <Button Content="Word" Command="{Binding GenerateStepsCommand}" CommandParameter="word" HorizontalAlignment="Left"
+                                            ToolTip="Each word of the selected text gets its own step, one after another" />
+                                </DockPanel>
+                                <TextBlock Text="LOOK EFFECTS" Style="{StaticResource SectionLabel}" />
+                                <ComboBox ItemsSource="{Binding EffectChoices}" SelectedItem="{Binding SelectedEffect}" Margin="0,0,0,4"
+                                          ToolTip="Picture effects drawn by the graphics card: frost, static, heat haze, trails" />
+                                <WrapPanel Margin="0,0,0,10">
+                                    <Button Content="Apply" Command="{Binding ApplyEffectCommand}" CommandParameter="replace" Margin="0,0,4,4" />
+                                    <Button Content="Add" Command="{Binding ApplyEffectCommand}" CommandParameter="add" Margin="0,0,4,4" />
+                                    <Button Content="Clear" Command="{Binding ApplyEffectCommand}" CommandParameter="clear" Margin="0,0,4,4" />
+                                </WrapPanel>
                                 <TextBlock Text="STEPS, IN PLAY ORDER" Style="{StaticResource SectionLabel}" />
                                 <TextBlock Text="No animations yet: the overlay cuts (or dissolves) on and off. Select an object and pick an effect above."
                                            Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap"

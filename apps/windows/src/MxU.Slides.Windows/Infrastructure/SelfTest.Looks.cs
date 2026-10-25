@@ -7,6 +7,7 @@ using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Windows.Rendering;
+using MxU.Slides.Windows.ViewModels;
 using MxU.Slides.Windows.Views;
 
 namespace MxU.Slides.Windows.Infrastructure;
@@ -27,6 +28,8 @@ public sealed partial class SelfTest
             await WorshipLooksCheck(worship, camera);
             await CountdownCheck(worship);
             await GalleryDesignsCheck(worship, camera);
+            var added = await GalleryWindowCheck(camera);
+            await OverlayPresetsCheck(added);
         }
         catch (Exception ex)
         {
@@ -114,9 +117,10 @@ public sealed partial class SelfTest
     // MARK: Backdrops
 
     /// <summary>
-    /// Two stand-in pictures to judge designs against: a worship background (dark, with coloured
-    /// haze and light beams, for the full-screen lyrics) and a camera shot of someone on stage (for
-    /// lower thirds on the stream). Imported as ordinary media so the outputs draw them.
+    /// Two stand-in pictures to judge designs against (Views/StandInPictures.cs): a worship
+    /// background (dark, with coloured haze and light beams, for the full-screen lyrics) and a
+    /// camera shot of someone on stage (for lower thirds on the stream). Imported as ordinary media
+    /// so the outputs draw them.
     /// </summary>
     private async Task<(MediaItem Worship, MediaItem Camera)> LooksBackdrops()
     {
@@ -125,82 +129,21 @@ public sealed partial class SelfTest
         MediaItem Import(string name, Action<DrawingContext> paint)
         {
             var path = Path.Combine(folder, name + ".png");
-            var visual = new DrawingVisual();
-            using (var dc = visual.RenderOpen()) paint(dc);
-            var bitmap = new RenderTargetBitmap(1920, 1080, 96, 96, PixelFormats.Pbgra32);
-            bitmap.Render(visual);
             var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            encoder.Frames.Add(BitmapFrame.Create(StandInPictures.Render(paint)));
             using (var file = File.Create(path)) encoder.Save(file);
             var item = model.Library.ImportMedia(path, MediaClassification.Background)!;
             item.Name = name;
             model.Library.Save(item);
             return item;
         }
-        var worship = Import("Self-test worship", PaintWorship);
-        var camera = Import("Self-test camera", PaintCamera);
+        var worship = Import("Self-test worship", StandInPictures.PaintWorship);
+        var camera = Import("Self-test camera", dc => StandInPictures.PaintStage(dc, speaker: true));
+        // The library keeps its own copies; the drawn files aren't needed any more.
+        try { Directory.Delete(folder, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         foreach (var id in new[] { worship.Id, camera.Id })
             for (var i = 0; i < 60 && (model.Media.Image(id, 1280) is null || model.Media.Image(id, 3840) is null); i++) await Delay(100);
         return (worship, camera);
-    }
-
-    private static void PaintWorship(DrawingContext dc)
-    {
-        var rect = new Rect(0, 0, 1920, 1080);
-        dc.DrawRectangle(new LinearGradientBrush(Color.FromRgb(0x08, 0x0B, 0x1C), Color.FromRgb(0x1C, 0x0C, 0x2A), 90), null, rect);
-        void Glow(Color color, double x, double y, double rx, double ry) =>
-            dc.DrawRectangle(new RadialGradientBrush(color, Colors.Transparent) { Center = new Point(x, y), GradientOrigin = new Point(x, y), RadiusX = rx, RadiusY = ry }, null, rect);
-        Glow(Color.FromArgb(0x90, 0x5B, 0x3D, 0xF5), 0.25, 0.3, 0.5, 0.6);
-        Glow(Color.FromArgb(0x80, 0xF5, 0x6B, 0x3D), 0.8, 0.75, 0.45, 0.55);
-        Glow(Color.FromArgb(0x60, 0x2D, 0xB4, 0xF5), 0.6, 0.15, 0.35, 0.4);
-        // Light beams from the rig.
-        foreach (var (x, tilt, alpha) in new[] { (380.0, 220.0, 0x38), (960.0, -60.0, 0x30), (1540.0, -260.0, 0x34) })
-        {
-            var beam = new StreamGeometry();
-            using (var g = beam.Open())
-            {
-                g.BeginFigure(new Point(x - 18, -10), true, true);
-                g.LineTo(new Point(x + 18, -10), true, false);
-                g.LineTo(new Point(x + tilt + 220, 1090), true, false);
-                g.LineTo(new Point(x + tilt - 220, 1090), true, false);
-            }
-            dc.DrawGeometry(new LinearGradientBrush(Color.FromArgb((byte)alpha, 0xFF, 0xF2, 0xE0), Colors.Transparent, 90), null, beam);
-        }
-        var random = new Random(7);
-        for (var i = 0; i < 38; i++)
-        {
-            var r = 8 + random.NextDouble() * 34;
-            dc.DrawEllipse(new SolidColorBrush(Color.FromArgb((byte)(18 + random.Next(30)), 0xFF, 0xE8, 0xC8)), null,
-                new Point(random.NextDouble() * 1920, random.NextDouble() * 1080), r, r);
-        }
-        dc.DrawRectangle(new RadialGradientBrush(Colors.Transparent, Color.FromArgb(0xA0, 0, 0, 0)) { RadiusX = 0.85, RadiusY = 0.85 }, null, rect);
-    }
-
-    private static void PaintCamera(DrawingContext dc)
-    {
-        var rect = new Rect(0, 0, 1920, 1080);
-        // A stage: warm back wall, a darker floor, practical lights out of focus.
-        dc.DrawRectangle(new LinearGradientBrush(Color.FromRgb(0x2A, 0x22, 0x1E), Color.FromRgb(0x14, 0x10, 0x10), 90), null, rect);
-        dc.DrawRectangle(new RadialGradientBrush(Color.FromArgb(0xB0, 0xE9, 0x9A, 0x55), Colors.Transparent)
-            { Center = new Point(0.72, 0.35), GradientOrigin = new Point(0.72, 0.35), RadiusX = 0.5, RadiusY = 0.6 }, null, rect);
-        dc.DrawRectangle(new RadialGradientBrush(Color.FromArgb(0x70, 0x4F, 0x7C, 0xD9), Colors.Transparent)
-            { Center = new Point(0.12, 0.2), GradientOrigin = new Point(0.12, 0.2), RadiusX = 0.4, RadiusY = 0.5 }, null, rect);
-        var random = new Random(3);
-        for (var i = 0; i < 26; i++)
-        {
-            var r = 14 + random.NextDouble() * 40;
-            dc.DrawEllipse(new SolidColorBrush(Color.FromArgb((byte)(26 + random.Next(40)), 0xFF, 0xD9, 0xA0)), null,
-                new Point(random.NextDouble() * 1920, random.NextDouble() * 560), r, r);
-        }
-        // Someone speaking, a little left of centre (where a camera operator frames them).
-        var skin = new SolidColorBrush(Color.FromRgb(0x8A, 0x5E, 0x46));
-        var shirt = new LinearGradientBrush(Color.FromRgb(0x2C, 0x3E, 0x58), Color.FromRgb(0x18, 0x22, 0x33), 90);
-        dc.DrawRoundedRectangle(shirt, null, new Rect(640, 620, 640, 520), 220, 220);
-        dc.DrawRectangle(skin, null, new Rect(905, 520, 110, 130));
-        dc.DrawEllipse(skin, null, new Point(960, 420), 118, 148);
-        dc.DrawEllipse(new SolidColorBrush(Color.FromRgb(0x24, 0x18, 0x12)), null, new Point(960, 312), 124, 70);
-        dc.DrawRectangle(new LinearGradientBrush(Colors.Transparent, Color.FromArgb(0x90, 0, 0, 0), 90), null, new Rect(0, 640, 1920, 440));
-        dc.DrawRectangle(new RadialGradientBrush(Colors.Transparent, Color.FromArgb(0x70, 0, 0, 0)) { RadiusX = 0.9, RadiusY = 0.9 }, null, rect);
     }
 
     /// <summary>A still of <paramref name="scene"/> with <paramref name="media"/> full screen underneath (on the background layer).</summary>
@@ -263,8 +206,7 @@ public sealed partial class SelfTest
     // MARK: The lower-thirds gallery's designs
 
     /// <summary>The designs that fill the screen (titles, countdowns) go over the worship background; the rest over the camera.</summary>
-    private static bool FullScreen(LowerThirdTemplate template) =>
-        template.Id is "gallery.welcome.editorial" or "gallery.soon.full" or "gallery.countdown.center";
+    private static bool FullScreen(LowerThirdTemplate template) => LowerThirdGalleryViewModel.FillsTheScreen(template.Make());
 
     /// <summary>
     /// Every gallery design as the program draws it: part-way in, settled, and on its way out,
@@ -285,6 +227,188 @@ public sealed partial class SelfTest
             await Frame("", Math.Max(0, timeline.DismissAt - 0.05));
             await Frame("out", timeline.DismissAt + 0.18);
         }
+    }
+
+    /// <summary>
+    /// The gallery window, as an operator uses it: pick a design, type a name, add it to the
+    /// library, put it up, fix the name while it's up, take it down; fill song credits from the
+    /// song; start a countdown for a countdown design. Returns the overlay it added.
+    /// </summary>
+    private async Task<Overlay?> GalleryWindowCheck(MediaItem camera)
+    {
+        var gallery = LowerThirdGalleryWindow.Open(window, model);
+        var vm = gallery.Model;
+        Overlay? speaker = null;
+        try
+        {
+            await Delay(900);
+            Save(gallery, "64-gallery-window");
+            Check("the gallery shows every design", vm.Visible.Count == LowerThirdGallery.All.Count && LowerThirdGallery.All.Count >= 20);
+            vm.Category = "Speaker";
+            Check("the gallery filters by what a design is for", vm.Visible.Count >= 3 && vm.Visible.All(t => t.Category == "Speaker"));
+            vm.Category = LowerThirdGalleryViewModel.AllCategories;
+
+            gallery.Pick(LowerThirdGallery.All.Single(t => t.Id == "gallery.speaker.broadcast"));
+            vm.SetField("Name", "Pastor Grace Okafor");
+            vm.SetField("Title", "Teaching Pastor");
+            await Delay(2600);
+            Save(gallery, "64-gallery-window-speaker");
+            Check("the pack box shows the pack it goes into", vm.Pack == LowerThirdGallery.DefaultPack && vm.Packs.Contains(vm.Pack));
+            Check("typing into a draft's field changes only the preview", !model.Library.All<Overlay>().Any(o => o.Objects.Any(x => x.Text == "Pastor Grace Okafor")));
+
+            speaker = vm.AddToLibrary();
+            Check($"Add to library saves it as an overlay in the Lower Thirds pack, under Speaker (folder {speaker?.Folder ?? "none"}, bin showing {model.SelectedOverlayPack})",
+                speaker is { Folder: "Lower Thirds/Speaker" } && model.Library.Get<Overlay>(speaker.Id) is not null && model.Overlays.Any(t => t.Overlay.Id == speaker.Id));
+            if (speaker is null) return null;
+
+            model.Show.Fire(new CueMedia { MediaId = camera.Id, Layer = CueMediaLayer.LoopingVideos }, LayerKind.LoopingVideos);
+            vm.GoLive();
+            await Delay(1600);
+            Check("Go live puts it up on the program", model.IsOverlayLive(speaker.Id) && VisibleAudienceText().Contains("Pastor Grace Okafor"));
+            await Snapshot("64-gallery-live-program", model.ProgramScene());
+            foreach (var t in new[] { 0.15, 0.35, 0.7 })
+                await SnapshotAt($"64-gallery-live-in-{t:0.00}s", model.ProgramAnimatedScene(), t);
+            vm.SetField("Name", "Pastor Grace Okafor-Bello");
+            Check("fixing the name while it's up fixes it on the program", AudienceText().Contains("Pastor Grace Okafor-Bello") && !model.Show.IsLeaving(speaker.Id));
+            await Snapshot4K("64-gallery-live-4k", model.ProgramScene());
+            vm.TakeDown();
+            Check("Take down plays its Out", model.Show.IsLeaving(speaker.Id));
+            await Delay(1200);
+            Check("…and then it's gone", !AudienceText().Contains("Grace Okafor"));
+
+            // Song credits from the song that's open (the sample song has a title and writer, no CCLI number).
+            gallery.Pick(LowerThirdGallery.All.Single(t => t.Id == "gallery.credits.clean"));
+            var song = model.Library.Get<Presentation>(StarterContent.SampleSongId)!;
+            model.Show.Fire(SlideSceneBuilder.ArrangedSlides(song, song.DefaultArrangementId)[1], song, model.ThemeFor(song.Slides[0], song));
+            vm.FillFromSong();
+            Check("song credits fill from the open song", vm.Working?.Objects.FirstOrDefault(o => o.Name == "Song Title")?.Text == "Amazing Grace"
+                && vm.Working.Objects.First(o => o.Name == "Writers").Text.Contains("John Newton"));
+
+            // A name typed into a word-by-word design still arrives word by word.
+            gallery.Pick(LowerThirdGallery.All.Single(t => t.Id == "gallery.speaker.glass"));
+            vm.SetField("Name", "Grace Okafor");
+            var name = vm.Working!.Objects.Single(o => o.Name == "Name");
+            Check("a word-by-word name follows the words typed in", name.AnimationSteps!.Count(s => s.Kind == AnimationKind.In) == 2
+                && name.AnimationSteps!.Where(s => s.Kind == AnimationKind.In).Select(s => AnimationRanges.Text(s.Ranges!.Single(), name.Text)).SequenceEqual(["Grace", "Okafor"]));
+
+            // A countdown follows the timer it's started with.
+            gallery.Pick(LowerThirdGallery.All.Single(t => t.Id == "gallery.countdown.corner"));
+            vm.StartCountdown(5);
+            var countdown = vm.AddToLibrary();
+            vm.GoLive();
+            await Delay(1500);
+            Check("a countdown design counts down its timer on the program", countdown is not null && TextOf(model.ProgramScene()).Contains("04:5", StringComparison.Ordinal));
+            await Snapshot("64-gallery-countdown-program", model.ProgramScene());
+            Save(gallery, "64-gallery-window-countdown");
+            Check("the timer picker follows the countdown just started", vm.TimerChoice == "Countdown 5:00");
+            vm.TakeDown();
+            if (vm.TimerChoices.Count > 1 && model.Timers.Timers.FirstOrDefault(t => t.Name == "Countdown 5:00") is { } timer) model.Timers.Remove(timer.Id);
+            await Delay(800);
+
+            // A full-screen title previews over the worship stand-in; the Welcome shelf.
+            vm.Category = "Welcome";
+            gallery.Pick(LowerThirdGallery.All.Single(t => t.Id == "gallery.welcome.editorial"));
+            await Delay(2200);
+            Save(gallery, "64-gallery-window-welcome");
+            vm.Category = LowerThirdGalleryViewModel.AllCategories;
+        }
+        catch (Exception ex)
+        {
+            failures++;
+            report.AppendLine($"FAIL  the gallery window crashed: {ex}");
+        }
+        finally
+        {
+            gallery.Close();
+            model.ClearAllCommand.Execute(null);
+        }
+        return speaker;
+    }
+
+    /// <summary>The overlay editor's presets: kinetic text on a name, the Mac's presets, one step per word, saving a preset, look effects.</summary>
+    private async Task OverlayPresetsCheck(Overlay? overlay)
+    {
+        if (overlay is null) return;
+        var editor = OverlayEditorWindow.Open(window, model, overlay.Id);
+        var vm = editor.Model;
+        try
+        {
+            await Delay(800);
+            vm.ShowingAnimationTab = true;
+            var name = overlay.Objects.Single(o => o.Name == "Name");
+            var title = overlay.Objects.Single(o => o.Name == "Title");
+            var plate = overlay.Objects.Single(o => o.Name == "Plate");
+            vm.SelectObjects([name.Id]);
+            Check("the presets list kinetic text, the Mac's recommended set", vm.PresetChoices.Count(p => p.Title.StartsWith("Kinetic text", StringComparison.Ordinal)) >= 12
+                && vm.PresetChoices.Any(p => p.Title == "Recommended › Settle · In + Out"));
+            vm.SelectedPreset = vm.PresetChoices.First(p => p.Title == "Kinetic text › Word by word: rise");
+            vm.ApplyPresetCommand.Execute("replace");
+            var ins = name.AnimationSteps!.Where(s => s.Kind == AnimationKind.In).ToList();
+            Check("a kinetic preset gives each word its own step, playing as the overlay goes up", ins.Count == 3 && ins.All(s => s.Ranges is { Count: 1 })
+                && AnimationSequence.Groups(overlay.Objects, overlay.AnimationOrder).Click.Count == 0 && vm.StepRows.All(r => r.Warning is null));
+
+            vm.SelectObjects([title.Id]);
+            vm.GalleryKindIndex = 0;
+            vm.GenerateStepsCommand.Execute("word");
+            Check("one step per word splits the title into its words", title.AnimationSteps!.Count(s => s.Ranges is { Count: 1 } && s.Kind == AnimationKind.In) == 2
+                && AnimationSequence.Groups(overlay.Objects, overlay.AnimationOrder).Click.Count == 0);
+
+            vm.SelectObjects([plate.Id]);
+            vm.SelectedPreset = vm.PresetChoices.First(p => p.Title == "Recommended › Blur Resolve · In + Out");
+            vm.ApplyPresetCommand.Execute("replace");
+            Check("a Mac preset replaces the plate's steps", plate.AnimationSteps?.Count == 2 && plate.AnimationSteps.All(s => s.Animation == StepAnimation.Blur));
+            Check("Save as preset puts it on the animation preset board", vm.SavePreset("Self-test blur")
+                && model.Library.Get<AnimationPresetBoard>(AnimationPresetBoard.WellKnownId)?.Presets.Any(p => p.Name == "Self-test blur") == true
+                && vm.PresetChoices.Any(p => p.Title == "My presets › Self-test blur"));
+            vm.SelectedEffect = vm.EffectChoices.First(e => e.Title == "Frost · Light");
+            vm.ApplyEffectCommand.Execute("replace");
+            Check("a look effect lands on the plate", plate.Effects is [{ EffectKind: EffectKind.Scatter }]);
+            vm.ApplyEffectCommand.Execute("clear");
+            Check("a preset you save is on the gallery's Mine shelf", editor.PresetGallery.Shelf == PresetChoice.Mine);
+
+            // The gallery as you'd see it: kinetic text, one tile picked and playing on its sample.
+            vm.SelectObjects([name.Id]);
+            vm.SelectedStepRow = null;
+            vm.SelectedPreset = vm.PresetChoices.First(p => p.Title == "Kinetic text › Word by word: blur in");
+            Check("picking a kinetic preset turns the gallery to its shelf", editor.PresetGallery.Shelf == PresetChoice.Kinetic);
+            await Delay(500);
+            editor.AnimationScroll.ScrollToTop();
+            await Delay(300);
+            Save(editor, "65-overlay-editor-presets");
+            editor.PresetGallery.Play(vm.SelectedPreset);
+            await Delay(650);
+            Save(editor, "65-overlay-editor-presets-tile-playing");
+            editor.PresetGallery.Shelf = PresetChoice.Recommended;
+            await Delay(500);
+            Save(editor, "65-overlay-editor-presets-recommended");
+            vm.PlayPreviewCommand.Execute(null);
+            await Delay(450);
+            Save(editor, "65-overlay-editor-presets-preview");
+            await Delay((int)(vm.PreviewDuration * 1000) + 900);
+        }
+        catch (Exception ex)
+        {
+            failures++;
+            report.AppendLine($"FAIL  the overlay editor's presets crashed: {ex}");
+        }
+        finally
+        {
+            editor.Close();
+        }
+    }
+
+    /// <summary>A scene drawn at 3840 × 2160, saved whole and as a 1280 × 720 crop of its lower-left (to judge sharpness at 4K).</summary>
+    private async Task Snapshot4K(string name, RenderScene scene)
+    {
+        var view = new SceneView { Media = model.Media, PlaysVideo = false, Width = 3840, Height = 2160 };
+        view.Measure(new Size(3840, 2160));
+        view.Arrange(new Rect(0, 0, 3840, 2160));
+        view.Present(AnimatedScene.From(scene), Rendering.SceneTransition.Cut);
+        await System.Windows.Threading.Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+        var bitmap = new RenderTargetBitmap(3840, 2160, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(view);
+        Write(bitmap, name);
+        Write(new CroppedBitmap(bitmap, new Int32Rect(160, 1360, 1280, 720)), name + "-crop");
     }
 
     private static RenderScene Copy(RenderScene scene)

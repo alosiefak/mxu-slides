@@ -142,7 +142,7 @@ public static class LowerThirdGallery
             T("credits.editorial", "Song Credits", "Song Credits", LowerThirdStyle.Editorial,
                 "The song's credits centred in serif, with the CCLI line beneath.", Designs.CreditsEditorial),
             T("social.glass", "Social Handle", "Social", LowerThirdStyle.Glass,
-                "Follow along: three icons and your handle, typed out.", Designs.SocialGlass),
+                "Follow along: three icons drawing round, and your handle typed out.", Designs.SocialGlass),
             T("social.broadcast", "Social Strip", "Social", LowerThirdStyle.Broadcast,
                 "A bar across the bottom with your handle and website.", Designs.SocialBroadcast),
             T("giving.clean", "Giving", "Giving", LowerThirdStyle.Minimal,
@@ -158,11 +158,11 @@ public static class LowerThirdGallery
             T("baptism.editorial", "Baptism", "Celebration", LowerThirdStyle.Editorial,
                 "Celebrating a baptism: a gold kicker, the name in serif and the date.", Designs.BaptismEditorial),
             T("celebration.glass", "Celebration", "Celebration", LowerThirdStyle.Glass,
-                "A glass card for a wedding, a dedication or a birthday.", Designs.CelebrationGlass),
+                "A glass card for a wedding, a dedication or a birthday; its edge draws itself round.", Designs.CelebrationGlass),
             T("welcome.clean", "Welcome", "Welcome", LowerThirdStyle.Minimal,
                 "\"Welcome home\" and where to find the Welcome Desk.", Designs.WelcomeClean),
             T("welcome.editorial", "Welcome Title", "Welcome", LowerThirdStyle.Editorial,
-                "A big serif welcome in the middle of the screen, over the walk-in loop.", Designs.WelcomeEditorial),
+                "A big serif welcome burning in, in the middle of the screen, over the walk-in loop.", Designs.WelcomeEditorial),
             T("live.bug", "LIVE Bug", "Live", LowerThirdStyle.Broadcast,
                 "A red LIVE pill in the corner for the stream.", Designs.LiveBug),
             T("live.clock", "LIVE + Clock", "Live", LowerThirdStyle.Broadcast,
@@ -568,9 +568,9 @@ public static class LowerThirdGallery
             c.Add(c.Text("writers", "Writers", "Words and music by John Newton, Chris Tomlin, Louie Giglio", 180, 898, 700, 28, 19, Fonts.PoppinsRegular, Ink.Soft),
                 [In.Rise(12, 0.45, AnimationTrigger.WithPrevious, 0.1)], [Out.Fade(0.25)]);
             c.Add(c.Box("divider", 180, 934, 700, 1, Composer.Solid("#FFFFFF1F")), [In.Wipe(AnimationEdge.Left, 0, 0.5, AnimationTrigger.WithPrevious, 0.05)], [Out.Fade(0.2)]);
-            c.Add(c.Text("ccli", "CCLI Song", "CCLI Song # 4768151", 180, 942, 340, 26, 15, Fonts.PoppinsMedium, Ink.Faint, tracking: 1),
+            c.Add(c.Text("ccli", "CCLI Song", "CCLI Song # 4768151", 180, 941, 340, 28, 16, Fonts.PoppinsMedium, Ink.Faint, tracking: 1),
                 [In.Fade(0.4, AnimationTrigger.WithPrevious, 0.1)], [Out.Fade(0.2)]);
-            c.Add(c.Text("licence", "CCLI Licence", "CCLI License # 11223344", 520, 942, 360, 26, 15, Fonts.PoppinsMedium, Ink.Faint, TextHorizontalAlignment.Right, tracking: 1),
+            c.Add(c.Text("licence", "CCLI Licence", "CCLI License # 11223344", 520, 941, 360, 28, 16, Fonts.PoppinsMedium, Ink.Faint, TextHorizontalAlignment.Right, tracking: 1),
                 [In.Fade(0.4, AnimationTrigger.WithPrevious, 0.05)], [Out.Fade(0.2)]);
         }
 
@@ -583,11 +583,11 @@ public static class LowerThirdGallery
             c.Add(c.Text("writers", "Writers", "John Newton · Chris Tomlin · Louie Giglio", 260, 904, 1400, 30, 18, Fonts.MontserratRegular, "#F6F0E6CC",
                     TextHorizontalAlignment.Center, tracking: 2, shadow: true),
                 [In.Rise(10, 0.55, AnimationTrigger.WithPrevious, 0.15)], [Out.Fade(0.3)]);
-            c.Add(c.Text("ccli", "CCLI Song", "CCLI Song # 4768151", 560, 942, 390, 24, 14, Fonts.MontserratSemiBold, Ink.Gold,
+            c.Add(c.Text("ccli", "CCLI Song", "CCLI Song # 4768151", 540, 942, 396, 24, 15, Fonts.MontserratSemiBold, Ink.Gold,
                     TextHorizontalAlignment.Right, caps: true, tracking: 3, shadow: true),
                 [In.Fade(0.45, AnimationTrigger.WithPrevious, 0.15)], [Out.Fade(0.25)]);
             c.Add(c.Box("dot", 957, 951, 6, 6, Composer.Solid(Ink.Gold), ellipse: true), [In.Fade(0.4, AnimationTrigger.WithPrevious, 0.05)], [Out.Fade(0.2)]);
-            c.Add(c.Text("licence", "CCLI Licence", "CCLI License # 11223344", 970, 942, 390, 24, 14, Fonts.MontserratSemiBold, Ink.Gold,
+            c.Add(c.Text("licence", "CCLI Licence", "CCLI License # 11223344", 984, 942, 396, 24, 15, Fonts.MontserratSemiBold, Ink.Gold,
                     caps: true, tracking: 3, shadow: true),
                 [In.Fade(0.45, AnimationTrigger.WithPrevious, 0.05)], [Out.Fade(0.25)]);
         }
@@ -598,10 +598,11 @@ public static class LowerThirdGallery
             double x = 176;
             foreach (var (part, glyph) in new[] { ("camera", Glyphs.Camera), ("video", Glyphs.Play), ("chat", Glyphs.Chat) })
             {
+                // Each disc's ring draws round, then fills (a Draw step on its outline).
                 c.Add(c.Box($"{part}.disc", x, 890, 60, 60, Composer.Gradient(135, ("#FFFFFF4D", 0), ("#FFFFFF1F", 1)), ellipse: true,
-                        stroke: new ObjectStroke { ColorHex = "#FFFFFF59", Width = 1 }),
-                    [In.Step(StepAnimation.Scale, 0.4, AnimationTrigger.AfterPrevious, part == "camera" ? -0.35 : -0.3, fade: true, fromScale: 0.4)], [Out.Fade(0.2)]);
-                c.Add(c.Icon($"{part}.icon", x + 14, 904, 32, glyph, Ink.White), [In.Fade(0.3, AnimationTrigger.WithPrevious, 0.1)], [Out.Fade(0.2)]);
+                        stroke: new ObjectStroke { ColorHex = "#FFFFFF8C", Width = 1.5 }),
+                    [In.Step(StepAnimation.Draw, 0.6, AnimationTrigger.AfterPrevious, part == "camera" ? -0.35 : -0.45, ramp: AnimationRamp.Out, drawStart: 0)], [Out.Fade(0.2)]);
+                c.Add(c.Icon($"{part}.icon", x + 14, 904, 32, glyph, Ink.White), [In.Fade(0.3, AnimationTrigger.WithPrevious, 0.4)], [Out.Fade(0.2)]);
                 x += 72;
             }
             c.Add(c.Text("kicker", "Kicker", "Follow along", 404, 884, 420, 26, 16, Fonts.PoppinsMedium, Ink.Faint, caps: true, tracking: 4, shrink: false),
@@ -706,7 +707,11 @@ public static class LowerThirdGallery
             c.Add(c.Text("kicker", "Kicker", "Celebrating the baptism of", 260, 786, 1400, 44, 30, Fonts.SerifItalic, Ink.Gold, TextHorizontalAlignment.Center, shadow: true),
                 [In.Rise(12, 0.7, AnimationTrigger.WithPrevious, 0.2)], [Out.Fade(0.3)]);
             c.AddKinetic(c.Text("name", "Name", "Grace Okafor", 260, 828, 1400, 104, 84, Fonts.Serif, Ink.Ivory, TextHorizontalAlignment.Center, shadow: true),
-                KineticSplit.Words, 0.22, [In.Focus(20, 1.0, AnimationTrigger.AfterPrevious, -0.4)], [Out.Unfocus(12, 0.5)]);
+                KineticSplit.Words, 0.22,
+                // Each word comes into focus, then a warm light passes over it (a colour emphasis after its In).
+                [In.Focus(20, 1.0, AnimationTrigger.AfterPrevious, -0.4),
+                 In.Step(StepAnimation.Color, 0.9, AnimationTrigger.WithPrevious, 0.55, AnimationRamp.Both, kind: AnimationKind.Emphasis, color: "#F3D9A6FF")],
+                [Out.Unfocus(12, 0.5)]);
             c.Add(c.Icon("spark.left", 772, 945, 22, Glyphs.Sparkle, Ink.Gold), [In.Step(StepAnimation.Scale, 0.5, AnimationTrigger.AfterPrevious, -0.4, fade: true, fromScale: 0.2)], [Out.Fade(0.25)]);
             c.Add(c.Icon("spark.right", 1126, 945, 22, Glyphs.Sparkle, Ink.Gold), [In.Step(StepAnimation.Scale, 0.5, AnimationTrigger.WithPrevious, 0.08, fade: true, fromScale: 0.2)], [Out.Fade(0.25)]);
             c.Add(c.Text("date", "Date", "25 October 2026", 800, 940, 320, 32, 18, Fonts.MontserratSemiBold, Ink.Gold, TextHorizontalAlignment.Center, caps: true, tracking: 6,
@@ -716,8 +721,10 @@ public static class LowerThirdGallery
 
         public static void CelebrationGlass(Composer c)
         {
-            c.Add(c.Glass("glass", 150, 800, 740, 170), [In.Grow(0.94, 0.6)], [Out.Shrink(0.96, 0.4, AnimationTrigger.AfterPrevious, -0.15)]);
-            c.Add(c.Sheen("sheen", 180, 801, 680), [In.Wipe(AnimationEdge.Left, 200, 1.0, AnimationTrigger.WithPrevious, 0.15)], [Out.Fade(0.3)]);
+            // The card's bright edge draws round, then the frost fills in behind it.
+            c.Add(c.Glass("glass", 150, 800, 740, 170), [In.Step(StepAnimation.Draw, 0.9, AnimationTrigger.WithPrevious, null, ramp: AnimationRamp.Out, drawStart: 0)],
+                [Out.Shrink(0.96, 0.4, AnimationTrigger.AfterPrevious, -0.15)]);
+            c.Add(c.Sheen("sheen", 180, 801, 680), [In.Wipe(AnimationEdge.Left, 200, 1.0, AnimationTrigger.WithPrevious, 0.45)], [Out.Fade(0.3)]);
             c.Add(c.Icon("spark", 186, 838, 44, Glyphs.Sparkle, "#FFE7A8FF"),
                 [In.Step(StepAnimation.Scale, 0.5, AnimationTrigger.AfterPrevious, -0.5, fade: true, fromScale: 0.2), In.Pulse(1.2, 0.6, AnimationTrigger.AfterPrevious, 0.05)],
                 [Out.Fade(0.25)]);
@@ -748,8 +755,9 @@ public static class LowerThirdGallery
             c.Add(c.Text("kicker", "Kicker", "Good morning", 260, 380, 1400, 50, 26, Fonts.MontserratSemiBold, Ink.Gold, TextHorizontalAlignment.Center, caps: true,
                     tracking: 12, shadow: true, shrink: false),
                 [In.Rise(14, 0.8, AnimationTrigger.WithPrevious, 0.2)], [Out.Fade(0.4)]);
+            // The welcome burns in from its edges, like film catching the light.
             c.AddKinetic(c.Text("head", "Heading", "Welcome", 160, 430, 1600, 190, 168, Fonts.Serif, Ink.Ivory, TextHorizontalAlignment.Center, shadow: true),
-                KineticSplit.Words, 0.2, [In.Focus(30, 1.4, AnimationTrigger.AfterPrevious, -0.5)], [Out.Unfocus(20, 0.7)]);
+                KineticSplit.Words, 0.2, [In.Step(StepAnimation.Burn, 1.5, AnimationTrigger.AfterPrevious, -0.5, amount: 0.6)], [Out.Unfocus(20, 0.7)]);
             c.Add(c.Box("rule", 900, 640, 120, 1.5, Composer.Solid(Ink.Gold)), [In.Wipe(AnimationEdge.Right, 0, 0.8, AnimationTrigger.AfterPrevious, -0.8)],
                 [Out.Wipe(AnimationEdge.Left, 0, 0.4)]);
             c.Add(c.Text("detail", "Details", "to Sunday at Grace Church", 260, 660, 1400, 60, 40, Fonts.SerifItalic, "#F6F0E6D9", TextHorizontalAlignment.Center, shadow: true),
@@ -778,8 +786,9 @@ public static class LowerThirdGallery
                 [In.Fade(0.25, AnimationTrigger.AfterPrevious, -0.1), In.Pulse(1.5, 0.6, AnimationTrigger.AfterPrevious, 0.1)], [Out.Fade(0.2)]);
             c.Add(c.Text("live", "Label", "Live", 166, 72, 92, 48, 22, Fonts.MontserratExtraBold, caps: true, tracking: 4, shrink: false),
                 [In.Slide(-12, 0.35, AnimationTrigger.WithPrevious, -0.5)], [Out.Fade(0.2)]);
+            // The time arrives with a short digital flicker.
             c.Add(c.Text("clock", "Clock", "10:32 AM", 286, 72, 104, 48, 19, Fonts.MontserratSemiBold, Ink.Soft, TextHorizontalAlignment.Center, link: Clock, shrink: false),
-                [In.Fade(0.35, AnimationTrigger.AfterPrevious, -0.1)], [Out.Fade(0.2)]);
+                [In.Step(StepAnimation.Glitch, 0.45, AnimationTrigger.AfterPrevious, -0.1, ramp: null, amount: 0.45)], [Out.Fade(0.2)]);
         }
 
         public static void SoonClean(Composer c)
