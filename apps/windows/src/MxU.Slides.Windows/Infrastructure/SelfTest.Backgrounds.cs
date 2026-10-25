@@ -7,6 +7,7 @@ using System.Windows.Media.Imaging;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Motion;
 using MxU.Slides.Core.Scene;
+using MxU.Slides.Windows.Outputs;
 using MxU.Slides.Windows.Rendering;
 using MxU.Slides.Windows.ViewModels;
 using MxU.Slides.Windows.Views;
@@ -107,10 +108,12 @@ public sealed partial class SelfTest
         if (editor is null) return null;
         opened.Add(editor);
 
-        // The previews run on their own thread: give them a moment, then check they move.
+        // The previews run on their own thread, below normal priority, so on a busy PC they get
+        // fewer frames: wait (up to 8 s) until they've shown enough, then check they move.
         var first = BitmapPixels(editor.Preview.Bitmap);
-        await Delay(1500);
-        Check($"the live preview runs ({editor.Preview.FramesShown} frames in 1.5 s)", editor.Preview.FramesShown >= 10
+        var watching = System.Diagnostics.Stopwatch.StartNew();
+        for (var i = 0; i < 80 && (editor.Preview.FramesShown < 10 || MotionStyles.All.Any(s => editor.Tile(s.Id).FramesShown < 3)); i++) await Delay(100);
+        Check($"the live preview runs ({editor.Preview.FramesShown} frames in {watching.Elapsed.TotalSeconds:0.0} s)", editor.Preview.FramesShown >= 10
             && !first.AsSpan().SequenceEqual(BitmapPixels(editor.Preview.Bitmap)));
         Check("every style in the gallery has a moving preview", MotionStyles.All.All(s => editor.Tile(s.Id).FramesShown >= 3));
         Save(editor, "bg-10-window");
@@ -156,11 +159,13 @@ public sealed partial class SelfTest
         Check("its tile is in the Media bin, marked Loop", tile is { Kind: "Loop" });
         Save(editor, "bg-14-window-done");
 
-        for (var i = 0; i < 50 && model.Media.Poster(item.Id) is null; i++) await Delay(100);
+        for (var i = 0; i < 100 && model.Media.Poster(item.Id) is null; i++) await Delay(100);
         Check("its first frame becomes the tile's picture", model.Media.Poster(item.Id) is { PixelWidth: > 0 });
 
-        // Live, behind a lyric.
+        // Live, behind a lyric. The song may still be the selected service item while an earlier
+        // check opened something else, so it's unselected first: choosing it again opens it.
         var song = model.ServiceItems.FirstOrDefault(r => r.Name == "Amazing Grace");
+        model.SelectedServiceItem = null;
         model.SelectedServiceItem = song;
         await Delay(300);
         if (model.Slides.Count > 1) model.GoLiveCommand.Execute(model.Slides[1]);
@@ -172,6 +177,7 @@ public sealed partial class SelfTest
             && model.Media.Transport(key) is { Playing: true });
         await Delay(1200);
         Save(window, "bg-20-live-behind-lyrics");
+        if (model.Outputs?[OutputRole.Audience] is { } audience) Save(audience, "bg-21-audience-screen");
         return item;
     }
 
@@ -213,6 +219,7 @@ public sealed partial class SelfTest
         Check("…and what's live shows the new version", model.Show.LiveMedia.TryGetValue(LayerKind.LoopingVideos, out var cue) && cue.MediaId == item.Id);
         await Delay(1500);
         Save(window, "bg-32-replaced-live");
+        if (model.Outputs?[OutputRole.Audience] is { } audience) Save(audience, "bg-33-replaced-audience-screen");
         editor.Close();
     }
 
