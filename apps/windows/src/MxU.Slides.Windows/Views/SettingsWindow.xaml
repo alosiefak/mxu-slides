@@ -143,6 +143,9 @@
         <TextBlock Style="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
                    Text="These apply straight away and belong to this PC. Turn on Follow timecode for a song from the ⋯ menu on its timeline." />
 
+        <!-- Production (Windows only): ATEM, OBS, vMix and DMX lights (Views/Production). -->
+        <p:ProductionSettingsSection xmlns:p="clr-namespace:MxU.Slides.Windows.Views.Production" x:Name="ProductionPanel" />
+
         <TextBlock Text="NETWORK &amp; API" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
         <DockPanel>
             <TextBox x:Name="ApiPort" DockPanel.Dock="Right" Width="64" ToolTip="Port (6980 unless something else uses it)" />

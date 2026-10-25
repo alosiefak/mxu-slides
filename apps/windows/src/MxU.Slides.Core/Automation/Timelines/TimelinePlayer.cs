@@ -873,7 +873,7 @@ public sealed class TimelinePlayer
                     if (host.Music is { } music && music.Player(end.Id)?.ClipId == end.Clip) music.Stop(end.Id);
                     break;
                 case TimelineEffect.RunActions run:
-                    if (cues.FirstOrDefault(c => c.Id == run.CueId)?.Actions is { Count: > 0 } actions) host.RunActions(actions);
+                    if (cues.FirstOrDefault(c => c.Id == run.CueId) is { } actionsCue) host.RunActions(actionsCue.Id, actionsCue.Actions ?? []);
                     break;
             }
             Note("timeline.fire", $"{effect} at {F(lastPosition, 3)}");

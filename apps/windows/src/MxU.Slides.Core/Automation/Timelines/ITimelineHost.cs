@@ -39,6 +39,15 @@ public interface ITimelineHost
     /// <summary>Runs an actions cue's steps (the WPF app passes them to <see cref="ActionRouter.Execute(IReadOnlyList{SlideAction})"/>).</summary>
     void RunActions(IReadOnlyList<SlideAction> actions);
 
+    /// <summary>
+    /// Runs an actions cue, knowing which cue (on Windows its production steps run beside its
+    /// actions, so a cue may have none of its own).
+    /// </summary>
+    void RunActions(string cueId, IReadOnlyList<SlideAction> actions)
+    {
+        if (actions.Count > 0) RunActions(actions);
+    }
+
     /// <summary>The ids up now: media and live inputs on any layer, overlays, music items playing, and the alert.</summary>
     IReadOnlySet<string> Live { get; }
 

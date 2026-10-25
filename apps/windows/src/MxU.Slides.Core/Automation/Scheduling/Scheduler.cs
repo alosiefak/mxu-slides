@@ -19,6 +19,9 @@ public interface ISchedulerHost
     /// <summary>Runs a trigger's actions (the WPF app passes them to <see cref="ActionRouter.Execute(IReadOnlyList{SlideAction})"/>).</summary>
     void Run(IReadOnlyList<SlideAction> actions);
 
+    /// <summary>Runs a trigger's actions, knowing which trigger (on Windows its production steps run beside them).</summary>
+    void Run(string triggerId, IReadOnlyList<SlideAction> actions) => Run(actions);
+
     /// <summary>Marks a spent trigger archived in the library (it has fired for the last time).</summary>
     void Archive(string triggerId);
 }
@@ -293,7 +296,7 @@ public sealed class Scheduler
         };
         Noted?.Invoke(crumb, trigger.Name);
         Record(new RunRecord(Guid.NewGuid(), trigger.Id, trigger.Name, Now, late ? RunOutcome.Late : RunOutcome.Fired, source));
-        host.Run(trigger.Actions);
+        host.Run(trigger.Id, trigger.Actions);
         if (ScheduleMath.SpentOneOffDue(trigger, Now, Zone) is not null || ScheduleMath.SeriesCompleted(trigger, Now, Zone))
         {
             Noted?.Invoke("scheduler.archived", trigger.Name);

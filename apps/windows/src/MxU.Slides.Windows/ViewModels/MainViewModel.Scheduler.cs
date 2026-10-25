@@ -73,6 +73,9 @@ public sealed partial class MainViewModel : ISchedulerHost
 
     void ISchedulerHost.Run(IReadOnlyList<SlideAction> actions) => Actions.Execute(actions);
 
+    // Naming the trigger lets its production steps (Windows only) run beside its actions.
+    void ISchedulerHost.Run(string triggerId, IReadOnlyList<SlideAction> actions) => Actions.Execute(triggerId, actions);
+
     void ISchedulerHost.Archive(string triggerId)
     {
         if (Library.Get<ScheduleTrigger>(triggerId) is not { } trigger) return;

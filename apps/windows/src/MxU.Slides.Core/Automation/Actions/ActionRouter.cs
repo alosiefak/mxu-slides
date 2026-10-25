@@ -51,6 +51,12 @@ public sealed class ActionRouter
     /// <summary>Delayed batches waiting to run.</summary>
     public int PendingDelayedBatches => pendingDelayed.Count;
 
+    /// <summary>
+    /// Windows only: steps kept beside the library (production cues), told each time a slide,
+    /// media item, combo, trigger or timeline cue runs, so they can run alongside (IExtraSteps.cs).
+    /// </summary>
+    public IExtraSteps? ExtraSteps { get; set; }
+
     // MARK: Output presets
 
     /// <summary>
@@ -107,6 +113,8 @@ public sealed class ActionRouter
     /// </summary>
     public void SlideDidFire(Slide slide, string? contextId)
     {
+        // A slide may have production steps and no shared ones, so this comes before the check.
+        ExtraSteps?.OwnerRan(slide.Id);
         if (slide.Actions is not { Count: > 0 } actions) return;
         var protectedLayers = SlideActions.ProtectedLayers(slide, MediaLayer);
         var effective = SlideActions.FireActions(slide, protectedLayers);
@@ -121,6 +129,7 @@ public sealed class ActionRouter
     /// <summary>After a media item fires onto <paramref name="layer"/>: runs its actions, minus clears of that layer.</summary>
     public void MediaDidFire(MediaItem item, LayerKind layer)
     {
+        ExtraSteps?.OwnerRan(item.Id);
         if (item.Actions is not { Count: > 0 } actions) return;
         var effective = SlideActions.FireActions(item, layer);
         Note("actions.fire", $"{item.Name} {effective.Count} step(s)");
@@ -138,11 +147,19 @@ public sealed class ActionRouter
             return;
         }
         library.MarkUsed(comboId);
+        ExtraSteps?.OwnerRan(comboId);
         Execute(combo.Actions, 1, new HashSet<string> { comboId });
     }
 
     /// <summary>Runs steps (a schedule trigger's, a timeline cue's).</summary>
     public void Execute(IReadOnlyList<SlideAction> actions) => Execute(actions, 0, new HashSet<string>());
+
+    /// <summary>Runs the steps of a schedule trigger or timeline cue, and the extra steps kept for it.</summary>
+    public void Execute(string ownerId, IReadOnlyList<SlideAction> actions)
+    {
+        ExtraSteps?.OwnerRan(ownerId);
+        Execute(actions);
+    }
 
     /// <summary>
     /// Runs the combos marked "Trigger on Startup", by name, once per launch. Call it when the
@@ -157,6 +174,7 @@ public sealed class ActionRouter
         foreach (var combo in startup)
         {
             Note("actions.startup", combo.Name);
+            ExtraSteps?.OwnerRan(combo.Id);
             Execute(combo.Actions, 1, new HashSet<string> { combo.Id });
         }
     }
@@ -209,6 +227,7 @@ public sealed class ActionRouter
     /// <summary>Drops every step still waiting (the Clear All button and panic clear call this).</summary>
     public void CancelPendingDelayedActions()
     {
+        ExtraSteps?.CancelPending();
         if (pendingDelayed.Count == 0) return;
         Note("actions.delayed.cancelled", $"{pendingDelayed.Count} batch(es)");
         foreach (var task in pendingDelayed.Values) task.Dispose();
@@ -336,6 +355,7 @@ public sealed class ActionRouter
                     Miss(action, "comboId");
                     return;
                 }
+                ExtraSteps?.OwnerRan(comboId);
                 Execute(combo.Actions, depth + 1, new HashSet<string>(visited) { comboId }, skippingPresetSwitches, protectedLayers);
                 break;
             }

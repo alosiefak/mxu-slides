@@ -374,7 +374,9 @@ public sealed class ApiRouterTests
             "POST /v1/services/{id}/items edit addServiceItem",
         ];
         var (router, _) = MakeRouter();
-        Assert.Equal(mac, router.Routes.Select(r => $"{r.Method} {r.Path} {r.Scope.Raw()} {r.OperationId}"));
+        // Windows-only routes (production control) live under /v1/windows/, apart from the Mac's.
+        Assert.Equal(mac, router.Routes.Where(r => !r.Path.StartsWith("/v1/windows/", StringComparison.Ordinal))
+            .Select(r => $"{r.Method} {r.Path} {r.Scope.Raw()} {r.OperationId}"));
     }
 
     [Theory]
