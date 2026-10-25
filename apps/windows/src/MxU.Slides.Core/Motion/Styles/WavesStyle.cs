@@ -49,7 +49,7 @@ internal sealed class WavesStyle : MotionStyle
             var s = scene.Stops;
             var o = scene.Offset;
             var xs = scene.ColumnX;
-            var turn = scene.Turn(0.05f);
+            var turn = scene.Turn(0.04f);
             for (var k = 0; k < Ribbons; k++)
             {
                 edge[k] = new float[xs.Length];

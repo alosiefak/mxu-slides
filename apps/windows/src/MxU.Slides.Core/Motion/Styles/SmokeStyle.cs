@@ -8,7 +8,8 @@ namespace MxU.Slides.Core.Motion.Styles;
 /// "warped" by more noise (each point looks up the smoke somewhere it has been pushed to),
 /// which gives the curls and wisps of real smoke rather than plain blobs. The upward drift
 /// uses <see cref="LoopNoise.Drift"/>: two copies of the smoke rise and take turns, so it seems
-/// to rise for ever but repeats exactly. The light falls off from the bottom of the picture,
+/// to rise for ever but repeats exactly. It changes shape slowly: the fine layers of noise churn
+/// faster than the big ones, so the circle of time is small. The light falls off from the bottom of the picture,
 /// and the palette's ramp colours the smoke from shadow to its lit edges.
 /// </summary>
 internal sealed class SmokeStyle : MotionStyle
@@ -36,11 +37,11 @@ internal sealed class SmokeStyle : MotionStyle
         {
             this.clock = clock;
             this.scene = scene;
-            turn = scene.Turn(0.05f);
+            turn = scene.Turn(0.018f);
             var rounds = scene.RoundsOf(9);
             drift = LoopNoise.Drift(clock, rounds);
             // How far the smoke rises in one round, so it rises at the same pace whatever the length.
-            rise = 0.045f * scene.Speed * scene.Seconds / rounds;
+            rise = 0.03f * scene.Speed * scene.Seconds / rounds;
             lamp = new Vector2(scene.Aspect * (0.3f + 0.4f * scene.Random(0, 3)), 1.15f);
             strength = 0.35f + 0.65f * scene.Intensity;
         }
@@ -57,9 +58,7 @@ internal sealed class SmokeStyle : MotionStyle
         public override Vector3 Shade(int column, float x, float y)
         {
             // Sampling further down as the round goes on makes the smoke move up.
-            var a = Density(x, y + drift.OffsetA * rise, 0);
-            var b = Density(x, y + drift.OffsetB * rise, 40);
-            var n = LoopNoise.BlendKeepingContrast(a, drift.WeightA, b, drift.WeightB);
+            var n = Density(x, y + drift.OffsetA * rise, 0) * drift.WeightA + Density(x, y + drift.OffsetB * rise, 0) * drift.WeightB;
             var smoke = Smooth(-0.7f, 0.7f, n);
             var dx = x - lamp.X;
             var dy = y - lamp.Y;

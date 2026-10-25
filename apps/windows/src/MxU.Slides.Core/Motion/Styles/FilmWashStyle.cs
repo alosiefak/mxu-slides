@@ -52,7 +52,7 @@ internal sealed class FilmWashStyle : MotionStyle
             leak = new Vector2(0.02f, 0.45f + 0.3f * clock.Wave(1, scene.Random(4, 0)));
             leakLight = (0.55f + 0.45f * clock.Wave(2, scene.Random(4, 1))) * (0.25f + 0.75f * scene.Intensity);
             flicker = 1 + 0.012f * (clock.Wave(37) + 0.7f * clock.Wave(53, 0.3f) + 0.5f * clock.Wave(71, 0.7f));
-            strength = 0.4f + 0.6f * scene.Intensity;
+            strength = 0.3f + 0.55f * scene.Intensity;
             leakTint = MotionColor.Mix(s[3], new Vector3(1, 0.45f, 0.12f), 0.45f) * 0.9f;
         }
 

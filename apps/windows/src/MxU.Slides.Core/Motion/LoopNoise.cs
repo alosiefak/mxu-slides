@@ -235,12 +235,13 @@ public static class LoopNoise
     }
 
     /// <summary>
-    /// For styles that drift one way (smoke rising): two copies of a pattern slide along a
-    /// direction and take turns, each one fading out before it jumps back to its start, so
-    /// the drift seems endless but repeats exactly <paramref name="rounds"/> times per loop. Returns
-    /// each copy's offset along the drift (−½ to ½ of the drift length) and its weight. The
-    /// weights add up to 1; mix noise with <see cref="BlendKeepingContrast"/> so the picture
-    /// doesn't go flat while both copies are half visible.
+    /// For styles that drift one way (smoke rising, clouds passing): two copies of the <i>same</i>
+    /// pattern, half a drift apart, slide along and take turns. Each fades out before it jumps
+    /// back to its start, so the drift seems endless but repeats exactly <paramref name="rounds"/>
+    /// times per loop (the "flow map" trick from water shaders). Returns each copy's offset along
+    /// the drift (−½ to ½ of the drift length) and its weight; the weights add up to 1, so mix the
+    /// two looks up with them. Keep a round's drift small next to the pattern's shapes, and the
+    /// hand-over can't be seen.
     /// </summary>
     public static (float OffsetA, float WeightA, float OffsetB, float WeightB) Drift(in LoopClock clock, int rounds)
     {
@@ -248,9 +249,4 @@ public static class LoopNoise
         var (b, _) = clock.Rounds(rounds, 0.5f);
         return (a - 0.5f, 1 - MathF.Abs(2 * a - 1), b - 0.5f, 1 - MathF.Abs(2 * b - 1));
     }
-
-    /// <summary>Mixes two noise values (each about −1…1, averaging 0) without losing contrast in the middle of the mix.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static float BlendKeepingContrast(float a, float weightA, float b, float weightB) =>
-        (a * weightA + b * weightB) / MathF.Sqrt(weightA * weightA + weightB * weightB);
 }

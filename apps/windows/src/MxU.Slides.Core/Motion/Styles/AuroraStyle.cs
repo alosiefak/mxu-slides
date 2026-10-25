@@ -41,6 +41,7 @@ internal sealed class AuroraStyle : MotionStyle
         private readonly Vector3 low;
         private readonly Vector3 high;
         private readonly float strength;
+        private readonly float leanColumns;
 
         public Frame(MotionScene scene, LoopClock clock)
         {
@@ -48,8 +49,10 @@ internal sealed class AuroraStyle : MotionStyle
             this.scene = scene;
             var s = scene.Stops;
             var o = scene.Offset;
-            var bend = scene.Turn(0.05f);
-            shimmer = scene.Turn(0.1f);
+            // Columns per picture unit, times how far a fold leans (0.35 across per 1 up).
+            leanColumns = 0.35f * (scene.ColumnX.Length - 1) / Math.Max(1e-3f, scene.ColumnX[^1] - scene.ColumnX[0]);
+            var bend = scene.Turn(0.035f);
+            shimmer = scene.Turn(0.08f);
             // Everything that only depends on x is worked out once per column, not per pixel.
             var xs = scene.ColumnX;
             for (var c = 0; c < Curtains; c++)
@@ -64,7 +67,7 @@ internal sealed class AuroraStyle : MotionStyle
                     foot[c][i] = 0.5f - 0.17f * c + 0.16f * LoopNoise.Fbm(x * 0.5f + o.X + c * 11.7f, c * 3.3f + o.Y, clock, bend, 3, lane: c);
                     // Bright folds and dark gaps along the curtain.
                     var patch = LoopNoise.Fbm(x * 1.1f + o.Y + c * 5.1f, 7.7f + c, clock, bend * 1.3f, 3, lane: 10 + c);
-                    glow[c][i] = Smooth(-0.35f, 0.45f, patch) * (1 - 0.35f * c);
+                    glow[c][i] = (0.12f + 0.88f * Smooth(-0.35f, 0.45f, patch)) * (1 - 0.35f * c);
                     reach[c][i] = 0.16f + 0.14f * Smooth(-0.5f, 0.6f, LoopNoise.Loop(x * 0.9f + c * 2.2f + o.X, 4.4f, clock, bend, 14 + c));
                     sway[c][i] = 0.03f * LoopNoise.Loop(x * 1.8f + c * 2.9f + o.X, 1.5f + c, clock, bend, 20 + c);
                 }
@@ -92,8 +95,10 @@ internal sealed class AuroraStyle : MotionStyle
             for (var c = 0; c < Curtains; c++)
             {
                 var above = foot[c][column] - y;
+                // The bright folds lean as they rise, so the gaps between them aren't straight up and down.
+                var lean = Math.Clamp(column + (int)(Math.Max(above, 0) * leanColumns), 0, foot[c].Length - 1);
                 // A wide soft haze below and round the curtain: light scattered in the air.
-                light += low * (0.06f * glow[c][column] * MathF.Exp(-MathF.Abs(above) / 0.2f));
+                light += low * (0.06f * glow[c][lean] * MathF.Exp(above > 0 ? -above / 0.2f : above / 0.09f));
                 if (above < -0.1f) continue;
                 var height = reach[c][column];
                 // Fades upward; stops sharply below the foot; a bright band right at the foot.
@@ -103,7 +108,7 @@ internal sealed class AuroraStyle : MotionStyle
                 var rays = Smooth(-0.5f, 0.6f, LoopNoise.Loop((x + sway[c][column]) * 26 + c * 17.3f + scene.Offset.X, y * 1.1f, clock, shimmer, 30 + c));
                 rays = 0.2f + 0.8f * rays;
                 var tint = Vector3.Lerp(low, high, Smooth(0.03f, height * 1.4f, above));
-                light += tint * (glow[c][column] * (fall * rays + 0.55f * edge));
+                light += tint * (glow[c][lean] * (fall * rays + 0.55f * edge));
             }
             return colour + light * strength;
         }

@@ -58,6 +58,7 @@ public static class MotionBackgroundMaker
     /// <paramref name="height"/> override the recipe's size (the tests and the self-test make tiny ones).
     /// </summary>
     /// <exception cref="OperationCanceledException">Cancelled; nothing is left behind.</exception>
+    /// <exception cref="IOException">Encoding or writing failed; the message says why. Nothing is left behind.</exception>
     public static void Render(MotionRecipe recipe, string path, IProgress<MotionRenderProgress>? progress = null,
         CancellationToken cancellationToken = default, int? width = null, int? height = null)
     {
@@ -72,8 +73,16 @@ public static class MotionBackgroundMaker
         var free = new BlockingCollection<byte[]>();
         for (var i = 0; i < Buffers; i++) free.Add(new byte[renderer.FrameBytes(MotionPixelFormat.Nv12)]);
         using var ready = new BlockingCollection<(byte[] Picture, int Frame)>(Buffers);
-        var writer = new RenderedVideoWriter(partial, renderer.Width, renderer.Height, recipe.FrameRate,
-            LoopTiming.Bitrate(renderer.Width, renderer.Height, recipe.FrameRate));
+        RenderedVideoWriter writer;
+        try
+        {
+            writer = new RenderedVideoWriter(partial, renderer.Width, renderer.Height, recipe.FrameRate,
+                LoopTiming.Bitrate(renderer.Width, renderer.Height, recipe.FrameRate));
+        }
+        catch (Exception e) when (e is MediaFoundationException or System.Runtime.InteropServices.COMException)
+        {
+            throw new IOException($"Windows' H.264 encoder can't make a {renderer.Width} × {renderer.Height} video at {recipe.FrameRate} fps: {e.Message}", e);
+        }
         var clock = Stopwatch.StartNew();
         Exception? encodeFailure = null;
         var encoding = new Thread(() =>
@@ -127,6 +136,11 @@ public static class MotionBackgroundMaker
         catch (OperationCanceledException) when (encodeFailure is not null)
         {
             throw new IOException($"Encoding the motion background failed: {encodeFailure.Message}", encodeFailure);
+        }
+        catch (Exception e) when (e is MediaFoundationException or System.Runtime.InteropServices.COMException)
+        {
+            // Finishing the file failed (a full disk, say): one kind of error for the app to show.
+            throw new IOException($"Writing the motion background failed: {e.Message}", e);
         }
         finally
         {

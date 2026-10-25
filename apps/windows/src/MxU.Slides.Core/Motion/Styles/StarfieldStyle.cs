@@ -37,7 +37,7 @@ internal sealed class StarfieldStyle : MotionStyle
         {
             this.clock = clock;
             this.scene = scene;
-            turn = scene.Turn(0.03f);
+            turn = scene.Turn(0.012f);
             var rounds = scene.RoundsOf(12);
             drift = LoopNoise.Drift(clock, rounds);
             // The nebula drifts as far as the farthest stars do.
@@ -67,24 +67,25 @@ internal sealed class StarfieldStyle : MotionStyle
             }
         }
 
+        // Rich fine detail (a slow fall-off between layers), so the clouds have structure inside them.
+        private float Gas(float x, float y) => LoopNoise.Fbm(x * 1.2f + scene.Offset.X, y * 1.2f + scene.Offset.Y, clock, turn, 5, gain: 0.62f);
+
+        private float Dust(float x, float y) => LoopNoise.Fbm(x * 2.6f + scene.Offset.Y, y * 2.6f, clock, turn * 1.3f, 3, lane: 12);
+
         public override Vector3 Shade(int column, float x, float y)
         {
             var o = scene.Offset;
             // Two copies of the clouds take turns drifting (LoopNoise.Drift), gas and dust alike.
             float xa = x + drift.OffsetA * travel, xb = x + drift.OffsetB * travel;
-            var gas = LoopNoise.BlendKeepingContrast(
-                LoopNoise.Fbm(xa * 1.3f + o.X, y * 1.3f + o.Y, clock, turn, 5), drift.WeightA,
-                LoopNoise.Fbm(xb * 1.3f + o.X + 17, y * 1.3f + o.Y + 3, clock, turn, 5, lane: 6), drift.WeightB);
-            var dust = LoopNoise.BlendKeepingContrast(
-                LoopNoise.Fbm(xa * 2.6f + o.Y, y * 2.6f, clock, turn * 1.3f, 3, lane: 12), drift.WeightA,
-                LoopNoise.Fbm(xb * 2.6f + o.Y + 29, y * 2.6f + 5, clock, turn * 1.3f, 3, lane: 18), drift.WeightB);
-            var cloud = Smooth(-0.15f, 0.75f, gas);
-            var lanes = Smooth(-0.05f, 0.45f, dust) * 0.8f;
-            // The gas glows in the palette's middle colours, a little differently from place to place.
-            var hue = 0.28f + 0.4f * cloud + 0.25f * dust;
-            var colour = scene.Ramp[hue] * (cloud * cloud * (1 - lanes));
-            // Bright cores where the gas is densest.
-            colour += scene.Stops[3] * (MathF.Pow(cloud, 5) * 0.22f * (1 - lanes));
+            var gas = Gas(xa, y) * drift.WeightA + Gas(xb, y) * drift.WeightB;
+            var dust = Dust(xa, y) * drift.WeightA + Dust(xb, y) * drift.WeightB;
+            var tint = LoopNoise.Loop(x * 0.6f + o.Y, y * 0.6f + 9, clock, turn, 24);
+            var cloud = Smooth(-0.35f, 0.95f, gas);
+            var lanes = Smooth(-0.15f, 0.45f, dust) * 0.85f;
+            // The gas glows in the palette's deep and middle colours, shifting from place to place;
+            // only the densest cores reach its highlight.
+            var colour = scene.Ramp[0.3f + 0.3f * cloud + 0.25f * tint] * (MathF.Pow(cloud, 1.7f) * 1.25f * (1 - lanes));
+            colour += scene.Stops[3] * (MathF.Pow(cloud, 6) * 0.18f * (1 - lanes));
             return scene.Stops[0] * 0.7f + colour * (0.55f * strength);
         }
     }
