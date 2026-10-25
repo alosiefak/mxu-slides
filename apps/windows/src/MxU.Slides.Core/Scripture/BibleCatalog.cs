@@ -13,8 +13,10 @@ namespace MxU.Slides.Core.Scripture;
 /// <para>
 /// <b>Lazily, and off the UI thread.</b> Nothing is read until a translation is first asked for.
 /// <see cref="LoadAsync"/> and <see cref="SearchAsync"/> do the work on the catalog's own thread
-/// (a <see cref="WorkQueue"/> called "Bible", below normal priority), never the UI thread and never
-/// .NET's shared thread pool, so a search can't hold up the show. Their tasks finish on that
+/// (a <see cref="WorkQueue"/> called "Bible"), never the UI thread and never .NET's shared thread
+/// pool, so a search can't hold up the show. It runs at normal priority: the show's own threads run
+/// above normal and come first, while the operator waiting for a verse doesn't queue behind every
+/// other busy thread on the PC. Their tasks finish on that
 /// thread and an <c>await</c> on the UI thread carries on there. Each translation is read once:
 /// about a tenth of a second and ~10 MB; its search index, built on the first search, about as much again.
 /// </para>
@@ -31,7 +33,7 @@ public sealed class BibleCatalog
     private readonly Lock gate = new();
     private readonly Dictionary<string, Lazy<Bible>> bibles = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Lazy<BibleSearch>> indexes = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Lazy<WorkQueue> worker = new(() => new WorkQueue("Bible", ThreadPriority.BelowNormal));
+    private readonly Lazy<WorkQueue> worker = new(() => new WorkQueue("Bible", ThreadPriority.Normal));
 
     /// <param name="open">Opens a translation's data file (gzip'd).</param>
     public BibleCatalog(IReadOnlyList<BibleTranslation> translations, Func<BibleTranslation, Stream> open)

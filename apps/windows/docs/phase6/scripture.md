@@ -158,9 +158,13 @@ the verses that are there and notes the gap, and its slide still reads "Acts 8:3
 - **Once.** Each translation sits behind a `Lazy<Bible>`, so two callers asking at once still
   read the file once.
 - **On its own thread.** `LoadAsync` and `SearchAsync` run on a `WorkQueue` named "Bible", a
-  dedicated thread at below-normal priority. It's never the UI thread, and never .NET's shared
-  thread pool. Show timing keeps clear of the pool (HOW-IT-WORKS §26), and a big search should
-  never make a timer late.
+  dedicated thread. It's never the UI thread, and never .NET's shared thread pool. Show timing
+  keeps clear of the pool (HOW-IT-WORKS §26), and a big search should never make a timer late.
+- **At normal priority.** The show's own threads (the show clock, sound, capture) run above
+  normal, so they still come first. These threads started at *below* normal. On a busy PC, the
+  full self-test with other builds running alongside, the slides for 40 verses then took ten
+  seconds instead of half a second: Windows gives a below-normal thread time only when nothing
+  else wants it. The operator is waiting for a verse, so normal it is.
 
 How does the answer get back to the screen? The work finishes a `TaskCompletionSource` made with
 `RunContinuationsAsynchronously`. The UI code that `await`ed it resumes through WPF's

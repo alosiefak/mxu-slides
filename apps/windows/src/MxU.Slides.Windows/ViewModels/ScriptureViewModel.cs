@@ -447,10 +447,12 @@ public sealed partial class ScriptureViewModel : ObservableObject
     /// <summary>
     /// The thread slides are made on. WPF's text layout measures the words; like anything in WPF
     /// it wants a single-threaded apartment (STA) thread, and the app's text measurer is safe to
-    /// share between threads (its caches are locked, its brushes frozen). Below normal priority:
-    /// the show's own threads come first.
+    /// share between threads (its caches are locked, its brushes frozen). Normal priority: the
+    /// show's own threads (clock, sound, capture) run above normal and still come first, but the
+    /// operator is waiting for this, so it mustn't queue behind every other busy thread on the PC.
+    /// (At below normal, a busy machine starved it for seconds.)
     /// </summary>
-    private static readonly Lazy<WorkQueue> LayoutThread = new(() => new WorkQueue("Bible slides", ThreadPriority.BelowNormal, ApartmentState.STA));
+    private static readonly Lazy<WorkQueue> LayoutThread = new(() => new WorkQueue("Bible slides", ThreadPriority.Normal, ApartmentState.STA));
 
     private static Task<T> OnLayoutThread<T>(Func<T> work)
     {
