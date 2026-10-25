@@ -43,7 +43,7 @@ Paths are relative to `apps/mac/Packages` for Swift and `apps/windows/src` for C
 | `PresenterCore/…/Library/GroupPaletteLogic.swift` (defaults) | `StarterContent.GroupPalette` |
 | `PresenterCore/…/KeyboardControl.swift` (default keys) | `MainWindow.xaml.cs` → `OnPreviewKeyDown` |
 | `SlideScene/…/AnimationSequence.swift`, `AnimationTimelineLayout.swift`, `PlaceholderAnimations.swift`, `Paging.swift` | `MxU.Slides.Core/Animation/` (same names) |
-| `RenderEngine/…/AnimationEvaluator.swift`, `AnimationTimeline.swift`, `BlockScrollRoll.swift`, `VideoPushEvaluator.swift`, `SceneTransitionEngine.swift` | `MxU.Slides.Core/Animation/` (same names; `AnimatedItem.cs` carries the Mac `RenderItem` fields the C# one lacks) |
+| `RenderEngine/…/AnimationEvaluator.swift`, `AnimationTimeline.swift`, `BlockScrollRoll.swift`, `VideoPushEvaluator.swift`, `SceneTransitionEngine.swift` | `MxU.Slides.Core/Animation/` (same names; `AnimatedItem.cs` carries the Mac `RenderItem` fields the C# one lacks). `SceneTransitionEngine.cs` has an extra kind, `SceneTransitionKind.Picture`, and `AnimatedLayer.Mix` (Phase 6 transitions): a port of a change to `composite` must keep the `Picture` case and the interrupted-mix flattening at the top of `Composite` |
 | `SlideScene/…/EditorGeometry.swift` | `MxU.Slides.Core/Scene/EditorGeometry.cs` |
 | `SlideScene/…/HotKeyJump.swift` | `MxU.Slides.Core/Scene/HotKeyJump.cs` |
 | `PresenterCore/…/MIDIControl.swift` | `MxU.Slides.Core/Control/MidiControl.cs` |
@@ -56,7 +56,7 @@ Paths are relative to `apps/mac/Packages` for Swift and `apps/windows/src` for C
 | `SlideScene/…/SlideSceneBuilder.swift` `sceneEffects` | `MxU.Slides.Core/Animation/AnimatedItem.cs` → `AnimationEffect.From` |
 | `NDIKit/*`, `DeckLinkKit/*`, `MediaEngine/…/{CaptureSource,CaptureFormatChoice,LiveInputDelay}.swift`, `Sources/{VideoInputInventory,DeckLinkOutputController}.swift` | `MxU.Slides.VideoIO/*` |
 | `AudioEngine/*`, `PresenterCore/…/Library/{PlaylistCrossfade,MixerStripLayout}.swift`, `Timeline/{TrackChannels,TrackSets,Waveforms}.swift` | `MxU.Slides.Audio/*` |
-| `Sources/{ActionRouter,SchedulerController,TimecodeInput,PresentationTimelineController}.swift`, `PresenterCore/…/Library/{ControlBoardLogic,ScheduleMath,SchedulerBoardLogic,AutomaticTimer}.swift`, `PresenterCore/…/Timeline/{LTCDecoder,MTCDecoder,TimecodeFollow,TimecodeRecording,PresentationTimelines,TimelineClips,TimelineGeometry,TimelineTracks,SongMaps,SongTransitions}.swift`, `PresenterCore/MediaAutoAdvance.swift` | `MxU.Slides.Core/Automation/*` |
+| `Sources/{ActionRouter,SchedulerController,TimecodeInput,PresentationTimelineController}.swift`, `PresenterCore/…/Library/{ControlBoardLogic,ScheduleMath,SchedulerBoardLogic,AutomaticTimer}.swift`, `PresenterCore/…/Timeline/{LTCDecoder,MTCDecoder,TimecodeFollow,TimecodeRecording,PresentationTimelines,TimelineClips,TimelineGeometry,TimelineTracks,SongMaps,SongTransitions}.swift`, `PresenterCore/MediaAutoAdvance.swift` | `MxU.Slides.Core/Automation/*`. **Keep the Phase 6 production hook when porting:** `ExtraSteps?.OwnerRan(…)` in SlideDidFire, MediaDidFire, Fire, RunStartupCombos and the FireCombo step, `ExtraSteps?.CancelPending()` in CancelPendingDelayedActions, and the trigger's and cue's id passed by `ISchedulerHost.Run` and `ITimelineHost.RunActions` |
 | `StreamEngine/*` (sessions, RTMP via HaishinKit, HLS, health), `OutputEngine/…/Recording/*`, `PresenterCore/…/{StreamDestinations,StreamPresets}.swift`, the non-UI half of `Sources/{StreamingController,RecordingController,BroadcastStatusChip}.swift` | `MxU.Slides.Broadcast/*` |
 | `Sources/StreamingView.swift`, `RecordingView.swift` | `MxU.Slides.Windows/Views/BroadcastWindow.cs`, `ViewModels/MainViewModel.Broadcast.cs` |
 | `Sources/PresentationTimelineView.swift` (transport and record), `TimecodeSettingsView.swift` | `MxU.Slides.Windows/ViewModels/MainViewModel.Timeline.cs`, the timeline bar in `Views/MainWindow.xaml`, the Timecode section of `Views/SettingsWindow.xaml` |
@@ -129,7 +129,7 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
 | `SlideScene/…/ThemeOverride.swift` | `MxU.Slides.Core/Animation/PlaceholderAnimations.cs` → `OverrideObjects` (font traits from the name; see below) |
 | `PresenterCore/…/ThemeSlideScope.swift` | `MxU.Slides.Core/Scene/ThemeSlideScope.cs` |
 | `SlideScene/…/TransitionEdit.swift` | `MxU.Slides.Core/Animation/TransitionEdit.cs` |
-| `Sources/RenderContext.swift` (`sceneTransition(from:)`, `roomDefault(for:)`, the variant engines), `Sources/ServiceControls.swift` (`nextLiveTransitions`, hand-offs, `switchPreset`, `apply()`'s variants and page turn) | `MxU.Slides.Core/Animation/LiveTransitions.cs`, `MxU.Slides.Windows/ViewModels/MainViewModel.Live.cs`, `Rendering/SceneView.cs` (`PresentLayered`) |
+| `Sources/RenderContext.swift` (`sceneTransition(from:)`, `roomDefault(for:)`, the variant engines), `Sources/ServiceControls.swift` (`nextLiveTransitions`, hand-offs, `switchPreset`, `apply()`'s variants and page turn) | `MxU.Slides.Core/Animation/LiveTransitions.cs`, `MxU.Slides.Windows/ViewModels/MainViewModel.Live.cs`, `Rendering/SceneView.cs` (`PresentLayered`). `LiveTransitions.cs` also takes the Phase 6 Windows-only kinds (`Own`, `FromWindows`) and has their stand-ins (`Fallback`, `InSoftware`); the rules themselves are still the Mac's |
 | `RenderEngine/…/TextRasterizer.swift` (`pages(for:sceneFrame:)`) | `MxU.Slides.Windows/Rendering/TextLayout.cs` → `Pages` |
 | `RenderEngine/…/Compositor.swift` (effect history), `ShaderSource.swift` (`compositor_echo`, `compositor_ghost_trails`) | `MxU.Slides.Core/Animation/EffectTrail.cs`, `MxU.Slides.Windows/Rendering/TrailStore.cs`, `TrailEffect.cs` |
 | `Sources/OutputPresetsController.swift` (slide-theme routing), `Sources/ScreenConfigurationView.swift` (`ThemeLookPicker`) | `MxU.Slides.Core/Outputs/OutputConfiguration.Looks.cs`, `OutputPresets.cs`; `MxU.Slides.Windows/Views/ScreensWindow` (Look) |
@@ -166,6 +166,12 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
 | `Sources/AudioSourceMenuItems.swift` | the Sound picker in `Views/BroadcastWindow.cs`, `MainViewModel.AudioSourceTitle` |
 | `Sources/StreamRecordPane.swift` (preset detail: Source, Recording), `StreamRecordSettings.swift` (sizes, frame rates) | `MxU.Slides.Windows/Views/BroadcastWindow.cs` |
 | `OutputEngine/…/Export/OutputMirror.swift` with `previewProvider(for:)` (one screen) | `MxU.Slides.Windows/Outputs/ScreenFeeds.cs` |
+| `PresenterCore/…/Library/ScriptureReference.swift` | `MxU.Slides.Core/Scripture/ScriptureReference.cs` (`Matches`, `IsReferenceLine`, `SplitText`: the Mac's `split` is `SplitText`, because C# can't have a method and a nested type both called `Split`) |
+| `PresenterCore/…/Library/ServiceLinkLogic.swift` | `MxU.Slides.Core/Library/ServiceLinkLogic.cs` (all of it; `songKeyUpdate` is `SongKeyUpdateFor`) |
+| `PresenterCore/…/Library/AnimationPresetCatalog.swift`, `EffectPresetCatalog.swift` | `MxU.Slides.Core/Animation/AnimationPresets.cs` (with `AnimationPresetApplication`) |
+| `AnimationRanges` (in `TextStyleRuns.swift`), `Sources/SlideEditorModel.swift` (`generateAnimationSteps`) | `MxU.Slides.Core/Animation/AnimationRanges.cs` |
+| `Sources/AppModel.swift` (`saveAnimationPreset`, `overwriteAnimationPreset`, `deleteAnimationPreset` and the effect ones) | `MxU.Slides.Core/Library/PresetBoards.cs` |
+| `RenderEngine/…/TextRasterizer.swift` (balanced wrap) | `MxU.Slides.Windows/Rendering/TextLayout.cs` |
 
 ## Re-implemented for Windows (same behaviour, different code)
 
@@ -217,6 +223,33 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
   - `Audio/Video/VideoClockFollower.cs` and `TimeStretch.cs`: the Mac's AVPlayer keeps its own sound in step.
   - `MultitrackVarispeed.Reset` and `PlaylistLibrary.MoveBy`.
 - `Infrastructure/SelfTest.Trail.cs`: the self-test's report written as it goes, and its watchdog for a stuck UI thread. `AudioDeviceList.SimulatesNoDevices` (`MXU_SLIDES_AUDIO=none`): act as a PC with no sound devices, as the GitHub test machine is.
+- **Phase 6** (none of these has a Swift twin, so nothing needs porting when upstream changes; HOW-IT-WORKS sections 41–46):
+  - `Core/Library/WindowsExtras.cs` (`LibraryStore.Extras`): Windows-only additions kept beside the library, fingerprinted so a Mac edit wins.
+  - **Looks:**
+    - `Core/Library/BundledFonts.cs`, `assets/fonts/` (15 OFL fonts with `OFL.txt`, `FONT-NOTICES.txt`, `SOURCES.txt`), `Views/AboutSection.cs`. `FontMap` also finds a library face by its full name.
+    - `Core/Animation/KineticText.cs`, `OverlaySteps.cs`, `PresetSamples.cs`, `Core/Library/KineticExtras.cs`.
+    - `Core/Library/StarterPacks.Worship.cs` (Arena, Broadcast, Modern Serif, Minimal Sans), `StarterContent.CountdownPresentation`, `LibrarySeeder.AddWindowsStarters` (`windows-starters.txt`).
+    - `Core/Library/LowerThirdGallery.cs`, `ViewModels/LowerThirdGalleryViewModel.cs`, `Views/LowerThirdGalleryWindow.cs`, `Views/StandInPictures.cs`, `ViewModels/MainViewModel.Looks.cs`.
+    - `ViewModels/OverlayEditorViewModel.Presets.cs` and `Views/AnimationPresetGallery.cs` (the Mac has a menu).
+  - **Transitions:**
+    - `Core/Animation/WindowsTransitions.cs` (the 25 kinds: the Mac's 7 and 18 of our own, with `ToShared`), `TransitionCurves.cs`, `PictureTransitions.cs`.
+    - `Core/Library/TransitionExtras.cs`.
+    - `Rendering/TransitionShaders.cs`, `TransitionEffect.cs`, `SceneView.Transitions.cs`.
+    - `Views/Transitions/*`, `ViewModels/MainViewModel.Transitions.cs`, `Infrastructure/AppSettings.Transitions.cs`.
+  - **Bible:**
+    - `Core/Scripture/` (`BibleBooks`, `PassageReference`, `Bible`, `BibleCatalog`, `AbsentVerses`, `BibleSearch`, `ScriptureSlides`), with the KJV, WEB and ASV in `Core/Scripture/Bibles/` made by `tools/bible-convert.py`.
+    - `ViewModels/ScriptureViewModel.cs`, `MainViewModel.Scripture.cs`, `Views/BibleWindow.cs`, `Infrastructure/AppSettings.Scripture.cs`. `MainViewModel.Live.cs` → `Advance` asks `StepScripture` first.
+  - **Planning Center:** `Core/PlanningCenter/`, `Infrastructure/PlanningCenterVault.cs`, `ViewModels/MainViewModel.PlanningCenter.cs`, `Views/PlanningCenterWindow.cs`. The plan link is a Windows extra (`planning-center`).
+  - **Browser remote and stage view:**
+    - `LocalApi/Remote/` (`RemoteSite`, `RemotePairing`, `IRemoteBridge`, `Web/*`), `ViewModels/MainViewModel.Remote.cs`, `Rendering/ScenePictures.cs`, `Views/QrCode.cs` (QRCoder, MIT), `Views/ConnectSettingsSection.cs`. The `/remote` routes aren't part of the Mac's contract (`/openapi.json` is unchanged).
+    - `MainViewModel.ApiServer.cs` → `PublishApi` pushes once the change that raised it has finished.
+  - **Production control:**
+    - `MxU.Slides.Production/*` (ATEM, OBS, vMix, DMX, lighting, the production steps, the simulators).
+    - `Core/Automation/Actions/IExtraSteps.cs` and `ActionRouter.ExtraSteps`.
+    - `LocalApi/ApiRouteTable.Windows.cs` (`/v1/windows/production`; `RouteTableMatchesTheMac` ignores `/v1/windows/`).
+    - `ViewModels/MainViewModel.Production.cs`, `Views/Production/*`.
+    - Stored as Windows extras `production` and `lighting`, `production.json` beside `settings.json`, and the passwords (`ProductionSecrets`) in the local folder.
+  - `Infrastructure/SelfTest.{Looks,Transitions,Scripture,Connect,Production}.cs`, and `Infrastructure/HeadlessBrowser.cs`: the self-test photographs the remote's pages in the PC's own Edge or Chrome, with no window.
 
 ## Not ported yet
 
@@ -232,7 +265,7 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
 - **Automation editor extras:** dragging on the combo and scheduler boards (Windows has Move up/down and a Folder picker), dropping library items onto a combo or the scheduler board, undo for board moves and trigger renames, the "Edit…" button beside a step's media or music, run-only mode, and the capture-source preview line on scheduler rows. Audio-input steps show and keep their settings, but Windows offers no audio inputs to pick (the router skips those steps).
 - **Overlay editor extras:**
   - *Morph ("Change") steps* can't be made yet, because their end state is posed on the Mac's canvas (`AnimateCanvasOverlay.swift`). Existing ones play, re-time and delete. *Where it enters from* (a custom start pose) is the same.
-  - The *animation timeline* (`AnimationTimelinePanel.swift`), *animation presets*, and *one step per line/word* for text aren't there. Steps reorder with Earlier/Later and Move to, not drag and drop.
+  - The *animation timeline* (`AnimationTimelinePanel.swift`) isn't there. Steps reorder with Earlier/Later and Move to, not drag and drop. *One step per line/word* (Phase 6) splits the whole text, because the Windows editor has no text selection, and the pieces follow one another instead of waiting for clicks. The slide editor has no presets gallery yet (Phase 7).
   - *Camera push* can be turned on and its mode chosen; its alignment, margin, zoom and blur settings aren't shown.
   - *Undo* is one step back: "Undo my changes to this overlay" restores it as it was when the editor first showed it.
   - The *Overlays module's* pinned/recent views, grid/list switch and search.
@@ -261,4 +294,34 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
   - the duplicate prompt for music imports;
   - reloading a live video in place after its file is replaced;
   - transcoding to HEVC, and ProRes playback: Windows has no decoder.
+- **Phase 6, not done yet:**
+  - *Planning Center:*
+    - downloading media attachments (they're listed as "to add");
+    - OAuth sign-in (Personal Access Tokens only);
+    - writing back to Planning Center;
+    - plan times and people;
+    - applying the plan's song key (`ServiceLinkLogic.PendingSongKey` is ported but not wired);
+    - sticky link rules.
+  - *Browser remote:*
+    - media and overlay bins, and audio;
+    - a stage layout chosen per device (the stage view has one built-in look);
+    - https, without which a tablet browser won't hold its wake lock.
+  - *Bible:*
+    - a remote (the Local API or the stage display) can't drive it yet;
+    - search stems are English-only;
+    - the ASV keeps eBible.org's [brackets];
+    - a saved side-by-side passage whose theme is changed later keeps the old design's positions.
+  - *Production:*
+    - ATEM transition settings, SuperSource, audio and tally;
+    - OBS per-scene transitions and filters;
+    - the other vMix functions;
+    - sACN discovery;
+    - a fixture library;
+    - undo for production edits;
+    - copying production steps when a slide, combo or cue is duplicated or pasted;
+    - a timeline cue with only production steps reads "No actions".
+  - *Transitions:*
+    - the picker's slider goes to 3 s (the Mac allows 30 s typed);
+    - a `.mxuslides` file carries only the shared fallback;
+    - overlays, alerts and cameras still cut, as on the Mac.
 - **Sync with the Mac's library folder** (Automerge). The Mac uses Automerge's Rust core through a prebuilt Apple-only binary. Windows needs the same core built for Windows, which means installing the Rust toolchain to build it and shipping a native DLL. The toolchain will be installed to build it from source (Phase 10). Until then the two apps share documents (`.mxuslides` files), not the library folder.

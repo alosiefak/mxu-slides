@@ -146,7 +146,15 @@ Phase 5 (Sunday essentials) adds:
 - `.mxuslides` files to move presentations to and from the Mac, missing-media badges with Locate and Replace Everywhere, and checks that media will play when it's imported;
 - recordings, streams and NDI bigger than the screen keep their full picture.
 
-Next: Phase 6, a motion and production pack (designed lower thirds and lyric looks, kinetic text, motion backgrounds, new transitions, Bible verses, Planning Center, a browser remote, and camera, OBS and lighting control). After that, the rest of "Not ported yet" in [docs/PORTING.md](docs/PORTING.md).
+Phase 6 (motion and production) goes beyond the Mac, and everything it makes still opens on a Mac:
+
+- 15 bundled fonts, a gallery of 27 animated lower thirds, four worship lyric looks with lines that build in, countdowns, and animation presets with moving previews;
+- eighteen new transitions drawn by the graphics card (push, zooms, iris, wipes, cube, flip, light leak, glitch, ripple…);
+- a Bible window (KJV, WEB and ASV): type a reference, press Enter, step verse by verse;
+- Planning Center Services plans imported as services, a browser remote for any phone, and a stage view for any screen with a browser;
+- ATEM, OBS, vMix and DMX lighting (Art-Net, sACN) steps on slides, combos, schedules and timelines.
+
+Next: Phase 7, slide editor parity. After that, the rest of "Not ported yet" in [docs/PORTING.md](docs/PORTING.md).
 
 See [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) to learn the code, and [docs/PORTING.md](docs/PORTING.md) for which Swift file each C# file comes from.
 

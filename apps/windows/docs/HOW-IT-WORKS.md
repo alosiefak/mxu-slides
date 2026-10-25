@@ -752,6 +752,82 @@ The full walkthrough is [phase5/operator.md](phase5/operator.md).
 
 The full walkthrough is [phase5/library.md](phase5/library.md).
 
+## 41. Windows-only additions a Mac can still open (Phase 6)
+
+Phase 6 goes beyond the Mac: transitions it hasn't got, production steps, Planning Center links. But the library is shared with the Mac, and the Mac's reader is strict. The shared format's lists of kinds (`TransitionKind`, `StepAnimation`, `SlideActionKind`…) are closed, and **a Mac refuses a whole document that names a kind it doesn't know**. So Phase 6 never writes a new kind or a new field into a shared document. It does two things instead:
+
+- **The document keeps something the Mac can play.** A slide set to Push gets a Dissolve of the same length in its shared `transition` field: the nearest thing the Mac has.
+- **The Windows-only part is kept beside the library**, in `Windows extras/<kind>/<owner id>.json`, where the Mac never looks (`Core/Library/WindowsExtras.cs`, reached through `LibraryStore.Extras`). Backups include that folder.
+
+Each extra is saved with a **fingerprint**: a short hash of the shared part it was made against (`WindowsExtras.Fingerprint`). When Windows reads the extra back, it compares the fingerprint with the document as it is now. If a Mac has changed that part since (say, the slide's transition to Fade Black), they no longer match and the extra is ignored, so **the Mac's edit wins** instead of being silently overridden.
+
+Settings that belong to one PC (`settings.json`, `production.json`) aren't shared, so they may hold Windows-only values directly.
+
+## 42. Looks, lower thirds and kinetic text (Phase 6)
+
+- **Fonts.** 15 fonts ship with the app, all under the SIL Open Font License: Poppins, Montserrat, Bebas Neue and DM Serif Display. They're copied into every library's `fonts` folder (`Core/Library/BundledFonts.cs`), so they're drawn without being installed into Windows, and a `.mxuslides` export carries them to a Mac. **Settings › About** shows the credits and the licence.
+- **Lower-thirds gallery.** **Gallery…** in the Overlays bin opens 27 designed, animated overlays in four looks (Clean, Broadcast, Glass, Editorial). They cover speakers, scripture, sermon points, song credits with the CCLI line, social handles, giving, announcements, prayer, celebrations, welcome, a LIVE bug, starting soon and countdowns (`Core/Library/LowerThirdGallery.cs`, `Views/LowerThirdGalleryWindow.cs`). Point at a tile to play it, fill in its fields, then **Add to library** or **Add and go live**. Once added, each is an ordinary overlay, so the Mac can play it too.
+- **Worship looks.** Four new starter themes, Arena, Broadcast, Modern Serif and Minimal Sans, each with the full set of designs (lyrics, lower and side thirds, scripture, name, points, quote, countdown…). Their lyrics build in line by line. That build is a Windows extra beside the theme (`Core/Library/KineticExtras.cs`, `Core/Animation/KineticText.cs`), so on a Mac the same slides simply appear.
+- **Countdowns.** A Pre-Service Countdown deck and countdown overlays, whose digits are linked to a timer (a `textLink`, which the Mac already understands).
+- **Animation presets.** The Mac's preset catalogues are ported (`Core/Animation/AnimationPresets.cs`), plus 17 Windows kinetic-text presets: word-by-word rise, typewriter, blur in, scale pop and more. They're all built from the step kinds the Mac already has, using its `ranges` field to aim a step at one word or line. In the overlay editor's Animation tab, a **presets gallery** plays each preset on a sample; **One step per Line / Word** splits a text box's animation.
+
+The full walkthrough is [phase6/looks.md](phase6/looks.md).
+
+## 43. Eighteen more transitions (Phase 6)
+
+The Mac has seven transitions. Windows adds eighteen, drawn by the graphics card:
+- push, slide over and slide reveal, and whip pan;
+- zoom in, zoom out, zoom through and cross zoom;
+- iris, diamond, clock, soft wipe and luma wipe;
+- cube and flip;
+- light leak, glitch and ripple.
+
+Choose them for a slide or a presentation (right-click › **Transition…**), a media item, or the room defaults (the live header's chips, or Settings › Transitions). The picker's tiles play themselves.
+
+- **How they're drawn.** Each kind is a small pixel shader (`Rendering/TransitionShaders.cs`) that gets the old picture, the new one and how far along it is. The geometry (where a pushed picture is, the cube's faces) is worked out in Core (`Core/Animation/PictureTransitions.cs`), where it's unit-tested. The shaders are compiled at start-up on a thread of their own, and each live view draws each one once out of sight, so the first push of a service doesn't stutter.
+- **Mac compatibility.** As in section 41, the document keeps the nearest Mac kind (`WindowsTransitions.ToShared`), and the real kind is a Windows extra (`Core/Library/TransitionExtras.cs`).
+- **Drawing without the graphics card.** WPF's software drawing is slow: about half a second for one 1080p frame of a push. A stream or recording that's copied in software (the software copy, section 17), and every live view on a PC with no graphics card, play a plain Dissolve instead (`LiveTransitions.InSoftware`). So does the Mac's Blur Dissolve, whose blur costs about 9 s a frame there and would freeze the operator's screen. The projectors still play the real transition.
+
+The full walkthrough is [phase6/transitions.md](phase6/transitions.md).
+
+## 44. The Bible (Phase 6)
+
+Press **Ctrl+B** and type a reference the way people say it: `John 3:16`, `jn 3 16`, `1 Cor 13:4-8`, `Psalm 23`, `Rom 8:28,31-39`, or words to search, like `love is patient`. **Enter** puts it on screen. **↓**, **PageDown** (a clicker) or **Next** go to the next verse, past the end of a chapter and into the next book. The KJV, WEB and ASV are built in (`Core/Scripture/Bibles/`, made by `tools/bible-convert.py`), and a second translation can sit beside the first, on screen too.
+
+- **References** are read by `Core/Scripture/PassageReference.cs`. The Mac's `ScriptureReference.swift`, which spots references inside pasted text, is ported line by line.
+- **The engine** (`Core/Scripture/Bible.cs`) loads a translation on first use, on its own thread. **Search** (`BibleSearch.cs`) reduces words to rough stems, so "loved" and "loveth" both find "love". A verse scores for each search word it has, more for rare words than common ones, and most when the words stand together as the phrase you typed.
+- **Slides.** `ScriptureSlides.cs` turns a passage into an ordinary presentation in a theme's scripture design (full screen, lower third or side third). It splits a long passage with the app's own text measuring, so nothing overflows, and shrinks a long reference line to fit. A saved passage is a plain shared document, so a Mac can open it.
+- **Safe keys.** While a song is on screen, the Bible window's keys move the song on, as the main window's would. Scripture goes up only on Enter or **Show**, never by accident.
+
+The full walkthrough is [phase6/scripture.md](phase6/scripture.md).
+
+## 45. Planning Center and the browser remote (Phase 6)
+
+- **Planning Center Services.** Paste the church's Personal Access Token in **Screens & Settings › Planning Center**, then **Service ⋯ › Import from Planning Center…**. A plan becomes a service (`Core/PlanningCenter/`):
+  - **Songs:** each song is matched to the library's own copy by CCLI number, then by title and author. If there's no copy, a new song is made from Planning Center's lyrics through the usual lyrics pipeline (section 3).
+  - **Lengths:** each item's length becomes the row's Duration, which the service-tracking timers count down (section 36).
+  - **Re-importing:** importing a plan again updates the service in place and keeps the operator's own changes. It's a three-way merge: what Planning Center said last time, what it says now, and what the operator did.
+  - **Safety:** the token is kept with DPAPI (only this Windows user can read it) and never appears in a log or a web address. Rate limits (HTTP 429) are waited out.
+- **Browser remote** (`LocalApi/Remote/`). With the Local API on, any phone on the church Wi-Fi can open `http://<this PC>:<port>/remote` (Settings shows a QR code). It pairs once with a short code, and then shows the service, the slides as thumbnails (tap one to go live), Next and Previous, the clears, timers, and the stage message.
+  - **The key:** a View key can look but not control. It stays in the browser's storage and is never put in a web address; it travels in a header, or in the WebSocket's first message.
+  - **Live updates:** the page updates live over the WebSocket.
+- **Stage view** (`/remote/stage`). Any spare screen with a browser becomes a confidence monitor: the slide, the next slide, the clock, timers and the stage message, in big type.
+
+The self-test opens these pages in the PC's own Edge with no window (`Infrastructure/HeadlessBrowser.cs`) and photographs them. The full walkthrough is [phase6/connect.md](phase6/connect.md).
+
+## 46. Production control: switchers, OBS, vMix and lights (Phase 6)
+
+A slide, a combo, a schedule trigger or a timeline cue can now also switch an ATEM to camera 2, change the OBS scene, cut in vMix, or bring the lights to the sermon look over 3 s. All of it lives in its own project, `src/MxU.Slides.Production`:
+
+- **Blackmagic ATEM** (`Atem/`): its UDP protocol on port 9910, as the open-source atem-connection library documents it. That covers the handshake, numbered packets with acks and resends, keepalives, input names, cut, auto, fade to black, macros, aux and keyers.
+- **OBS Studio** (`Obs/`): obs-websocket v5, with its SHA-256 password challenge, over a small WebSocket client of our own.
+- **vMix** (`Vmix/`): its HTTP API.
+- **DMX lighting** (`Dmx/`, `Lighting/`): Art-Net and sACN packets, looks and a cue list with fades, and a grand master. An engine on its own thread sends about 40 times a second and merges looks the way lighting desks do (highest takes precedence for brightness, latest for colour and position).
+
+The steps are stored as Windows extras (kind `production`) and run beside the slide's shared actions, honouring their delays (`Core/Automation/Actions/IExtraSteps.cs`). **A missing device never holds up the show:** it times out quickly on its own thread, its light goes red, and the next steps skip it at once. Devices are added in **Screens & Settings › Production (Windows)**. The tests and the self-test use pretend devices (`Simulators/`) on this PC only.
+
+The full walkthrough is [phase6/production.md](phase6/production.md).
+
 ## Things to try, to learn by doing
 
 1. **Add a section name.** Make "Spontaneous" a recognised label. In `Lyrics/Reflow.cs`, add it to the list of names just above `LabelPattern`, then add a test in `ReflowTests.cs` and run `dotnet test`.
@@ -763,3 +839,6 @@ The full walkthrough is [phase5/library.md](phase5/library.md).
 7. **Record a timeline.** Open a song, press **Timeline › Record**, and click through the slides while you sing it in your head. Press ▶ and watch it run itself. Then look at the cues it wrote: open the song's JSON in your *test* library and find `timelines`.
 8. **Give the stream a lower third.** Add a screen, set its Look to a starter theme and *Just "Lyrics (Lower Third)"*, then make a stream preset that sends that screen (section 35). The stream gets lyrics along the bottom while the projector keeps the full-screen design.
 9. **Follow an upstream change.** When MxU changes a Swift file, find its C# twin in [PORTING.md](PORTING.md), compare the two, and port the change.
+10. **See a Windows extra at work.** In your *test* library, give a slide a Push transition. Open its presentation's JSON: the slide says Dissolve. Then look in `Windows extras/slide transitions/` for the file named after the slide's id: that's where the Push is (section 41).
+11. **Teach the Bible a nickname.** Make `Revs` mean Revelation. Find the book names in `Core/Scripture/BibleBooks.cs`, add it, and add a case to `PassageReferenceTests.cs`.
+12. **Run the show from your phone.** Turn on the Local API, open the address Settings shows on your phone (same Wi-Fi), pair with the code, and press Next (section 45).
