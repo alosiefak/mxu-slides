@@ -126,8 +126,9 @@ public sealed class AtemState
                     var index = BinaryPrimitives.ReadUInt16BigEndian(data);
                     var used = data[2] != 0;
                     var nameLength = BinaryPrimitives.ReadUInt16BigEndian(data[4..]);
+                    var macroName = nameLength > 0 && 8 + nameLength <= data.Length ? Text(data, 8, nameLength) : "";
                     if (!used) macros.Remove(index);
-                    else macros[index] = 8 + nameLength <= data.Length ? Text(data, 8, nameLength) : $"Macro {index + 1}";
+                    else macros[index] = macroName.Length > 0 ? macroName : $"Macro {index + 1}";   // a recorded macro may have no name
                     break;
                 }
                 case "PrgI" when data.Length >= 4:

@@ -76,10 +76,12 @@ public class AtemPacketTests
         state.Apply("_pin", "ATEM Mini Pro\0\0\0"u8);
         state.Apply("MPrp", [0, 3, 1, 0, 0, 4, 0, 0, (byte)'W', (byte)'a', (byte)'l', (byte)'k']);
         state.Apply("PrgI", [0, 0, 0, 2]);
+        state.Apply("MPrp", [0, 5, 1, 0, 0, 0, 0, 0]);   // recorded, but with no name
         state.Apply("XYZW", [1, 2, 3]);
         Assert.Equal(new AtemInput(2, "Pulpit", "PULP"), Assert.Single(state.Inputs));
         Assert.Equal("ATEM Mini Pro", state.ProductName);
         Assert.Equal("Walk", state.Macros[3]);
+        Assert.Equal("Macro 6", state.Macros[5]);
         Assert.Equal(2, state.Program(0));
         Assert.False(state.InitComplete);
         state.Apply("InCm", [1, 0, 0, 0]);
@@ -112,6 +114,56 @@ public class AtemSwitcherTests
         Assert.Equal(["CPgI", "DCut", "MAct", "CDsL"], simulator.Commands.Select(c => c.Name));
         Assert.Equal([0, 0, 0, 2], simulator.Commands.First().Data);
         Assert.Equal([0, 3, 0, 0], simulator.Commands.First(c => c.Name == "MAct").Data);
+        // Everything the switcher numbered (its state and its pings) was acked, in the session it gave.
+        await Wait.Until(() => simulator.Unacknowledged == 0, what: "every packet to be acked");
+        Assert.Equal(0, simulator.WrongSession);
+    }
+
+    [Fact]
+    public async Task ALostStatePacketIsNeverAckedPastAndArrivesWhenSentAgain()
+    {
+        // Packet 2 of the state (the first two input names) goes missing: 3, 4 and 5 arrive first.
+        using var simulator = new AtemSimulator("Pulpit", "Wide", "Choir") { LoseStatePacket = 2 };
+        using var atem = Switcher(simulator.Port);
+        atem.Start();
+        await Wait.Until(() => atem.Status.IsOnline, what: "the ATEM to connect once packet 2 is sent again");
+        // Acking 3 would have told the switcher 2 had come too, and it would never be sent again.
+        Assert.False(simulator.AckedPastAGap);
+        Assert.True(simulator.Resends >= 1);
+        Assert.Equal(["Pulpit", "Wide", "Choir"], atem.State.Inputs.Select(i => i.LongName));
+        Assert.Equal(1, simulator.Hellos);
+    }
+
+    [Fact]
+    public async Task AResendOfAPacketItAlreadyHadIsAckedAgain()
+    {
+        // Every ack of the five state packets is lost, the switcher doesn't ping, and the client's
+        // own keepalive is off: only acking the switcher's resends can tell it they got through.
+        using var simulator = new AtemSimulator { LoseClientAcks = 5, Pinging = false };
+        using var atem = Switcher(simulator.Port);
+        atem.KeepaliveEvery = TimeSpan.FromHours(1);
+        atem.Start();
+        await Wait.Until(() => atem.Status.IsOnline);
+        await Wait.Until(() => simulator.Unacknowledged == 0, what: "the switcher to have every ack");
+        Assert.True(simulator.Resends >= 1);
+        Assert.Equal(0, simulator.SessionsDropped);
+    }
+
+    [Fact]
+    public async Task ARetransmitRequestGetsACommandSentAgainAtOnce()
+    {
+        using var simulator = new AtemSimulator();
+        using var atem = Switcher(simulator.Port);
+        atem.Start();
+        await Wait.Until(() => atem.Status.IsOnline);
+        // Its own resend timer is far off: only answering the switcher's "send it again" can deliver the cut.
+        atem.ResendAfter = TimeSpan.FromSeconds(30);
+        simulator.AskAgainForNextCommand = true;
+        var watch = Stopwatch.StartNew();
+        Assert.True(await atem.Cut(1));
+        Assert.True(watch.ElapsedMilliseconds < 3000, $"took {watch.ElapsedMilliseconds} ms");
+        Assert.Equal((1, 1), (simulator.RetransmitRequests, simulator.Retransmits));
+        Assert.Equal("DCut", Assert.Single(simulator.Commands).Name);
     }
 
     [Fact]
@@ -130,14 +182,17 @@ public class AtemSwitcherTests
     [Fact]
     public async Task ItAcksThePingsSoTheSessionStaysUp()
     {
-        using var simulator = new AtemSimulator();
+        // A switcher gives up on a client that doesn't ack (and goes quiet, which the client would notice).
+        using var simulator = new AtemSimulator { DropClientAfterMilliseconds = 1500 };
         using var atem = Switcher(simulator.Port);
-        atem.SilenceTimeout = TimeSpan.FromSeconds(1);
+        atem.SilenceTimeout = TimeSpan.FromSeconds(1.5);
         atem.Start();
         await Wait.Until(() => atem.Status.IsOnline);
-        await Task.Delay(2000, TestContext.Current.CancellationToken);
+        await Task.Delay(3000, TestContext.Current.CancellationToken);
         Assert.True(atem.Status.IsOnline);
-        Assert.Equal(1, simulator.Hellos);
+        Assert.Equal((1, 0), (simulator.Hellos, simulator.SessionsDropped));
+        // The state was packets 1-5; the pings after it (about two a second) were acked too.
+        Assert.True(simulator.LastClientAck > 6, $"last ack {simulator.LastClientAck}");
     }
 
     [Fact]
@@ -156,6 +211,22 @@ public class AtemSwitcherTests
         await Wait.Until(() => atem.Status.IsOnline, what: "the ATEM to come back");
         Assert.True(simulator.Hellos >= 2);
         Assert.True(await atem.Cut(1));
+    }
+
+    [Fact]
+    public async Task ASwitcherThatVanishesHoldsUpOneCommandAtMostThenTheRestAreSkipped()
+    {
+        using var simulator = new AtemSimulator();
+        using var atem = Switcher(simulator.Port);
+        atem.Start();
+        await Wait.Until(() => atem.Status.IsOnline);
+        simulator.Silent = true;   // unplugged in the middle of the service
+        var watch = Stopwatch.StartNew();
+        // Five cuts queued at once: the first waits out its resends (about a second), the rest go nowhere at once.
+        var cuts = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => atem.Cut(1)));
+        Assert.All(cuts, Assert.False);
+        Assert.True(watch.ElapsedMilliseconds < 2500, $"took {watch.ElapsedMilliseconds} ms");
+        Assert.Equal(DeviceState.Problem, atem.Status.State);
     }
 
     [Fact]
