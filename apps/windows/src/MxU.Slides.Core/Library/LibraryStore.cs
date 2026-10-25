@@ -37,6 +37,8 @@ public sealed class LibraryStore
         [typeof(MIDIDevice)] = "MidiDevices",
         [typeof(TrackSet)] = "TrackSets",
         [typeof(TrackChannelList)] = "TrackChannels",
+        [typeof(AnimationPresetBoard)] = "AnimationPresets",
+        [typeof(EffectPresetBoard)] = "EffectPresets",
     };
 
     private readonly object gate = new();
