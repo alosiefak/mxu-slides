@@ -28,7 +28,8 @@ public class TransitionSoftwareDrawingTests(ITestOutputHelper output)
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromMinutes(2)), "drawing didn't finish in two minutes");
-        if (error is not null) throw new InvalidOperationException("drawing failed", error);
+        // Rethrown as it was, so a failed assertion reads as itself.
+        if (error is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
     }
 
     /// <summary>A scene as WPF's software drawing draws it (RenderTargetBitmap always draws in software).</summary>
@@ -84,8 +85,9 @@ public class TransitionSoftwareDrawingTests(ITestOutputHelper output)
         OnWpfThread(() =>
         {
             // A Zoom Through: its nearest Mac kind is a Blur Dissolve, which software drawing can't afford.
-            var zoom = LayerTransition.Of(new WindowsTransition { Kind = WindowsTransitionKind.ZoomThrough, DurationSeconds = 1 });
-            var macBlur = new LayerTransition(SceneTransitionKind.BlurDissolve, 1);
+            // Both are long, so they're still playing however late a busy PC wakes from the sleep below.
+            var zoom = LayerTransition.Of(new WindowsTransition { Kind = WindowsTransitionKind.ZoomThrough, DurationSeconds = 30 });
+            var macBlur = new LayerTransition(SceneTransitionKind.BlurDissolve, 30);
             AnimatedScene MidWay(Func<bool>? copiedInSoftware, LayerTransition transition)
             {
                 // Offscreen, as a feed's view says it is: a view that isn't on a screen would just cut.
