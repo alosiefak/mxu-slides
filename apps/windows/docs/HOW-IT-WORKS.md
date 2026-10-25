@@ -828,6 +828,18 @@ The steps are stored as Windows extras (kind `production`) and run beside the sl
 
 The full walkthrough is [phase6/production.md](phase6/production.md).
 
+## 47. Motion backgrounds (Phase 6)
+
+**Media › Motion background…** makes the looping background videos churches usually buy. Pick one of eleven styles: gradient flow, aurora, light rays, bokeh, floating dust, smoke, waves, geometric drift, starfield, film wash or liquid. Colour it with a palette (the church seasons are there) or two to four of your own colours, set its speed, strength and length, and press **Render**. The result is an ordinary looping H.264 MP4 in the Media bin, so a Mac plays it like any other video.
+
+- **A seamless loop.** A video that loops shows a jump if its last frame doesn't flow into its first. Here time goes round a circle: the drifting "noise" each style is built from is sampled at a point that travels once round a circle over the loop's length (`Core/Motion/LoopNoise.cs`). After the last frame it is back where it began, so frame N equals frame 0 pixel for pixel. Unit tests check this for every style.
+- **Drawn, not recorded.** Each frame is worked out from the recipe and its number (frame *i* is at time *i* ÷ fps), on a crew of threads of its own at below-normal priority (`MotionRenderer`, `RenderCrew`). It never touches .NET's shared pool, so the show stays smooth during a render. The same recipe always gives the same video.
+- **Colours** blend in OKLab, a colour space where halfway between two colours looks halfway to the eye, and keep their strength, so a blend of purple and gold doesn't turn grey (`MotionColor.cs`).
+- **Into the library.** `Broadcast/Library/MotionBackgroundMaker.cs` feeds the frames to the app's own H.264 encoder (the recorder's, section 25), writes under a `.partial` name, then files the video as a looping background. The recipe is kept as a Windows extra (`motion-background`), so **Edit motion background…** on its tile can render a variation and replace it, even while it's live.
+- **Speed** on this laptop: 1080p30 draws at 7 to 29 frames a second depending on the style (a 20 s loop takes 20 s to 1½ min). 4K60 works, but slowly: several minutes for a 20 s loop.
+
+The full walkthrough is [phase6/backgrounds.md](phase6/backgrounds.md).
+
 ## Things to try, to learn by doing
 
 1. **Add a section name.** Make "Spontaneous" a recognised label. In `Lyrics/Reflow.cs`, add it to the list of names just above `LabelPattern`, then add a test in `ReflowTests.cs` and run `dotnet test`.

@@ -149,6 +149,7 @@ Phase 5 (Sunday essentials) adds:
 Phase 6 (motion and production) goes beyond the Mac, and everything it makes still opens on a Mac:
 
 - 15 bundled fonts, a gallery of 27 animated lower thirds, four worship lyric looks with lines that build in, countdowns, and animation presets with moving previews;
+- motion backgrounds made in the app: eleven styles of seamlessly looping video (aurora, light rays, bokeh, smoke…), coloured your way, rendered to MP4;
 - eighteen new transitions drawn by the graphics card (push, zooms, iris, wipes, cube, flip, light leak, glitch, ripple…);
 - a Bible window (KJV, WEB and ASV): type a reference, press Enter, step verse by verse;
 - Planning Center Services plans imported as services, a browser remote for any phone, and a stage view for any screen with a browser;

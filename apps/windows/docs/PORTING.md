@@ -223,7 +223,7 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
   - `Audio/Video/VideoClockFollower.cs` and `TimeStretch.cs`: the Mac's AVPlayer keeps its own sound in step.
   - `MultitrackVarispeed.Reset` and `PlaylistLibrary.MoveBy`.
 - `Infrastructure/SelfTest.Trail.cs`: the self-test's report written as it goes, and its watchdog for a stuck UI thread. `AudioDeviceList.SimulatesNoDevices` (`MXU_SLIDES_AUDIO=none`): act as a PC with no sound devices, as the GitHub test machine is.
-- **Phase 6** (none of these has a Swift twin, so nothing needs porting when upstream changes; HOW-IT-WORKS sections 41–46):
+- **Phase 6** (none of these has a Swift twin, so nothing needs porting when upstream changes; HOW-IT-WORKS sections 41–47):
   - `Core/Library/WindowsExtras.cs` (`LibraryStore.Extras`): Windows-only additions kept beside the library, fingerprinted so a Mac edit wins.
   - **Looks:**
     - `Core/Library/BundledFonts.cs`, `assets/fonts/` (15 OFL fonts with `OFL.txt`, `FONT-NOTICES.txt`, `SOURCES.txt`), `Views/AboutSection.cs`. `FontMap` also finds a library face by its full name.
@@ -249,7 +249,12 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
     - `LocalApi/ApiRouteTable.Windows.cs` (`/v1/windows/production`; `RouteTableMatchesTheMac` ignores `/v1/windows/`).
     - `ViewModels/MainViewModel.Production.cs`, `Views/Production/*`.
     - Stored as Windows extras `production` and `lighting`, `production.json` beside `settings.json`, and the passwords (`ProductionSecrets`) in the local folder.
-  - `Infrastructure/SelfTest.{Looks,Transitions,Scripture,Connect,Production}.cs`, and `Infrastructure/HeadlessBrowser.cs`: the self-test photographs the remote's pages in the PC's own Edge or Chrome, with no window.
+  - **Motion backgrounds:**
+    - `Core/Motion/*` (`MotionRecipe`, `LoopTiming`, `LoopNoise`, `MotionPalette`, `MotionColor`, `MotionRenderer`, `RenderCrew`, `Styles/*`).
+    - `Broadcast/Media/RenderedVideoWriter.cs`, `Broadcast/Library/MotionBackgroundMaker.cs`; the recipe is a Windows extra (`motion-background`).
+    - `Views/MotionBackgroundWindow.cs`, `Views/MainWindow.MotionBackgrounds.cs`, `ViewModels/MainViewModel.MotionBackgrounds.cs`, `Rendering/MotionPreviewer.cs`, `Rendering/MediaHub.Reload.cs`.
+    - One change to a ported file: `Recording/Mp4SinkWriter.cs` got `CreateForEncoded(…, crashSafe: false)` for a plain MP4. The recorder's default is unchanged (crash-safe fragments).
+  - `Infrastructure/SelfTest.{Looks,Transitions,Scripture,Connect,Production,Backgrounds}.cs`, and `Infrastructure/HeadlessBrowser.cs`: the self-test photographs the remote's pages in the PC's own Edge or Chrome, with no window.
 
 ## Not ported yet
 
@@ -320,6 +325,10 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
     - undo for production edits;
     - copying production steps when a slide, combo or cue is duplicated or pasted;
     - a timeline cue with only production steps reads "No actions".
+  - *Motion backgrounds:*
+    - drawn on the CPU only (no graphics-card path);
+    - no starter backgrounds made on first use;
+    - the slowest styles (Starfield, Liquid, Geometric) haven't been sped up.
   - *Transitions:*
     - the picker's slider goes to 3 s (the Mac allows 30 s typed);
     - a `.mxuslides` file carries only the shared fallback;
