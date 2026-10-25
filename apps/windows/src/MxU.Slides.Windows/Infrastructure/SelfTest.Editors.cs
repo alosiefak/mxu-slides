@@ -68,11 +68,22 @@ public sealed partial class SelfTest
             Save(combos, "30-editor-combos-window");
             await AddMenuCheck(editor);
 
+            // When the delayed step really fires is read off the router's trail: a fixed pause before looking
+            // can outlast the half second on a slow PC, and make the overlay look early.
+            double? delayedAfter = null;
+            var ran = DateTime.UtcNow;
+            void Noted(string crumb, string detail)
+            {
+                if (crumb == "actions.delayed.fired") delayedAfter ??= (DateTime.UtcNow - ran).TotalSeconds;
+            }
+            model.Actions.Noted += Noted;
             combos.Run(comboId);
+            var upAtOnce = model.Show.LiveOverlays.Any(o => o.Id == overlay.Id);
             await Delay(200);
             Check("running the combo puts up its message at once", model.Show.AlertMessage == alert.Message);
-            Check("the delayed overlay waits its half second", !model.Show.LiveOverlays.Any(o => o.Id == overlay.Id));
-            await Delay(1100);
+            await WhenShown(() => model.Show.LiveOverlays.Any(o => o.Id == overlay.Id), 10);
+            model.Actions.Noted -= Noted;
+            Check($"the delayed overlay waits its half second (it fired after {delayedAfter:0.00} s)", !upAtOnce && delayedAfter >= 0.45);
             Check("then the overlay goes up", model.Show.LiveOverlays.Any(o => o.Id == overlay.Id));
             model.ClearAllCommand.Execute(null);
             await Delay(300);
@@ -104,7 +115,10 @@ public sealed partial class SelfTest
             if (clear is null) return;
             clear.IsSubmenuOpen = true;
             await Delay(400);
-            var popup = clear.Template?.FindName("PART_Popup", clear) as Popup;
+            // A submenu's popup is made, opened and laid out a moment later (later still on a slow PC).
+            Popup? Submenu() => clear.Template?.FindName("PART_Popup", clear) as Popup;
+            await WhenShown(() => Submenu() is { IsOpen: true, Child: FrameworkElement { ActualWidth: > 0 } }, 10);
+            var popup = Submenu();
             Check("its submenus open beside it (Clear › Clear All, the layers, Clear Music)",
                 popup is { IsOpen: true, Child: FrameworkElement { ActualWidth: > 0 } } && clear.Items.Count >= 9);
             SaveElement(menu, "30b-editor-add-action-menu");

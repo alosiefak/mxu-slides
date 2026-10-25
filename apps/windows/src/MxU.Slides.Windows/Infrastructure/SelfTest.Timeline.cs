@@ -64,7 +64,10 @@ public sealed partial class SelfTest
             if (music is null || slides.Count != 2) return;
             vm.Waveforms.Settle(TimeSpan.FromSeconds(30));
             await Delay(500);
-            Check("the clip's waveform is worked out off the UI thread", vm.Waveforms.Levels(vm.WaveSources([music]), music.At, vm.Layout.CardFor(music.Id)!.Width / vm.Zoom, music.Id) is not null);
+            // Asking for it starts the work if the editor hasn't drawn the clip yet (a slow PC draws late): ask until it's ready.
+            bool Worked() => vm.Waveforms.Levels(vm.WaveSources([music]), music.At, vm.Layout.CardFor(music.Id)!.Width / vm.Zoom, music.Id) is not null;
+            await WhenShown(Worked, 15);
+            Check("the clip's waveform is worked out off the UI thread", Worked());
             Save(editor, "20-timeline-editor");
 
             // Drag the second slide cue 1.5 seconds later, as the mouse would (press, move, let go).
@@ -112,7 +115,7 @@ public sealed partial class SelfTest
             var heardMusic = false;
             var pictured = false;
             var third = model.Slides[2].Slide.Id;
-            var deadline = DateTime.Now.AddSeconds(6);
+            var deadline = DateTime.Now.AddSeconds(15); // the cues are at 1 s and 3.5 s; the picture taken on the way can be slow
             while (DateTime.Now < deadline && !fired.Any(f => f.SlideId == third))
             {
                 if (model.Show.Live?.Slide.Id is { } live && (fired.Count == 0 || fired[^1].SlideId != live)) fired.Add((live, vm.Playhead));

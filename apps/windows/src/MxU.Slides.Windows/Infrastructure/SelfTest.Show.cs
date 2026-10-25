@@ -125,28 +125,42 @@ public sealed partial class SelfTest
     private async Task AutoAdvanceChecks(MediaItem? video)
     {
         if (FlowRowView("flow-announce") is not { } announce) return;
+        // Slide 2 is held the moment its timer starts (the chip changes then). Holding it after a fixed
+        // pause raced its 1.2 s: on a slow PC the pause alone could outlast the timer.
+        double? heldLeft = null;
+        void HoldSlideTwo()
+        {
+            if (model.Show.Live?.Slide.Id != "selftest-flow-announce-2" || model.AutoAdvance.Pending?.FiresAt is null) return;
+            model.AutoAdvance.Changed -= HoldSlideTwo;
+            model.ToggleAutoAdvanceHoldCommand.Execute(null);
+            heldLeft = model.AutoAdvance.Remaining();
+        }
+        model.AutoAdvance.Changed += HoldSlideTwo;
         var fired = DateTime.UtcNow;
         model.FireServiceItemCommand.Execute(announce);
+        // The chip starts from the slide's 1.2 s, less the time firing really took (a slow PC takes longer to draw it).
+        var left = model.AutoAdvance.Remaining();
+        var firing = (DateTime.UtcNow - fired).TotalSeconds;
         Check("a timed slide goes live with its auto-advance chip", AudienceText().Contains("Announcement 1") && model.AutoAdvanceVisible
-            && model.AutoAdvance.Remaining() is > 1 and <= 1.2);
+            && left is <= 1.2 && left > 1 - firing);
         await Step("70-show-auto-advance", () => { }, settle: 250);
-        var took = await WhenShown(() => AudienceText().Contains("Announcement 2"), 4);
+        var took = await WhenShown(() => AudienceText().Contains("Announcement 2"), 10);
         Check("a slide timer advances to the next slide by itself", took is not null);
         report.AppendLine($"NOTE  the 1.2 s timer moved on {(took is not null ? $"{(DateTime.UtcNow - fired).TotalSeconds:F2} s" : "never")} after the slide went live");
 
-        await Delay(300);
-        model.ToggleAutoAdvanceHoldCommand.Execute(null);
-        var heldLeft = model.AutoAdvance.Remaining();
+        await WhenShown(() => heldLeft is not null, 3);
+        model.AutoAdvance.Changed -= HoldSlideTwo;
         await Step("71-show-advance-held", () => { }, settle: 1500);
-        Check("holding the chip keeps the slide (and says so)", AudienceText().Contains("Announcement 2") && model.AutoAdvanceHeld
+        Check("holding the chip keeps the slide (and says so)", heldLeft is not null && AudienceText().Contains("Announcement 2") && model.AutoAdvanceHeld
             && model.AutoAdvanceCaption == "Advance held" && model.AutoAdvance.Remaining() == heldLeft);
-        model.ToggleAutoAdvanceHoldCommand.Execute(null);
-        took = await WhenShown(() => AudienceText().Contains("Announcement 3"), 4);
+        // (Only a hold that took is let go: toggling with nothing held would hold whatever comes next.)
+        if (model.AutoAdvance.IsPaused) model.ToggleAutoAdvanceHoldCommand.Execute(null);
+        took = await WhenShown(() => AudienceText().Contains("Announcement 3"), 10);
         Check($"letting it go carries on from the time that was left ({heldLeft:F1} s)", took is not null && took < (heldLeft ?? 0) + 2);
 
         if (video is not null)
         {
-            await WhenShown(() => model.Live?.ItemId == "flow-video", 5);
+            await WhenShown(() => model.Live?.ItemId == "flow-video", 15);
             Check("after the last slide, the service moves on to its next row (the video)", model.Show.LiveMedia.TryGetValue(LayerKind.Videos, out var cue)
                 && cue.MediaId == video.Id && model.Live?.ItemId == "flow-video");
             Check("the video's advance waits for it to end", model.AutoAdvance.Pending?.MediaId == video.Id);
@@ -154,7 +168,7 @@ public sealed partial class SelfTest
         }
         else
         {
-            Check("after the last slide, the service moves on to its next row", await WhenShown(() => AudienceText().Contains("Song line 1"), 5) is not null);
+            Check("after the last slide, the service moves on to its next row", await WhenShown(() => AudienceText().Contains("Song line 1"), 15) is not null);
             Skip("a video advancing after playback, and the transport strip", "no test video could be made on this PC");
         }
 
@@ -172,8 +186,11 @@ public sealed partial class SelfTest
                 await Delay(50);
             }
             Check($"a Slide Show loops back to its first slide (saw {string.Join(" ", seen)})", seen.Take(3).SequenceEqual(["A", "B", "A"]));
+            var pressed = DateTime.UtcNow;
             model.NextCommand.Execute(null);
-            Check("pressing Next restarts the timer from the new slide", model.AutoAdvance.Remaining() is > 0.6);
+            var restarted = model.AutoAdvance.Remaining();
+            // From the slide's 0.8 s, less the time pressing Next really took (as for the first slide's chip above).
+            Check("pressing Next restarts the timer from the new slide", restarted > 0.6 - (DateTime.UtcNow - pressed).TotalSeconds);
             model.ClearSlideCommand.Execute(null);
             await Delay(1000);
             Check("clearing the slide stops its timer", model.Show.Live is null && model.AutoAdvance.Pending is null);
@@ -183,33 +200,35 @@ public sealed partial class SelfTest
     /// <summary>The strip on the bumper video: pause, go to a typed time, jump near the end; then the video's end moves the service on.</summary>
     private async Task TransportChecks(MediaItem video)
     {
-        // Slow PCs decode in software: give the player a moment to open.
-        await WhenShown(() => model.TransportHasVideo, 8);
+        // Slow PCs decode in software: give the player time to open, and the strip (refreshed four
+        // times a second, when the UI thread has a moment) time to pick it up; it then controls it.
+        await WhenShown(() => model.TransportHasVideo && model.TransportName == video.Name, 15);
         Check("the transport strip shows the live video", model.TransportHasVideo && model.TransportName == video.Name && model.TransportShowsControls);
         var key = model.Media.ActiveVideos.FirstOrDefault(v => v.MediaId == video.Id && v.Key.StartsWith("live:", StringComparison.Ordinal)).Key;
         if (key is null) return;
         model.TransportPlayPauseCommand.Execute(null);
-        await Delay(300);
+        await Until(() => model.Media.Transport(key), t => t is { Playing: false }, 5000);
         Check("the strip pauses the video", key is not null && model.Media.Transport(key) is { Playing: false });
-        Check("typing a time goes there", model.TransportGoTo("0:01") && model.Media.Transport(key!) is { } at && Math.Abs(at.Position.TotalSeconds - 1) < 0.4);
+        var typed = model.TransportGoTo("0:01");
+        var at = await Until(() => model.Media.Transport(key!), t => t is { } there && Math.Abs(there.Position.TotalSeconds - 1) < 0.4, 5000);
+        Check("typing a time goes there", typed && at is { } went && Math.Abs(went.Position.TotalSeconds - 1) < 0.4);
         await Step("72-show-transport-strip", () => { }, settle: 300);
         Check("a paused video holds its advance", model.Live?.ItemId == "flow-video");
         model.TransportPlayPauseCommand.Execute(null);
         model.SetTransportSkip(1);
         model.TransportSkipToEndCommand.Execute(null);
-        await Delay(200);
-        Check("the jump button goes to near the end", model.Media.Transport(key!) is { Duration: { } length } near && length.TotalSeconds - near.Position.TotalSeconds < 1.5);
-        for (var i = 0; i < 40 && model.Live?.ItemId == "flow-video"; i++) await Delay(100);
+        var near = await Until(() => model.Media.Transport(key!), t => t is { Duration: { } length } there && length.TotalSeconds - there.Position.TotalSeconds < 1.5, 5000);
+        Check("the jump button goes to near the end", near is { Duration: { } total } && total.TotalSeconds - near.Value.Position.TotalSeconds < 1.5);
+        await WhenShown(() => model.Live?.ItemId != "flow-video", 15);
         Check("a video's 'advance after playback' fires the next service row", model.Live?.ItemId == "flow-song" && AudienceText().Contains("Song line 1"));
         model.SetTransportSkip(30);
 
         // Fired again a moment after it ended, while its player is still kept (paused at its end),
-        // the video starts over and plays.
+        // the video starts over and plays. (A slow PC can take a while to show it: it's watched until it does.)
         model.FireMedia(video);
-        await Delay(400);
-        var again = model.Media.ActiveVideos.FirstOrDefault(v => v.MediaId == video.Id && v.Key.StartsWith("live:", StringComparison.Ordinal)).Key;
-        Check("a video fired again just after it ended plays from the start", again is not null
-            && model.Media.Transport(again) is { Playing: true } replay && replay.Position.TotalSeconds < 1.5);
+        string? LiveKey() => model.Media.ActiveVideos.FirstOrDefault(v => v.MediaId == video.Id && v.Key.StartsWith("live:", StringComparison.Ordinal)).Key;
+        var replay = await Until(() => LiveKey() is { } live ? model.Media.Transport(live) : null, t => t is { Playing: true }, 10000);
+        Check("a video fired again just after it ended plays from the start", replay is { Playing: true } && replay.Value.Position.TotalSeconds < 1.5);
         model.ClearMediaCommand.Execute(null);
     }
 
@@ -227,26 +246,26 @@ public sealed partial class SelfTest
         Check("selecting a music row shows its card with its songs", model.MusicCardVisible && model.MusicCardIsPlaylist && model.MusicCardTracks.Count == 1);
         model.FireServiceItemCommand.Execute(welcome);
         model.NextCommand.Execute(null);
-        await Delay(900);
-        Check("Next arrives on a playlist row and plays it", model.Audio.Status().Any(b => b.Playing && b.PlaylistId == "selftest-flow-walkin")
-            && model.Live?.ItemId == "flow-walkin");
+        bool WalkInPlays() => model.Audio.Status().Any(b => b.Playing && b.PlaylistId == "selftest-flow-walkin");
+        await WhenShown(WalkInPlays, 10); // the music engine starts it on its own thread
+        Check("Next arrives on a playlist row and plays it", WalkInPlays() && model.Live?.ItemId == "flow-walkin");
         Check("the welcome slide stays up under the music", AudienceText().Contains("Welcome, everyone"));
-        await Delay(300);
+        await WhenShown(() => walkin.IsLive && model.MusicCardIsLive, 10); // marked by the show-flow refresh, four times a second
         Check("the music row is marked live", walkin.IsLive && model.MusicCardIsLive);
         await Step("74-show-music-live", () => model.SelectedServiceItem = walkin, settle: 400);
         model.NextCommand.Execute(null);
         Check("the next Next moves on past the music", model.Live?.ItemId == "flow-announce");
         model.SelectedServiceItem = walkin;
         model.MusicCardPlayStopCommand.Execute(null);
-        await Delay(2200);
-        Check("Stop on the card stops it", !model.Audio.Status().Any(b => b.Playing && b.PlaylistId == "selftest-flow-walkin"));
+        await WhenShown(() => !WalkInPlays(), 10); // it fades out first
+        Check("Stop on the card stops it", !WalkInPlays());
 
         // A single-song row, as ProPresenter imports walk-in cues.
         model.UpdateService(FlowServiceId, s => s.Items.Insert(1, FlowRow("flow-song-cue", ServiceItemKind.Audio, "Walk-in song", tone.Id)));
         if (FlowRowView("flow-song-cue") is { } cueRow)
         {
             model.FireServiceItemCommand.Execute(cueRow);
-            await Delay(800);
+            await WhenShown(() => model.Audio.Status().Any(b => b.Playing && b.AudioItemId == tone.Id), 10);
             Check("an Audio row plays its song", model.Audio.Status().Any(b => b.Playing && b.AudioItemId == tone.Id));
         }
         model.UpdateService(FlowServiceId, s => s.Items.RemoveAll(i => i.Id == "flow-song-cue"));
@@ -262,10 +281,11 @@ public sealed partial class SelfTest
         model.FireServiceItemCommand.Execute(song);
         model.FireMedia(background.Item);
         if (tone is not null) model.AudioTileClickedCommand.Execute(model.AudioTiles.FirstOrDefault(t => t.Item?.Id == tone.Id));
-        await Delay(700);
         bool Green(string name) => model.ClearFunctionButtons.First(b => b.Name == name).IsLive;
-        Check("the Clear buttons are green for what's live", Green("Slides") && Green("Media") && !Green("Inputs") && !Green("Overlays")
-            && (tone is null || Green("Music")) && model.ClearLayerButtons.First(b => b.Layer == LayerKind.Slide).IsLive);
+        bool GreenForLive() => Green("Slides") && Green("Media") && !Green("Inputs") && !Green("Overlays")
+            && (tone is null || Green("Music")) && model.ClearLayerButtons.First(b => b.Layer == LayerKind.Slide).IsLive;
+        await WhenShown(GreenForLive, 10); // the music starts on its own thread; the buttons follow four times a second
+        Check("the Clear buttons are green for what's live", GreenForLive());
         Check("Clear All says what it leaves up", model.ClearAllNote.Contains("Inputs"));
         window.LiveControls.LayersToggle.IsChecked = true;
         await Step("75-show-clear-controls", () => { }, settle: 400);
@@ -282,11 +302,13 @@ public sealed partial class SelfTest
             Check("unticking Music changes what Clear All says", model.ClearAllNote.Contains("Music"));
             model.ClearAllCommand.Execute(null);
             await Delay(300);
-            Check("Clear All leaves what its checklist unticks (the music plays on)", model.Show.Live is null && model.Show.LiveMedia.Count == 0
-                && model.Audio.Status().Any(b => b.Playing));
+            var playing = model.Audio.Status().Any(b => b.Playing);
+            var leaves = model.Show.Live is null && model.Show.LiveMedia.Count == 0 && playing;
+            if (!leaves) report.AppendLine($"      after Clear All: slide {(model.Show.Live is null ? "gone" : "up")}, {model.Show.LiveMedia.Count} media, music {(playing ? "playing" : "stopped")}");
+            Check("Clear All leaves what its checklist unticks (the music plays on)", leaves);
             model.SetClearAllSweeps(ShowFunction.Audio, true);
             model.ClearFunction(ShowFunction.Audio);
-            await Delay(2200);
+            await WhenShown(() => !model.Audio.Status().Any(b => b.Playing), 10); // it fades out first
             Check("Clear Music stops the music", !model.Audio.Status().Any(b => b.Playing));
         }
         model.ClearInputsCommand.Execute(null);
@@ -298,14 +320,18 @@ public sealed partial class SelfTest
     {
         if (FlowRowView("flow-welcome") is not { } welcome) return;
         model.ClearServiceTrackingCommand.Execute(null);
+        var fired = DateTimeOffset.Now;
         model.FireServiceItemCommand.Execute(welcome);
         await Delay(300);
         var now = DateTimeOffset.Now;
+        // The timers are compared with the time that really passed since the fire: a slow PC can take
+        // seconds over the 300 ms asked for, and the timers rightly count those seconds down too.
+        double Gone(DateTimeOffset at) => (at - fired).TotalSeconds;
         var item = model.Timers.Snapshot(ServiceTrackingTimers.Id(ServiceTrackingTimers.Subject.Item, ServiceTrackingTimers.Face.Remaining));
         var service = model.Timers.Snapshot(ServiceTrackingTimers.Id(ServiceTrackingTimers.Subject.Service, ServiceTrackingTimers.Face.Remaining));
         var planned = model.SelectedService!.Items.Sum(i => i.ItemKind == ServiceItemKind.Header ? 0 : i.Duration ?? 0);
-        Check("firing a row starts Item Remaining from its length", item is { IsRunning: true } && item.Value(now) is > 118 and <= 120);
-        Check("Service Remaining counts down every row's length", service is { IsRunning: true } && Math.Abs(service.Value(now) - planned) < 2);
+        Check("firing a row starts Item Remaining from its length", item is { IsRunning: true } && item.Value(now) <= 120 && Math.Abs(item.Value(now) - (120 - Gone(now))) < 2);
+        Check("Service Remaining counts down every row's length", service is { IsRunning: true } && Math.Abs(service.Value(now) - (planned - Gone(now))) < 2);
         // As on the Mac, they sit in the Timers board's own read-only folder, apart from the operator's timers, and are never saved.
         var trackingFolder = model.Timers.Board.Folder(ServiceTrackingTimers.FolderId);
         Check("the tracking timers are filed in the Timers board's Service Tracking folder",
@@ -340,8 +366,12 @@ public sealed partial class SelfTest
         };
         model.Library.Save(layout);
         // Each stage screen has its own layout now; drawing this one is what a screen showing it would show.
+        var drawnAt = DateTimeOffset.Now;
         var stage = TextOf(model.StageScene(layout));
-        Check($"a stage layout shows Item Remaining (stage reads \"{stage.Replace('\n', ' ')}\")", stage.Contains("1:59") || stage.Contains("2:00"));
+        // About 2:00, less the time that has really passed since the fire (a second either way for the drawing and rounding).
+        var expected = Enumerable.Range(-1, 3).Select(s => TimerSnapshot.Timecode(120 - Gone(drawnAt) + s)).Distinct().ToList();
+        Check($"a stage layout shows Item Remaining (stage reads \"{stage.Replace('\n', ' ')}\", {Gone(drawnAt):0.0} s after the fire)",
+            expected.Any(stage.Contains));
         await Snapshot("76-show-stage-tracking", model.StageScene(layout));
         // The panel sits below the fold of the live column: scroll it into view for its picture.
         window.TrackingPanel.BringIntoView();

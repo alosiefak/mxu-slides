@@ -99,7 +99,9 @@ public sealed partial class SelfTest
         var probe = file is null ? null : MediaFileProbe.Read(file);
         report.AppendLine($"      stage recording: {file} ({(file is null ? 0 : new FileInfo(file).Length)} bytes, {probe?.Width}x{probe?.Height}, {probe?.DurationSeconds:0.0}s)");
         Check("the stage recording is a 1280×720 MP4 that plays", probe is { IsPlayable: true, Width: 1280, Height: 720, DurationSeconds: > 1.5 });
-        if (file is null || await FrameFromAsync(file, 30) is not { } frame || program.Last is not { } programPixels) return true;
+        // Its last picture, from when the stage display was drawn for comparison: on a busy PC the screen's
+        // feed takes a moment to start, so the first second can be blank.
+        if (file is null || await FrameFromAsync(file, int.MaxValue) is not { } frame || program.Last is not { } programPixels) return true;
         Write(BitmapSource.Create(frame.Width, frame.Height, 96, 96, PixelFormats.Pbgra32, null, frame.Pixels, frame.Width * 4), "21-stage-recording-frame");
         Write(BitmapSource.Create(program.Width, program.Height, 96, 96, PixelFormats.Pbgra32, null, programPixels, program.Width * 4), "21-program-meanwhile");
         var toStage = Difference(frame.Pixels, frame.Width, frame.Height, stageNow, 1280, 720);
@@ -227,8 +229,8 @@ public sealed partial class SelfTest
         var live = model.Broadcast.Streaming.Live;
         Check("a stream preset replays the newest recording", problem is null && live?.FileSource is not null && live.MediaDurationSeconds > 1);
         Check("replaying doesn't record the replay again", model.Broadcast.Recording.Sessions.All(s => s.PresetId != preset.Id));
-        // Up to 6 seconds: opening the file and starting Windows' decoders can take a while on a slow PC.
-        for (var i = 0; i < 60 && live?.FileSource?.FramesDelivered is not > 20; i++) await Delay(100);
+        // Up to 20 seconds: opening the file and starting Windows' decoders can take a while on a slow PC.
+        await WhenShown(() => live?.FileSource?.FramesDelivered > 20, 20);
         report.AppendLine($"      replay: {live?.FileSource?.FramesDelivered} pictures decoded, {live?.FileSource?.FramesDropped} dropped, toolbar \"{model.BroadcastButtonText}\"");
         Check("the replayed file is decoded as it streams", live?.FileSource?.FramesDelivered > 20);
         model.StopBroadcast(preset.Id);
@@ -273,6 +275,8 @@ public sealed partial class SelfTest
             if (model.Library.All<MediaItem>().FirstOrDefault(m => m.RecordedAt is not null && m.Name == name) is { } item
                 && model.Library.BlobPath(item) is { } blob)
             {
+                // The library files it on a background thread; the Media tab's list follows on the UI thread a moment later.
+                await WhenShown(() => model.MediaItems.Any(m => m.Item.Id == item.Id), 10);
                 Check($"a finished recording appears in the Media tab ({item.Folder}, recorded by its preset)",
                     model.MediaItems.Any(m => m.Item.Id == item.Id) && item.RecordedByPresetId is { Length: > 0 } by && by == session.PresetId);
                 return blob;

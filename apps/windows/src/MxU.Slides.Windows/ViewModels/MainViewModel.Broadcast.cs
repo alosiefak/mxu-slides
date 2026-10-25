@@ -103,6 +103,9 @@ public sealed partial class MainViewModel
         created.Recording.StatusChanged += _ => UpdateBroadcastStatus();
         created.RecordingFiled += item => System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
         {
+            // The item was saved (and its tile made) just before its file moved into the library,
+            // so a busy PC can draw the new tile as FILE MISSING. The file is there now: look again.
+            MarkMediaFiles();
             LastFiledRecording = item;
             Notice = $"Recording saved: \"{item.Name}\" is in the Media tab.";
             BroadcastChanged?.Invoke();

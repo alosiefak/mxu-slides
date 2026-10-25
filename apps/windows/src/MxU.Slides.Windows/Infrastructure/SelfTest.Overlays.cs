@@ -98,10 +98,12 @@ public sealed partial class SelfTest
             Save(editor, "17-overlay-editor-animation");
 
             vm.PlayPreviewCommand.Execute(null);
+            var previewing = editor.CanvasEditor.IsPreviewing; // read at once: on a slow PC the picture below can take longer than the preview
             await Delay(450);
             Save(editor, "17-overlay-editor-preview");
-            Check("Play previews the animation on the canvas", editor.CanvasEditor.IsPreviewing);
-            await Delay((int)(vm.PreviewDuration * 1000) + 900);
+            Check("Play previews the animation on the canvas", previewing);
+            // It ends on the editor's own clock, ticked on the UI thread: wait for it (a slow PC ticks late).
+            await WhenShown(() => !editor.CanvasEditor.IsPreviewing, vm.PreviewDuration + 10);
             Check("the preview ends by itself and goes back to editing", !editor.CanvasEditor.IsPreviewing);
             vm.ShowingOverlayTab = true;
             await Delay(400);
@@ -113,9 +115,10 @@ public sealed partial class SelfTest
 
             // Fire it from the editor and see it on the program.
             vm.ToggleLiveCommand.Execute(null);
+            bool Up() => model.IsOverlayLive(overlay.Id) && vm.IsLive && AudienceText().Contains("Grace Okafor") && VisibleAudienceText().Contains("Grace Okafor");
             await Delay(1500);
-            Check("Go Live puts the new overlay on the program", model.IsOverlayLive(overlay.Id) && vm.IsLive
-                && AudienceText().Contains("Grace Okafor") && VisibleAudienceText().Contains("Grace Okafor"));
+            await WhenShown(Up, 10);
+            Check("Go Live puts the new overlay on the program", Up());
             Check("its mask is wired on the program", model.Show.Scene().AllItems.Any(i => i.MatteGroup == matte.Id)
                 && model.Show.Scene().AllItems.Any(i => i.MaskedBy == matte.Id));
             await Snapshot("17-overlay-program", model.Show.Scene());
@@ -130,6 +133,7 @@ public sealed partial class SelfTest
             vm.ToggleLiveCommand.Execute(null);
             Check("Take Down plays its Out first", model.Show.IsLeaving(overlay.Id));
             await Delay(1500);
+            await WhenShown(() => !AudienceText().Contains("Grace Okafor") && !vm.IsLive, 10); // taken off once its Out has played
             Check("…then it leaves the program", !AudienceText().Contains("Grace Okafor") && !vm.IsLive);
 
             model.ShowingOverlays = true;

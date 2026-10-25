@@ -390,6 +390,13 @@ Not on Windows (yet): SRT, HDR/HEVC streaming, ProRes recording, and signing in 
 - **Pretending to be a different PC.** Two environment variables make this PC behave like the GitHub test machine, to reproduce its problems here:
   - `MXU_SLIDES_CAPTURE=software` makes recording and streaming use the slower software copy (no graphics-card capture);
   - `MXU_SLIDES_AUDIO=none` makes the app see no sound devices at all.
+- **How the self-test copes with a slow PC.** The GitHub machine is several times slower than a laptop. A check that sleeps a fixed time and then looks ("wait 300 ms, then the video should be paused") passes on a fast PC and fails there, because the app simply hasn't got round to it yet. So the checks **wait for what they're looking for** instead. `Until(...)` (`SelfTest.Sound.cs`) and `WhenShown(...)` (`SelfTest.Show.cs`) look again every 50 ms until the condition is true, and give up only after a generous limit, usually 10 to 15 seconds. On a fast PC they return straight away, so the run is no slower. Four more habits:
+  - **A clock is compared with the time that really passed.** "Item Remaining shows about 2:00" became "Item Remaining shows 2:00 less the seconds since the row was fired", measured with the computer's clock. On the GitHub machine 7 seconds passed between firing and looking, so the right answer there is 1:53.
+  - **A picture is taken from a frame drawn after the change.** Each captured frame carries the time it was drawn. "Wait 250 ms, then take the newest frame" could hand back a frame from before the change on a busy PC, which captures late. So `FrameAfter` (`SelfTest.Slow.cs`) waits for a frame drawn at least 250 ms after it.
+  - **Something that must happen at a moment is done at that moment.** To test holding a 1.2-second slide timer, the test used to wait 300 ms and then press hold. On a slow PC the timer could run out first. Now the test listens for the chip changing (`AutoAdvance.Changed`) and holds the timer the instant it starts.
+  - **Windows' own media calls get a time limit** (`SelfTest.Slow.cs`). On the GitHub machine, Windows' video encoder (`MediaComposition.RenderToFileAsync`) can start making the test video and never finish. After 90 seconds the test stops waiting, writes a NOTE and reports the video checks as SKIP, like the other checks that need hardware.
+
+  To try it here, set the two variables above and keep the computer busy while the self-test runs.
 
 ## 27. Looks: one slide, a different design on each screen (Phase 4)
 
@@ -667,6 +674,7 @@ As on the Mac, a finished recording is filed into the media library, so it appea
 2. When it's finished, `Broadcast/Library/RecordingLibrary.Adopt` fingerprints it, saves a `MediaItem` (folder "Recordings" unless the preset says otherwise, with when and by which preset it was recorded) and moves the file into the library's Blobs folder. This runs on its own thread (`BroadcastController.FileRecordingsIntoLibrary`), so the screen never waits for a long recording.
 3. **Also copy to** puts a copy in an ordinary folder too, such as Videos\MxU Slides, OneDrive or Dropbox.
 4. If the app stops before a recording is filed, the file is still in the spool. The next launch files it. The item is saved before the file moves, so this never makes two items.
+5. Saving the item makes the Media tab add its tile at once, a moment *before* the file has moved. On a busy PC the tile could be drawn in that moment and stay marked "FILE MISSING". So when filing finishes (`RecordingFiled`), the Media tab checks its files again.
 
 **Something learnt the hard way:** in a COM interface, .NET sends a `byte[]` as a SAFEARRAY unless told otherwise. Media Foundation expects a plain pointer. So reading a blob overwrote memory and crashed the app, and the MP4 writer had been giving Windows a garbage H.264 header; recordings only played because the decoder found the real one inside the video. Every blob in `MediaFoundationInterop.cs` is now marked `LPArray`, and `MediaFoundationBlobTests` checks a blob round-trips byte for byte.
 

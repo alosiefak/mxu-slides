@@ -146,15 +146,22 @@ public sealed partial class SelfTest
             Check("a long lyric shows only its first page on the lower third",
                 page1.StartsWith("Amazing grace", StringComparison.Ordinal) && page1.Length < LongLyric.Length * 0.7);
             Check("its pages count as clicks", model.Show.SlideClickCount >= 2);
-            Check("the projector's design holds the whole lyric", VisibleText(model.Show.AnimatedScene()).Contains("As long as life endures", StringComparison.Ordinal));
+            bool WholeLyric() => VisibleText(model.Show.AnimatedScene()).Contains("As long as life endures", StringComparison.Ordinal);
+            await WhenShown(WholeLyric, 10); // once its words have come in (a slow PC draws them late)
+            Check("the projector's design holds the whole lyric", WholeLyric());
             if (outputs.ShownScene(lower.Id) is { } before) await Snapshot("21-page-1", before);
             if (sinkA.Last is { } first && sinkA.Width == 1280)
                 Write(BitmapSource.Create(1280, 720, 96, 96, PixelFormats.Pbgra32, null, first, 1280 * 4), "21-page-1-output");
             model.NextCommand.Execute(null);
             await Delay(1500);
-            var page2 = VisibleText(outputs.ShownScene(lower.Id));
-            Check("Next turns the lower third to the next page",
-                page2.Length > 0 && page2 != page1 && !page2.StartsWith("Amazing grace", StringComparison.Ordinal) && LongLyric.Contains(page2.Split('\n')[0], StringComparison.Ordinal));
+            var page2 = "";
+            bool Turned()
+            {
+                page2 = VisibleText(outputs.ShownScene(lower.Id));
+                return page2.Length > 0 && page2 != page1 && !page2.StartsWith("Amazing grace", StringComparison.Ordinal) && LongLyric.Contains(page2.Split('\n')[0], StringComparison.Ordinal);
+            }
+            await WhenShown(Turned, 10); // the page turn plays the old page out first
+            Check("Next turns the lower third to the next page", Turned());
             if (outputs.ShownScene(lower.Id) is { } after) await Snapshot("21-page-2", after);
             if (sinkA.Last is { } second && sinkA.Width == 1280)
                 Write(BitmapSource.Create(1280, 720, 96, 96, PixelFormats.Pbgra32, null, second, 1280 * 4), "21-page-2-output");
@@ -199,12 +206,14 @@ public sealed partial class SelfTest
             var song = RenderTestSong(theme);
             FireSlide(song, 0);
             await Delay(1500);
-            var startedAt = DateTime.UtcNow;
+            var changedAt = ShowState.HostClock();
             FireSlide(song, 2);
             double peak = 0;
             byte[]? peakFrame = null;
-            // The whole 1.6 s fade (and a little more): a busy PC can capture the white middle late.
-            while (DateTime.UtcNow - startedAt < TimeSpan.FromSeconds(2.0))
+            // The whole 1.6 s fade (and a little more), judged by when the pictures were drawn: a busy
+            // PC can capture the white middle late, so it's watched until a picture from after 2 s arrives.
+            var giveUp = DateTime.UtcNow.AddSeconds(10);
+            while (sink.LastTime < changedAt + 2.0 && DateTime.UtcNow < giveUp)
             {
                 await Delay(40);
                 if (sink.Last is { } frame && sink.Width > 0)
@@ -217,8 +226,7 @@ public sealed partial class SelfTest
                     }
                 }
             }
-            await Delay(800);
-            if (peakFrame is not null && sink.Last is { } landed)
+            if (peakFrame is not null && await FrameAfter(sink, changedAt + 2.8) is { } landed)
             {
                 Write(BitmapSource.Create(sink.Width, sink.Height, 96, 96, PixelFormats.Pbgra32, null, peakFrame, sink.Width * 4), "22-transition-fade-white-middle");
                 Write(BitmapSource.Create(sink.Width, sink.Height, 96, 96, PixelFormats.Pbgra32, null, landed, sink.Width * 4), "22-transition-landed");
@@ -276,10 +284,13 @@ public sealed partial class SelfTest
             ],
         };
         var deck = new Presentation { Id = "selftest-trails", Name = "Trails", PresentationKind = PresentationKind.Deck, Slides = [] };
-        void Show(Slide slide)
+        // Shows a slide; returns when, so the picture can be taken from a frame drawn a set time after it.
+        double Show(Slide slide)
         {
+            var at = ShowState.HostClock();
             model.Show.Fire(slide, deck);
             model.RenderOutputs(SceneTransition.Cut);
+            return at;
         }
 
         var sink = new CountingSink();
@@ -288,7 +299,7 @@ public sealed partial class SelfTest
         {
             // The trails are blended by a pixel shader. A capture that draws in software (no graphics
             // card, or a fallback capture) can't show shader effects, so first check one shows at all.
-            Show(new Slide
+            var probeShown = Show(new Slide
             {
                 Id = "selftest-trails-probe", Name = "Probe",
                 Objects =
@@ -301,8 +312,7 @@ public sealed partial class SelfTest
                     },
                 ],
             });
-            await Delay(700);
-            if (sink.Last is not { } probe || sink.Width == 0)
+            if (await FrameAfter(sink, probeShown + 0.7) is not { } probe || sink.Width == 0)
             {
                 Skip("Echo and Ghost Trails on the outputs", "this PC's graphics-card capture gave no frames");
                 return;
@@ -315,17 +325,12 @@ public sealed partial class SelfTest
             }
 
             List<Effect> echo = [new Effect { EffectKind = EffectKind.Echo, Amount = 2 }];
-            Show(Dot("selftest-echo-left", TextHorizontalAlignment.Left, echo));
-            await Delay(900);
-            Show(Dot("selftest-echo-right", TextHorizontalAlignment.Right, echo));
-            await Delay(250);
-            var withEcho = sink.Last;
+            // Each picture is a frame drawn at least that long after the change (a busy PC captures late).
+            await FrameAfter(sink, Show(Dot("selftest-echo-left", TextHorizontalAlignment.Left, echo)) + 0.9);
+            var withEcho = await FrameAfter(sink, Show(Dot("selftest-echo-right", TextHorizontalAlignment.Right, echo)) + 0.25);
             var width = sink.Width;
-            Show(Dot("selftest-plain-left", TextHorizontalAlignment.Left, null));
-            await Delay(900);
-            Show(Dot("selftest-plain-right", TextHorizontalAlignment.Right, null));
-            await Delay(250);
-            var withoutEcho = sink.Last;
+            await FrameAfter(sink, Show(Dot("selftest-plain-left", TextHorizontalAlignment.Left, null)) + 0.9);
+            var withoutEcho = await FrameAfter(sink, Show(Dot("selftest-plain-right", TextHorizontalAlignment.Right, null)) + 0.25);
             if (withEcho is not null && withoutEcho is not null && width > 0)
             {
                 var height = withEcho.Length / 4 / width;
@@ -342,12 +347,8 @@ public sealed partial class SelfTest
                 Skip("Echo on the outputs", "this PC's graphics-card capture gave no frames");
             }
 
-            Show(Word("selftest-ghost-plain", null));
-            await Delay(700);
-            var plain = sink.Last;
-            Show(Word("selftest-ghost", [new Effect { EffectKind = EffectKind.GhostTrails, Fade = 1.5, Amount = 10, Scale = 140, Speed = 1 }]));
-            await Delay(1500);
-            var ghosted = sink.Last;
+            var plain = await FrameAfter(sink, Show(Word("selftest-ghost-plain", null)) + 0.7);
+            var ghosted = await FrameAfter(sink, Show(Word("selftest-ghost", [new Effect { EffectKind = EffectKind.GhostTrails, Fade = 1.5, Amount = 10, Scale = 140, Speed = 1 }])) + 1.5);
             Check("ghost trails keep a history while they're on screen", TrailStore.Count > 0);
             if (plain is not null && ghosted is not null && width > 0)
             {

@@ -493,8 +493,12 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await http.PostAsync("/v1/show/clear-all", null);
             Check("POST /v1/show/clear-all clears everything", model.Show.IsEmpty);
 
-            await Delay(500);
-            lock (frames) Check("the WebSocket pushes show changes", frames.Any(f => f.Contains("\"topic\":\"show\"") && f.Contains(song.Id)));
+            bool Pushed()
+            {
+                lock (frames) return frames.Any(f => f.Contains("\"topic\":\"show\"") && f.Contains(song.Id));
+            }
+            await WhenShown(Pushed, 10); // the frames arrive on the socket's own time
+            Check("the WebSocket pushes show changes", Pushed());
             await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
             await Task.WhenAny(reading, Task.Delay(2000));
 
@@ -552,6 +556,9 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
         public byte[]? Last;
         public int Width, Height;
 
+        /// <summary>When the last frame was drawn (ShowState.HostClock), so a check can wait for one drawn after a change.</summary>
+        public double LastTime = double.NegativeInfinity;
+
         public void WriteVideo(Core.Media.VideoFrame frame)
         {
             lock (gate)
@@ -560,6 +567,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
                 Width = frame.Width;
                 Height = frame.Height;
                 Last = frame.Pixels.ToArray();
+                LastTime = frame.HostTime;
             }
         }
 
@@ -617,7 +625,8 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             Skip("live inputs over NDI", error.ToString() ?? "NDI isn't installed");
             return;
         }
-        const string source = "MxU self-test camera";
+        // Named for this run: two self-tests on one PC would otherwise send (and find) the same source.
+        var source = $"MxU self-test camera {Environment.ProcessId}";
         using var sender = new VideoIO.Ndi.NdiOutput(source);
         sender.Start();
         int w = 640, h = 360;
@@ -640,15 +649,15 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             Check("a live input appears as a tile in the Media tab", tile is not null);
             if (tile is null) return;
             model.InputClickedCommand.Execute(tile);
-            for (var i = 0; i < 100 && model.Media.LiveInputPicture(entry.EngineId) is null; i++) await Delay(100);
+            await WhenShown(() => model.Media.LiveInputPicture(entry.EngineId) is not null, 20); // finding the source and connecting take a while on a busy PC
             Check("an NDI source shows as a live input", model.Media.LiveInputPicture(entry.EngineId) is { PixelWidth: 640 });
             if (model.Program is { } feed)
             {
                 var sink = new CountingSink();
                 feed.Add(sink);
-                await Delay(1200);
+                var frame = await FrameAfter(sink, ShowState.HostClock() + 1.2); // a picture drawn 1.2 s on (a busy PC captures late)
                 feed.Remove(sink);
-                if (sink.Last is { } frame && sink.Width > 0)
+                if (frame is not null && sink.Width > 0)
                 {
                     var c = (sink.Height / 2 * sink.Width + sink.Width / 2) * 4;
                     Check("the input's picture reaches the program (under the slides)", frame[c + 2] > 180 && frame[c + 1] < 80 && frame[c] > 180);
@@ -800,7 +809,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             Check("the timeline plays", model.TimelinePlaying);
             var seen = new List<string>();
             var pictured = false;
-            var deadline = DateTime.Now.AddSeconds(4);
+            var deadline = DateTime.Now.AddSeconds(15); // the take lasts 1.2 s; the picture taken on the way can be slow
             while (DateTime.Now < deadline && !seen.Contains(third))
             {
                 if (model.Show.Live?.Slide.Id is { } live && (seen.Count == 0 || seen[^1] != live)) seen.Add(live);
@@ -833,19 +842,21 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
         var path = Path.Combine(Path.GetTempPath(), $"MxU self-test tone {Guid.NewGuid():N}.wav");
         try
         {
-            WriteTone(path, seconds: 6);
+            // 30 s: the show-flow checks play it again later and need it still playing after
+            // several slow steps (a 6 s tone could end by itself, making "it stops" pass for nothing).
+            WriteTone(path, seconds: 30);
             model.ImportAudioFiles([path]);
             var tile = model.AudioTiles.FirstOrDefault(t => t.Item is not null && t.Name.StartsWith("MxU self-test tone", StringComparison.Ordinal));
             Check("a music file imports into the library", tile is { Item.DurationSeconds: > 5 });
             if (tile is null) return;
             model.Bin = BinTab.Music;
             model.AudioTileClickedCommand.Execute(tile);
-            await Delay(1200);
+            await WhenShown(() => tile.IsPlaying && model.Audio.Status().Any(b => b.Playing && b.AudioItemId == tile.Item!.Id), 10);
             Check("music plays from its tile", tile.IsPlaying && model.Audio.Status().Any(b => b.Playing && b.AudioItemId == tile.Item!.Id));
             Check("now playing shows the song and time", model.NowPlaying.Contains("MxU self-test tone"));
             await Step("17-music", () => { }, settle: 300);
             model.ClearAudioCommand.Execute(null);
-            await Delay(2500);
+            await WhenShown(() => !model.Audio.Status().Any(b => b.Playing), 10); // it fades out first
             Check("F5 stops the music", !model.Audio.Status().Any(b => b.Playing));
             model.Bin = BinTab.Media;
         }
@@ -957,7 +968,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
         }
         var config = outputs.Config;
         var screen = config.AddScreen("NDI self-test", 1280, 720)!;
-        const string source = "MxU Slides self-test";
+        var source = $"MxU Slides self-test {Environment.ProcessId}"; // named for this run, as the camera above
         try
         {
             config.AssignDevice(screen.Id, Core.Outputs.OutputDevice.Ndi(source), "NDI self-test");
@@ -1090,23 +1101,31 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
     private async Task VideoCheck()
     {
         string? path = null;
+        using var limit = new CancellationTokenSource(TestVideoTimeLimit); // the encoder can hang on a slow PC (SelfTest.Slow.cs)
         try
         {
             var still = model.MediaItems.FirstOrDefault(m => !m.IsVideo);
             if (still is null || model.Library.BlobPath(still.Item) is not { } image) return;
             path = Path.Combine(Path.GetTempPath(), $"MxU self-test video {Guid.NewGuid():N}.mp4");
-            var file = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(image);
+            var file = await Limited(global::Windows.Storage.StorageFile.GetFileFromPathAsync(image), limit.Token);
             var composition = new global::Windows.Media.Editing.MediaComposition();
-            composition.Clips.Add(await global::Windows.Media.Editing.MediaClip.CreateFromImageFileAsync(file, TimeSpan.FromSeconds(3)));
-            var folder = await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(path)!);
-            var target = await folder.CreateFileAsync(Path.GetFileName(path), global::Windows.Storage.CreationCollisionOption.ReplaceExisting);
+            // 10 s: long enough that a slow PC can't reach its end before the show-flow checks pause it on the transport strip.
+            composition.Clips.Add(await Limited(global::Windows.Media.Editing.MediaClip.CreateFromImageFileAsync(file, TimeSpan.FromSeconds(10)), limit.Token));
+            var folder = await Limited(global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(path)!), limit.Token);
+            var target = await Limited(folder.CreateFileAsync(Path.GetFileName(path), global::Windows.Storage.CreationCollisionOption.ReplaceExisting), limit.Token);
             var profile = global::Windows.Media.MediaProperties.MediaEncodingProfile.CreateMp4(global::Windows.Media.MediaProperties.VideoEncodingQuality.HD720p);
-            var result = await composition.RenderToFileAsync(target, global::Windows.Media.Editing.MediaTrimmingPreference.Fast, profile);
+            var result = await Limited(composition.RenderToFileAsync(target, global::Windows.Media.Editing.MediaTrimmingPreference.Fast, profile), limit.Token);
             if (result != global::Windows.Media.Transcoding.TranscodeFailureReason.None)
             {
                 report.AppendLine($"NOTE  couldn't make a test video ({result}); video playback not checked");
                 return;
             }
+        }
+        catch (OperationCanceledException) when (limit.IsCancellationRequested)
+        {
+            report.AppendLine($"NOTE  couldn't make a test video in {TestVideoTimeLimit.TotalSeconds:0} s; video playback not checked");
+            Skip("video playback", TestVideoTimedOut);
+            return;
         }
         catch (Exception ex)
         {
