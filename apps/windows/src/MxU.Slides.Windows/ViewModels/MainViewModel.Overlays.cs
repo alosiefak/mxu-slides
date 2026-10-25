@@ -92,10 +92,15 @@ public sealed partial class MainViewModel
     {
         FlushOverlaySave();
         OverlayTextFields.Clear();
-        if (value is null) return;
+        if (value is null)
+        {
+            AddMotionFields(null);
+            return;
+        }
         var wiring = SlideSceneBuilder.MaskWiring(value.Overlay.Objects);
         foreach (var o in value.Overlay.Objects.Where(o => o.ObjectKind == SlideObjectKind.Text && o.TextLink is null && !wiring.Mattes.Contains(o.Id)))
             OverlayTextFields.Add(new SlideTextFieldViewModel(o, OverlayEdited));
+        AddMotionFields(value); // a motion template's own fields (MainViewModel.MotionTemplates.cs)
     }
 
     public void RefreshOverlays()
@@ -167,7 +172,8 @@ public sealed partial class MainViewModel
     private void SetOverlay(Overlay overlay, bool up)
     {
         var now = ShowState.HostClock();
-        if (up) Show.Fire(overlay, now);
+        // A motion template goes up as its live animation (MainViewModel.MotionTemplates.cs).
+        if (up) Show.Fire(ForShow(overlay, now), now);
         else Show.DismissOverlay(overlay.Id, now);
         if (AnimationSequence.HasAnimationSteps(overlay.Objects)) RenderOutputs(Rendering.SceneTransition.Cut, refreshOnly: true);
         else RenderOutputs(DefaultTransition());
@@ -222,7 +228,7 @@ public sealed partial class MainViewModel
         OverlayContentChanged?.Invoke(overlay);
         if (IsOverlayLive(overlay.Id))
         {
-            Show.OverlayEdited(overlay);
+            Show.OverlayEdited(ForShow(overlay, upAt: null));
             RenderOutputs(Rendering.SceneTransition.Cut, refreshOnly: true);
         }
         if (pendingOverlaySave is { } other && other.Id != overlay.Id) FlushOverlaySave();
@@ -277,7 +283,7 @@ public sealed partial class MainViewModel
         Library.Save(overlay);
         if (IsOverlayLive(overlay.Id))
         {
-            Show.OverlayEdited(overlay);
+            Show.OverlayEdited(ForShow(overlay, upAt: null));
             RenderOutputs(Rendering.SceneTransition.Cut, refreshOnly: true);
         }
     }

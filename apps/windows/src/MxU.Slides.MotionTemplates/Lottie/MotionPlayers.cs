@@ -123,17 +123,30 @@ public sealed class LiveMotion
 
     internal void MarkFinished() => Volatile.Write(ref finished, true);
 
-    /// <summary>Hands the picture just drawn (in <see cref="Back"/>) to the screens.</summary>
-    internal void Publish(double frame, double milliseconds)
+    // What changed in each of the last few pictures, so a screen a picture or two behind copies only that.
+    private readonly PixelRect[] changes = new PixelRect[8];
+
+    /// <summary>Hands the picture just drawn (in <see cref="Back"/>) to the screens; <paramref name="changed"/> is what differs from the one before.</summary>
+    internal void Publish(double frame, double milliseconds, PixelRect changed)
     {
         lock (Gate)
         {
             (Front, Back) = (Back, Front);
             shownFrame = frame;
             version++;
+            changes[version % changes.Length] = changed;
             drawMilliseconds += milliseconds;
         }
         Interlocked.Increment(ref framesDrawn);
+    }
+
+    /// <summary>The part that changed between picture <paramref name="since"/> and now (all of it when that's too long ago). Call under <see cref="Gate"/>.</summary>
+    internal PixelRect ChangedSince(int since)
+    {
+        if (since <= 0 || version - since >= changes.Length) return new PixelRect(0, 0, Width, Height);
+        var union = default(PixelRect);
+        for (var v = since + 1; v <= version; v++) union = union.Union(changes[v % changes.Length]);
+        return union;
     }
 
     internal void Dispose()
@@ -262,16 +275,17 @@ public sealed class MotionPlayers : IDisposable
 
     /// <summary>
     /// If <paramref name="id"/> has a picture newer than <paramref name="version"/>, hands it to
-    /// <paramref name="copy"/> (while the drawing thread waits to swap) and moves
-    /// <paramref name="version"/> on. Keep <paramref name="copy"/> quick: it's one copy of the pixels.
+    /// <paramref name="copy"/> (while the drawing thread waits to swap) with the part that changed
+    /// since that version, and moves <paramref name="version"/> on. Keep <paramref name="copy"/>
+    /// quick: it's one copy of (part of) the pixels.
     /// </summary>
-    public bool CopyLatest(string id, ref int version, Action<LottieFrame> copy)
+    public bool CopyLatest(string id, ref int version, Action<LottieFrame, PixelRect> copy)
     {
         if (this[id] is not { } motion) return false;
         lock (motion.Gate)
         {
             if (motion.Version == version || motion.Version == 0) return false;
-            copy(motion.Front);
+            copy(motion.Front, motion.ChangedSince(version));
             version = motion.Version;
             return true;
         }
@@ -346,10 +360,11 @@ public sealed class MotionPlayers : IDisposable
         if (!motion.Redraw && frame == motion.ShownFrame) return;
         var started = Stopwatch.GetTimestamp();
         // Nothing moved since the last picture (a lower third holding still): no new picture needed.
-        if (!motion.Renderer.Seek(frame) && !motion.Redraw) return;
+        if (!motion.Renderer.Seek(frame, motion.Width, motion.Height, out var region) && !motion.Redraw) return;
+        if (motion.Redraw) region = new PixelRect(0, 0, motion.Width, motion.Height);
         motion.Redraw = false;
         motion.Renderer.RenderCurrent(motion.Back);
-        motion.Publish(frame, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+        motion.Publish(frame, Stopwatch.GetElapsedTime(started).TotalMilliseconds, region);
     }
 
     public void Dispose()

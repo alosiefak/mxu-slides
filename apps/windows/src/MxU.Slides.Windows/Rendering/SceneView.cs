@@ -1165,7 +1165,7 @@ public sealed partial class SceneView : FrameworkElement
         usesKey(MediaHub.LiveKey(mediaId));
         if (media!.LiveInputPicture(mediaId) is { } picture)
             dc.DrawImage(picture, Place(new Size(picture.PixelWidth, picture.PixelHeight), frame, mode));
-        else if (!isFill)
+        else if (!isFill && !MediaHub.IsMotion(mediaId))
             DrawPlaceholder(dc, frame, $"Waiting for {media.LiveInputName?.Invoke(mediaId) ?? "the input"}…", failed: false);
     }
 
@@ -1186,6 +1186,8 @@ public sealed partial class SceneView : FrameworkElement
         bool isFill = false)
     {
         if (media is null || frame.Width <= 0 || frame.Height <= 0) return;
+        // A full-screen motion template's video, while its animation plays live in its place (MediaHub.Motion.cs).
+        if (media.MotionStandIn(mediaId) is { } standIn) mediaId = standIn;
         dc.PushClip(clip);
         try
         {

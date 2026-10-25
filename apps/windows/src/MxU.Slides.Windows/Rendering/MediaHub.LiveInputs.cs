@@ -56,9 +56,9 @@ public sealed partial class MediaHub
     /// <summary>The newest picture of a mirrored screen (<c>screen::id</c>), set by the app from its screen mirrors.</summary>
     public Func<string, VideoFrame?>? ScreenFrames { get; set; }
 
-    /// <summary>A picture that changes by itself and is drawn the same way: a live input or a mirror of one of the app's screens.</summary>
+    /// <summary>A picture that changes by itself and is drawn the same way: a live input, a mirror of one of the app's screens, or a motion template playing (MediaHub.Motion.cs).</summary>
     public static bool IsLivePicture(string mediaId) =>
-        IsLiveInput(mediaId) || mediaId.StartsWith("screen::", StringComparison.Ordinal);
+        IsLiveInput(mediaId) || mediaId.StartsWith("screen::", StringComparison.Ordinal) || IsMotion(mediaId);
 
     /// <summary>
     /// The picture for a live input, updated in place as frames arrive; null until its first frame
@@ -66,6 +66,7 @@ public sealed partial class MediaHub
     /// </summary>
     public BitmapSource? LiveInputPicture(string mediaId)
     {
+        if (IsMotion(mediaId)) return MotionPictureFor(mediaId);
         if (!liveInputs.TryGetValue(mediaId, out var input)) liveInputs[mediaId] = input = new LiveInput();
         input.LastAsked = DateTime.UtcNow;
         if (!liveHooked)

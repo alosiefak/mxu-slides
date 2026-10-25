@@ -7,6 +7,32 @@ using SkiaSharp.Skottie;
 
 namespace MxU.Slides.MotionTemplates.Lottie;
 
+/// <summary>A rectangle of pixels.</summary>
+public readonly record struct PixelRect(int X, int Y, int Width, int Height)
+{
+    public bool IsEmpty => Width <= 0 || Height <= 0;
+
+    /// <summary>The rectangle from (<paramref name="left"/>, <paramref name="top"/>) to (<paramref name="right"/>, <paramref name="bottom"/>), cut to a picture of the given size.</summary>
+    public static PixelRect Clipped(int left, int top, int right, int bottom, int width, int height)
+    {
+        left = Math.Clamp(left, 0, width);
+        top = Math.Clamp(top, 0, height);
+        right = Math.Clamp(right, left, width);
+        bottom = Math.Clamp(bottom, top, height);
+        return new PixelRect(left, top, right - left, bottom - top);
+    }
+
+    /// <summary>The smallest rectangle holding both (an empty one adds nothing).</summary>
+    public PixelRect Union(PixelRect other)
+    {
+        if (IsEmpty) return other;
+        if (other.IsEmpty) return this;
+        var left = Math.Min(X, other.X);
+        var top = Math.Min(Y, other.Y);
+        return new PixelRect(left, top, Math.Max(X + Width, other.X + other.Width) - left, Math.Max(Y + Height, other.Y + other.Height) - top);
+    }
+}
+
 /// <summary>
 /// A picture a <see cref="LottieRenderer"/> draws into: premultiplied BGRA, top row first, in
 /// memory that never moves (it's allocated pinned), so Skia can draw straight into it and the
@@ -80,16 +106,43 @@ public sealed class LottieRenderer : IDisposable
     /// keeps track of what each move changes, so a lower third holding still reports no change and
     /// needn't be drawn again.
     /// </summary>
-    public bool Seek(double frame)
+    public bool Seek(double frame) => Seek(frame, 0, 0, out _);
+
+    /// <summary>
+    /// <see cref="Seek(double)"/>, also saying which part of a <paramref name="width"/> × <paramref name="height"/>
+    /// picture changed (a little bigger, to cover soft edges), so a screen copying the new picture
+    /// need copy only that part. The first move changes everything.
+    /// </summary>
+    public bool Seek(double frame, int width, int height, out PixelRect changed)
     {
         changes.Reset();
         changes.Begin();
         // Skottie counts frames from the animation's in point.
         animation.SeekFrame(Math.Clamp(frame, Document.InPoint, Document.OutPoint) - Document.InPoint, changes);
         changes.End();
-        var changed = !moved || !changes.Bounds.IsEmpty;
+        var first = !moved;
         moved = true;
-        return changed;
+        var bounds = changes.Bounds;
+        if (first)
+        {
+            changed = new PixelRect(0, 0, width, height);
+            return true;
+        }
+        if (bounds.IsEmpty)
+        {
+            changed = default;
+            return false;
+        }
+        // From the animation's own coordinates to the picture's: the same fit as drawing uses.
+        var scale = Math.Min(width / destination.Width, height / destination.Height);
+        var offsetX = (width - destination.Width * scale) / 2;
+        var offsetY = (height - destination.Height * scale) / 2;
+        var left = (int)Math.Floor(bounds.Left * scale + offsetX) - 2;
+        var top = (int)Math.Floor(bounds.Top * scale + offsetY) - 2;
+        var right = (int)Math.Ceiling(bounds.Right * scale + offsetX) + 2;
+        var bottom = (int)Math.Ceiling(bounds.Bottom * scale + offsetY) + 2;
+        changed = PixelRect.Clipped(left, top, right, bottom, width, height);
+        return true;
     }
 
     /// <summary>Draws frame <paramref name="frame"/> into <paramref name="target"/>, fitted and centred.</summary>
