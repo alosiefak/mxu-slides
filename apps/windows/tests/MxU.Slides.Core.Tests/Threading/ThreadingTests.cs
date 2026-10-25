@@ -36,6 +36,16 @@ public class ShowTimeProviderTests
 {
     private static readonly TimeSpan Never = Timeout.InfiniteTimeSpan;
 
+    /// <summary>
+    /// Waits for a condition rather than a fixed time: with several test projects running at once,
+    /// the timer's thread can wake late, and a fixed sleep then sees too few ticks.
+    /// </summary>
+    private static void Until(Func<bool> condition, double seconds = 10)
+    {
+        var limit = Stopwatch.StartNew();
+        while (!condition() && limit.Elapsed.TotalSeconds < seconds) Thread.Sleep(5);
+    }
+
     [Fact]
     public void AOneShotFiresOnceAfterItsDueTime()
     {
@@ -63,11 +73,15 @@ public class ShowTimeProviderTests
         using var clock = new ShowTimeProvider("test clock");
         var count = 0;
         var timer = clock.CreateTimer(_ => Interlocked.Increment(ref count), null, TimeSpan.Zero, TimeSpan.FromMilliseconds(20));
-        Thread.Sleep(300);
+        // Until it has repeated a few times, then no faster than its period: one tick at once, then one per 20 ms.
+        var running = Stopwatch.StartNew();
+        Until(() => Volatile.Read(ref count) >= 5);
         timer.Dispose();
         var atDispose = Volatile.Read(ref count);
+        var ran = running.Elapsed.TotalMilliseconds;
         Thread.Sleep(150);
-        Assert.InRange(atDispose, 5, 20);
+        Assert.True(atDispose >= 5, $"{atDispose} ticks in {ran:0} ms");
+        Assert.True(atDispose <= ran / 20 + 2, $"{atDispose} ticks in {ran:0} ms is faster than one per 20 ms");
         Assert.Equal(atDispose, Volatile.Read(ref count));
     }
 
@@ -78,10 +92,11 @@ public class ShowTimeProviderTests
         var count = 0;
         using var timer = clock.CreateTimer(_ => Interlocked.Increment(ref count), null, TimeSpan.FromSeconds(30), Never);
         Assert.True(timer.Change(TimeSpan.FromMilliseconds(10), Never));
-        Thread.Sleep(200);
+        Until(() => Volatile.Read(ref count) >= 1);
+        Thread.Sleep(100); // a one-shot: it doesn't fire again
         Assert.Equal(1, Volatile.Read(ref count));
         Assert.True(timer.Change(TimeSpan.Zero, TimeSpan.FromMilliseconds(10)));
-        Thread.Sleep(100);
+        Until(() => Volatile.Read(ref count) > 3);
         Assert.True(timer.Change(Never, Never));
         var stopped = Volatile.Read(ref count);
         Thread.Sleep(100);
@@ -110,7 +125,7 @@ public class ShowTimeProviderTests
             Interlocked.Increment(ref calls);
             throw new InvalidOperationException("boom");
         }, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(15));
-        Thread.Sleep(200);
+        Until(() => Volatile.Read(ref calls) >= 3);
         // Stop it, and let a tick that was already running finish, before comparing the counts.
         timer.Dispose();
         Thread.Sleep(50);
@@ -133,13 +148,18 @@ public class ShowTimeProviderTests
                 Thread.Sleep(200);
             }
         }, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(20));
-        Thread.Sleep(320);
+        var running = Stopwatch.StartNew();
+        Until(() => { lock (stamps) return stamps.Count >= 8; });
+        var ran = running.Elapsed.TotalMilliseconds;
         lock (stamps)
         {
-            // About 200 ms lost to the slow tick, then ticks every ~20 ms: not ten at once.
+            // About 200 ms lost to the slow tick, then ticks every ~20 ms: not the ten it missed at once.
+            // A tick that woke late can be followed closely by the next one on time, but never by
+            // several in a row: that would be catching up.
             var gaps = stamps.Zip(stamps.Skip(1), (a, b) => (b - a) * 1000.0 / Stopwatch.Frequency).Skip(1).ToList();
-            Assert.True(stamps.Count <= 10, $"{stamps.Count} ticks");
-            Assert.DoesNotContain(gaps.Take(3), g => g < 5);
+            var bursts = gaps.Zip(gaps.Skip(1), (a, b) => a < 5 && b < 5).Count(quick => quick);
+            Assert.True(bursts == 0, $"ticks in a burst after the slow one, gaps {string.Join(", ", gaps.Select(g => g.ToString("0")))} ms");
+            Assert.True(stamps.Count <= (ran - 200) / 20 + 3, $"{stamps.Count} ticks in {ran:0} ms");
         }
     }
 

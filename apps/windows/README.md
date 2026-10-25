@@ -33,10 +33,12 @@ Re-run both after pulling changes to update. Your library is stored separately a
 ## Test it
 
 ```powershell
-dotnet test --solution apps\windows\MxUSlides.slnx      # 1,900+ unit tests: lyrics, animation, timers, the API, both importers
+dotnet test --solution apps\windows\MxUSlides.slnx --max-parallel-test-modules 3   # 2,800 unit tests: lyrics, animation, timers, sound, the API, both importers
 pwsh apps\windows\scripts\self-test.ps1                 # drives the real app through a service, saves pictures, checks the output
 pwsh apps\windows\scripts\display-demo.ps1              # shows the output on your second screen (projector, TV) and photographs it
 ```
+
+`--max-parallel-test-modules 3` runs three test projects at a time instead of all of them. Some tests measure real time (sound, recording, timers), and with every project running at once they compete for the processor and fail at random. It's also faster.
 
 The self-test uses a throwaway library. Its report and a picture of every step are written to `%TEMP%\MxU Slides self-test`. Run it on any new computer before a Sunday.
 

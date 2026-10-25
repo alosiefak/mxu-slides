@@ -32,8 +32,10 @@ jobs:
       - name: Build
         run: dotnet build MxUSlides.slnx -c Release
 
+      # Two test projects at a time: the runner has four cores, and the tests that measure real time
+      # (sound, recording, timers) fail at random when every project runs at once.
       - name: Unit tests
-        run: dotnet test --solution MxUSlides.slnx -c Release --no-build
+        run: dotnet test --solution MxUSlides.slnx -c Release --no-build --max-parallel-test-modules 2
 
       - name: Self-test (drives the real app and saves pictures)
         shell: pwsh

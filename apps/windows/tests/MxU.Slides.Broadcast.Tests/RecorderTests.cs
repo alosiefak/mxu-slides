@@ -46,10 +46,25 @@ public sealed class RecorderTests : IDisposable
         for (var frame = 0; frame < frames; frame++)
         {
             recorder.Append(Gray(configuration.Width, configuration.Height, 1000 + frame * interval));
+            if (frame == 0) await FirstFrameWritten(recorder);
             await Task.Delay(TimeSpan.FromSeconds(interval), Ct);
         }
         await recorder.FinishAsync();
         return (recorder, path);
+    }
+
+    /// <summary>
+    /// Waits until the recorder has written its first picture. Its encoder starts on its own thread
+    /// when the first picture comes, while up to 8 more wait in its queue (a quarter of a second at
+    /// 30 a second). On a busy PC, such as several test projects at once, starting it can take longer
+    /// and the test's next pictures would be dropped. These tests are about steady recording, and the
+    /// pictures carry their own times, so waiting here doesn't change the file.
+    /// </summary>
+    private async Task FirstFrameWritten(Recorder recorder)
+    {
+        var limit = DateTime.UtcNow.AddSeconds(10);
+        while (recorder.Status.AppendedFrames + recorder.Status.DroppedFrames == 0 && DateTime.UtcNow < limit)
+            await Task.Delay(10, Ct);
     }
 
     [Fact]
@@ -125,6 +140,7 @@ public sealed class RecorderTests : IDisposable
             {
                 var pixels = NoisyFrame(random, 640, 360);
                 recorder.Append(new VideoFrame(640, 360, 640 * 4, pixels, 1000 + frame / 30.0));
+                if (frame == 0) await FirstFrameWritten(recorder);
                 await Task.Delay(33, Ct);
             }
             await recorder.FinishAsync();

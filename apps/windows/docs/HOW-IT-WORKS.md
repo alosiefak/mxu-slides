@@ -397,6 +397,7 @@ Not on Windows (yet): SRT, HDR/HEVC streaming, ProRes recording, and signing in 
   - **Windows' own media calls get a time limit** (`SelfTest.Slow.cs`). On the GitHub machine, Windows' video encoder (`MediaComposition.RenderToFileAsync`) can start making the test video and never finish. After 90 seconds the test stops waiting, writes a NOTE and reports the video checks as SKIP, like the other checks that need hardware.
 
   To try it here, set the two variables above and keep the computer busy while the self-test runs.
+- **The unit tests run a few projects at a time** (`--max-parallel-test-modules`: 3 on a laptop, 2 on GitHub's four-core machine). `dotnet test` normally runs every test project at once. The ones that measure real time, a 20 ms timer or a recording at 30 pictures a second, then compete with Phase 6's heavy ones, which draw motion-background frames on every core, and fail at random. A few at a time is steadier, and faster too. The same lesson goes for the self-test: run one at a time. Six at once on one laptop failed checks that pass on their own.
 
 ## 27. Looks: one slide, a different design on each screen (Phase 4)
 
