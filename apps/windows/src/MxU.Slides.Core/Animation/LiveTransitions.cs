@@ -103,6 +103,15 @@ public static class LiveTransitions
     public static SceneTransition? Fallback(SceneTransition? transition) =>
         transition is { Kind: SceneTransitionKind.Picture, Picture: { } picture } ? From(picture.ToShared()) : transition;
 
+    /// <summary>
+    /// What a view drawn by WPF's software drawing plays instead of a picture transition (a feed on
+    /// the software copy, a PC without a graphics card): a plain Dissolve at the same length, the
+    /// cheapest transition to draw there. Not the nearest kind: a Blur Dissolve's blur costs software
+    /// drawing several seconds a 1080p frame. Anything else plays as it is.
+    /// </summary>
+    public static SceneTransition? InSoftware(SceneTransition? transition) =>
+        transition is { Kind: SceneTransitionKind.Picture } ? new SceneTransition(SceneTransitionKind.Dissolve, transition.Duration) : transition;
+
     /// <summary>A cue's own transition: the Windows one kept beside the library when there is one, else the shared one.</summary>
     private static SceneTransition? Own(Transition? shared, WindowsTransition? windows) => windows is not null ? FromWindows(windows) : From(shared);
 

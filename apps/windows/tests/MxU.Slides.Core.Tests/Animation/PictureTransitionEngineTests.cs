@@ -134,6 +134,20 @@ public class PictureTransitionEngineTests
     }
 
     [Fact]
+    public void DrawnInSoftwareEveryPictureTransitionIsAPlainDissolve()
+    {
+        // Even the blurred ones, whose nearest Mac kind (a Blur Dissolve) costs software drawing far more.
+        foreach (var kind in WindowsTransitions.WindowsOnly)
+        {
+            var plain = LiveTransitions.InSoftware(LiveTransitions.FromWindows(new WindowsTransition { Kind = kind, DurationSeconds = 1.25 }))!;
+            Assert.Equal((SceneTransitionKind.Dissolve, 1.25, (WindowsTransition?)null), (plain.Kind, plain.Duration, plain.Picture));
+        }
+        var blur = new SceneTransition(SceneTransitionKind.BlurDissolve, 1);
+        Assert.Same(blur, LiveTransitions.InSoftware(blur)); // the Mac's kinds play exactly as they always have
+        Assert.Null(LiveTransitions.InSoftware(null));
+    }
+
+    [Fact]
     public void ASlidesWindowsTransitionWinsOverItsFallbackAndItsPresentations()
     {
         var room = RoomTransitions.MacDefault;

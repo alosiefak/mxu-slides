@@ -50,7 +50,7 @@ public sealed class ProgramFeed(MediaHub media, int width = 1920, int height = 1
             if (sinks.Count > 1) return;
         }
         // Same playback scope as the audience window, so videos share its player and stay in step.
-        view = new SceneView { Media = media, PlaysVideo = true, PlaybackScope = "live" };
+        view = new SceneView { Media = media, PlaysVideo = true, PlaybackScope = "live", CopiedInSoftware = () => UsesSoftwareCopy };
         capture = new HiddenCapture(view, Width, Height, FrameRate, Sinks, "MxU Slides program feed");
         ActiveChanged?.Invoke();
     }

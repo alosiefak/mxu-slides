@@ -53,6 +53,7 @@ public sealed class DeviceFeed : IDisposable
             if (index < 0)
             {
                 var view = new SliceView(w.SliceId, w.ScreenId, media, w.PlaybackScope);
+                view.View.CopiedInSoftware = () => capture?.UsesSoftwareCopy == true;
                 surface.Children.Add(view);
                 slices.Add((view, w.Placement));
                 index = slices.Count - 1;

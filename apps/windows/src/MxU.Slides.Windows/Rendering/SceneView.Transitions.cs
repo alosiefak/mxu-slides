@@ -187,16 +187,40 @@ public sealed partial class SceneView
     }
 
     /// <summary>
-    /// The transitions this view can draw: a picture transition its PC can't run a shader for at all
-    /// plays as the nearest of the Mac's kinds instead (<see cref="LiveTransitions.Fallback"/>).
+    /// Set by a capture that draws this view (the program feed, a screen's or a device's feed): true
+    /// while it copies the picture with WPF's software drawing instead of the graphics card (the
+    /// software copy, HOW-IT-WORKS section 17). The shaders do draw in software (they're ps_2_0), but
+    /// slowly: a 1080p frame of a push takes about half a second, a zoom through nearly two, and the
+    /// copy runs on the UI thread, so the operator's screen and the outputs would stall with it.
+    /// While this is true the view plays a plain Dissolve instead (<see cref="LiveTransitions.InSoftware"/>).
+    /// The screens themselves, drawn by the graphics card, still play the real transition.
     /// </summary>
-    private static Func<LayerKind, LayerTransition?> Drawable(Func<LayerKind, LayerTransition?> transitionFor) => layer =>
+    public Func<bool>? CopiedInSoftware { get; set; }
+
+    /// <summary>
+    /// The transitions this view can draw. A picture transition plays instead as:
+    /// <list type="bullet">
+    /// <item>a plain Dissolve at the same length (<see cref="LiveTransitions.InSoftware"/>) when the view
+    /// is copied in software (<see cref="CopiedInSoftware"/>), or when it's a live view (one that plays
+    /// video) and WPF draws everything in software on this PC (no graphics card, or some remote desktop
+    /// sessions: "rendering tier 0"), where each frame of one would cost too much to keep the screens
+    /// moving. Thumbnails and the picker's small previews still play them there: they're small enough
+    /// to draw quickly.</item>
+    /// <item>the nearest of the Mac's kinds, at the same length (<see cref="LiveTransitions.Fallback"/>),
+    /// when this PC can't run its shader at all.</item>
+    /// </list>
+    /// </summary>
+    private Func<LayerKind, LayerTransition?> Drawable(Func<LayerKind, LayerTransition?> transitionFor)
     {
-        var transition = transitionFor(layer);
-        return transition is { Kind: SceneTransitionKind.Picture, Picture: { } picture } && !TransitionShaders.CanDraw(picture.Kind)
-            ? LiveTransitions.Fallback(transition)
-            : transition;
-    };
+        var software = CopiedInSoftware?.Invoke() == true || PlaysVideo && RenderCapability.Tier >> 16 == 0;
+        return layer =>
+        {
+            var transition = transitionFor(layer);
+            if (transition is not { Kind: SceneTransitionKind.Picture, Picture: { } picture }) return transition;
+            if (software) return LiveTransitions.InSoftware(transition);
+            return TransitionShaders.CanDraw(picture.Kind) ? transition : LiveTransitions.Fallback(transition);
+        };
+    }
 
     private bool warmedGraphicsCard;
 
