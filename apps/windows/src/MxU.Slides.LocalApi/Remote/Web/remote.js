@@ -73,10 +73,11 @@
       if (text) act(() => api('POST', '/remote/stage-message', { text }), 'Sent to the stage');
     });
     $('stage-clear').addEventListener('click', () => act(() => api('POST', '/remote/stage-message', { text: '' })));
-    // Keyboard shortcuts on a laptop or a tablet with a keyboard (a presenter clicker sends these too).
+    // Keyboard shortcuts on a laptop or a tablet with a keyboard (a presenter clicker sends Page Down and Up).
+    // Not the space bar: it already presses whichever button has the focus, which would make two steps.
     document.addEventListener('keydown', event => {
       if (event.target.closest('input, textarea') || state.session?.scope === 'view') return;
-      if (['ArrowRight', 'PageDown', ' '].includes(event.key)) { event.preventDefault(); $('next').click(); }
+      if (['ArrowRight', 'PageDown'].includes(event.key)) { event.preventDefault(); $('next').click(); }
       if (['ArrowLeft', 'PageUp'].includes(event.key)) { event.preventDefault(); $('prev').click(); }
     });
   }
