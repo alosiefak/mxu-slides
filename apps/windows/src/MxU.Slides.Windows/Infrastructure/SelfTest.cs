@@ -39,6 +39,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
     public async Task RunAsync()
     {
         Directory.CreateDirectory(folder);
+        using var trail = new Trail(this);
         report.AppendLine($"MxU Slides self-test {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         report.AppendLine($"Displays: {string.Join("; ", Displays.All().Select(d => d.Label))}");
         try

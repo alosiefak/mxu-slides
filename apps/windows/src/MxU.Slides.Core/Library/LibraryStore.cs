@@ -60,6 +60,11 @@ public sealed class LibraryStore
     public IMediaProber? Prober { get; set; }
 
     public string TrashDirectory => Path.Combine(Root, "Trash");
+
+    /// <summary>Windows-only additions to this library's documents, kept where the Mac never looks (WindowsExtras.cs).</summary>
+    public WindowsExtras Extras => extras ??= new WindowsExtras(Root);
+
+    private WindowsExtras? extras;
     public string QuarantineDirectory => Path.Combine(Root, "Quarantine");
     public string BackupDirectory => Path.Combine(Root, "Backups");
 
@@ -299,6 +304,15 @@ public sealed class LibraryStore
             foreach (var file in Directory.EnumerateFiles(source, pattern))
                 File.Copy(file, Path.Combine(target, Path.GetFileName(file)), overwrite: true);
         }
+        // The Windows-only additions to documents (WindowsExtras), one folder per kind.
+        var extras = Path.Combine(Root, WindowsExtras.FolderName);
+        if (Directory.Exists(extras))
+            foreach (var file in Directory.EnumerateFiles(extras, "*.json", SearchOption.AllDirectories))
+            {
+                var target = Path.Combine(temp, WindowsExtras.FolderName, Path.GetRelativePath(extras, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(file, target, overwrite: true);
+            }
         Directory.Move(temp, folder);
         foreach (var old in Directory.EnumerateDirectories(BackupDirectory)
                      .Where(d => !d.EndsWith(".partial", StringComparison.Ordinal))

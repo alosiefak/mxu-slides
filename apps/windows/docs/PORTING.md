@@ -190,6 +190,7 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
 | `Sources/AnimationInspector.swift` (gallery, sequence list, step strip and editor) | `ViewModels/OverlayEditorViewModel.Animation.cs`, `ViewModels/AnimationStepViewModel.cs` |
 | `Sources/SlideObjectInspector.swift` (as a reusable panel) | `Views/ObjectInspectorPanel.xaml` over `ViewModels/ObjectInspectorViewModel.cs` |
 | `Sources/MaskEditor.swift` (SwiftUI and AppKit) | `Views/MaskEditorWindow.cs` |
+| `PresenterCore/…/Diagnostics/ThreadStackCapture.swift` | `MxU.Slides.Windows/Infrastructure/ThreadStacks.cs` (Microsoft's ClrMD reads the stacks from a snapshot of the app; so far only the self-test's hang watchdog uses it) |
 | `MediaEngine/…/MediaEngine.swift` (`setAudioOutputDevice`, `setAudioOutputDelay`, `setAudioVolume`), `MediaPlayer.swift` (`audioOutputDeviceUniqueID`), `VideoAudioTap.swift` (the playout delay): AVPlayer plays its own sound | `MxU.Slides.Audio/Video/` (`VideoSound`, `VideoSoundPlayer`, `VideoClockFollower`, `TimeStretch`), `MxU.Slides.Windows/Rendering/MediaHub.Sound.cs`: the picture player is muted and our engine plays the sound, following its clock |
 | `Sources/Modules/AlertsModule.swift`, `TimersModule.swift`, `ConfidenceModule.swift`, `OutputsModule.swift`, `Sources/LivePanel.swift` (preview, screen picker, Open in Window), `OutputPresetChip.swift`, `AppShell.swift` (transition chips), `SettingsView.swift` (present.emptyRepeatsOnce, present.nextSkipsBlanks) | `MxU.Slides.Windows/Views/Operator/*` (`AlertsPanel`, `TimersPanel`, `StagePanel`, `ScreensPanel`, `LiveToolbar`, `PreviewPopOutWindow`, `PresentSettingsSection`, `OperatorKit`), `ViewModels/MainViewModel.{Alerts,Timers,Outputs,Present}.cs` |
 
@@ -215,6 +216,7 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
   - Per-screen Live / Off in `Outputs/OutputManager.cs`.
   - `Audio/Video/VideoClockFollower.cs` and `TimeStretch.cs`: the Mac's AVPlayer keeps its own sound in step.
   - `MultitrackVarispeed.Reset` and `PlaylistLibrary.MoveBy`.
+- `Infrastructure/SelfTest.Trail.cs`: the self-test's report written as it goes, and its watchdog for a stuck UI thread. `AudioDeviceList.SimulatesNoDevices` (`MXU_SLIDES_AUDIO=none`): act as a PC with no sound devices, as the GitHub test machine is.
 
 ## Not ported yet
 

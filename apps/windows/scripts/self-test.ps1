@@ -22,9 +22,17 @@ $env:MXU_SLIDES_LOCAL = "$sandbox\local"
 $exe = Get-ChildItem (Join-Path $root 'src\MxU.Slides.Windows\bin\Debug') -Recurse -Filter MxUSlides.exe | Select-Object -First 1
 $process = Start-Process -FilePath $exe.FullName -ArgumentList '--self-test', "`"$Out`"" -PassThru
 # Up to 15 minutes: the full run takes about 6 on a laptop, longer on a slow or busy PC.
-if (-not $process.WaitForExit(900000)) { Stop-Process -Id $process.Id -Force; throw 'Self-test timed out' }
+$finished = $process.WaitForExit(900000)
+if (-not $finished) { Stop-Process -Id $process.Id -Force }
 # Keep the app's log beside the pictures (CI uploads the folder), then throw the library away.
 Copy-Item -Recurse -Force "$sandbox\local\Logs" (Join-Path $Out 'Logs') -ErrorAction SilentlyContinue
+if (-not $finished) {
+  # What it got through before it stopped (written as it goes), and where it stuck.
+  $partial = Join-Path $Out 'report.partial.txt'
+  if (Test-Path $partial) { Get-Content $partial | Select-Object -Last 15 }
+  Remove-Item -Recurse -Force $sandbox -ErrorAction SilentlyContinue
+  throw 'Self-test timed out'
+}
 Remove-Item -Recurse -Force $sandbox -ErrorAction SilentlyContinue
 
 $report = Join-Path $Out 'report.txt'

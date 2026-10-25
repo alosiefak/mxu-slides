@@ -23,12 +23,19 @@ public static class AudioDeviceList
     private static readonly Lock externalGate = new();
     private static List<AudioInputDevice> externalInputs = [];
 
+    /// <summary>
+    /// MXU_SLIDES_AUDIO=none: behave as a PC with no sound devices at all (Windows lists none and
+    /// none can be opened), as the GitHub test machine is. It reproduces that machine on any PC.
+    /// </summary>
+    public static bool SimulatesNoDevices { get; } =
+        string.Equals(Environment.GetEnvironmentVariable("MXU_SLIDES_AUDIO"), "none", StringComparison.OrdinalIgnoreCase);
+
     public static IReadOnlyList<AudioOutputDevice> OutputDevices() =>
         Mta.Run(() => Endpoints(DataFlow.Render).Select(d => new AudioOutputDevice(d.Uid, d.Name, d.Channels, d.Rate)).ToList())
         ?? [];
 
     /// <summary>Where Windows sends sound by default (the multimedia role); null when there is no device.</summary>
-    public static AudioOutputDevice? DefaultOutputDevice() => Mta.Run(() =>
+    public static AudioOutputDevice? DefaultOutputDevice() => SimulatesNoDevices ? null : Mta.Run(() =>
     {
         using var enumerator = new MMDeviceEnumerator();
         if (!enumerator.HasDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia)) return null;
@@ -78,6 +85,7 @@ public static class AudioDeviceList
     private static List<(string Uid, string Name, int Channels, int Rate)> Endpoints(DataFlow flow)
     {
         var found = new List<(string, string, int, int)>();
+        if (SimulatesNoDevices) return found;
         using var enumerator = new MMDeviceEnumerator();
         foreach (var device in enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active))
         {
@@ -116,6 +124,7 @@ public static class AudioDeviceList
     /// <summary>The endpoint for <paramref name="uid"/> (null = the default), if it is plugged in. Call on an MTA thread.</summary>
     internal static MMDevice? OpenEndpoint(MMDeviceEnumerator enumerator, DataFlow flow, string? uid)
     {
+        if (SimulatesNoDevices) return null;
         if (uid is null)
             return enumerator.HasDefaultAudioEndpoint(flow, Role.Multimedia) ? enumerator.GetDefaultAudioEndpoint(flow, Role.Multimedia) : null;
         try
@@ -131,7 +140,7 @@ public static class AudioDeviceList
         }
     }
 
-    internal static string? DefaultEndpointId(DataFlow flow) => Mta.Run(() =>
+    internal static string? DefaultEndpointId(DataFlow flow) => SimulatesNoDevices ? null : Mta.Run(() =>
     {
         using var enumerator = new MMDeviceEnumerator();
         if (!enumerator.HasDefaultAudioEndpoint(flow, Role.Multimedia)) return null;
