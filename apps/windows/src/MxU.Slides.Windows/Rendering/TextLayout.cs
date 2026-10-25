@@ -276,7 +276,9 @@ public sealed class TextLayout
 
         public TextLayout Arrange(double scale, SceneRect inner)
         {
-            var wrapped = Wrap(scale, inner.Width);
+            // Balancing never changes how many lines there are, so only the final layout needs it
+            // (fitting and paging measure the plain wrap).
+            var wrapped = Wrap(scale, inner.Width, balance: text.BalancedWrap);
             var total = TotalHeight(wrapped, scale);
             var y = text.VerticalAlignment switch
             {
@@ -342,7 +344,7 @@ public sealed class TextLayout
 
         private static string BoldOf(string fontName) => FontMap.WithTraits(fontName, bold: true, italic: false);
 
-        private List<Wrapped> Wrap(double scale, double width)
+        private List<Wrapped> Wrap(double scale, double width, bool balance = false)
         {
             var result = new List<Wrapped>();
             for (var p = 0; p < paragraphs.Length; p++)
@@ -356,20 +358,50 @@ public sealed class TextLayout
                     result.Add(Line(p, 0, paragraph, scale, chordRow));
                     continue;
                 }
-                var start = 0;
-                var firstAvailable = Math.Max(1, width - text.LeftIndent - text.FirstLineIndent - text.RightIndent);
-                var restAvailable = Math.Max(1, width - text.LeftIndent - text.RightIndent);
-                while (start < paragraph.Length)
-                {
-                    var available = start == 0 ? firstAvailable : restAvailable;
-                    var end = LineEnd(p, paragraph, start, available, scale);
-                    var lineText = paragraph[start..end].TrimEnd(' ');
-                    result.Add(Line(p, start, lineText, scale, chordRow));
-                    start = end;
-                    while (start < paragraph.Length && paragraph[start] == ' ') start++;
-                }
+                var paragraphWidth = balance ? BalancedWidth(p, paragraph, scale, width) : width;
+                foreach (var (start, end) in Breaks(p, paragraph, scale, paragraphWidth))
+                    result.Add(Line(p, start, paragraph[start..end].TrimEnd(' '), scale, chordRow));
             }
             return result;
+        }
+
+        /// <summary>Where a paragraph's lines start and end at a width (breaking at spaces, as <see cref="LineEnd"/> does).</summary>
+        private List<(int Start, int End)> Breaks(int p, string paragraph, double scale, double width)
+        {
+            var breaks = new List<(int, int)>();
+            var start = 0;
+            var firstAvailable = Math.Max(1, width - text.LeftIndent - text.FirstLineIndent - text.RightIndent);
+            var restAvailable = Math.Max(1, width - text.LeftIndent - text.RightIndent);
+            while (start < paragraph.Length)
+            {
+                var available = start == 0 ? firstAvailable : restAvailable;
+                var end = LineEnd(p, paragraph, start, available, scale);
+                breaks.Add((start, end));
+                start = end;
+                while (start < paragraph.Length && paragraph[start] == ' ') start++;
+            }
+            return breaks;
+        }
+
+        /// <summary>
+        /// Balanced wrap (the Mac's balancedLineInsets): the narrowest width that still wraps the
+        /// paragraph onto as many lines as the full width does, so its lines come out even instead of
+        /// leaving one word alone on the last ("THAT SAVED A / WRETCH LIKE ME", not "… LIKE / ME").
+        /// The lines are still placed in the full box, so centred text stays centred.
+        /// </summary>
+        private double BalancedWidth(int p, string paragraph, double scale, double width)
+        {
+            var rows = Breaks(p, paragraph, scale, width).Count;
+            // One line, or one long word (nothing to move between lines): leave it be.
+            if (rows <= 1 || !paragraph.Trim().Contains(' ')) return width;
+            double lo = 1, hi = width;
+            for (var i = 0; i < 20; i++)
+            {
+                var mid = (lo + hi) / 2;
+                if (Breaks(p, paragraph, scale, mid).Count == rows) hi = mid; else lo = mid;
+            }
+            var balanced = Math.Ceiling(hi * 1000) / 1000;
+            return width - balanced >= 1 ? balanced : width;
         }
 
         /// <summary>The end index of the longest run from <paramref name="start"/> that fits, breaking at spaces.</summary>
@@ -459,7 +491,7 @@ public sealed class TextLayout
             .Append(t.LineHeightMultiple).Append('|').Append(t.Tracking).Append('|').Append(t.AutoShrink).Append(t.MinFontSize).Append(t.KeepLinesWhole).Append('|')
             .Append(t.InsetTop).Append(',').Append(t.InsetLeft).Append(',').Append(t.InsetBottom).Append(',').Append(t.InsetRight).Append('|')
             .Append(t.FirstLineIndent).Append(',').Append(t.LeftIndent).Append(',').Append(t.RightIndent).Append(',').Append(t.ParagraphSpacing).Append('|')
-            .Append(t.Underline).Append(t.Strikethrough).Append(t.TabularFigures).Append('|').Append(t.ChordColor).Append('|')
+            .Append(t.Underline).Append(t.Strikethrough).Append(t.TabularFigures).Append(t.BalancedWrap).Append('|').Append(t.ChordColor).Append('|')
             .Append(frame.Width).Append('x').Append(frame.Height).Append('@').Append(frame.X).Append(',').Append(frame.Y).Append('|').Append(ppd);
         foreach (var o in t.LineOverrides) b.Append("|o").Append(o);
         foreach (var r in t.StyleRuns) b.Append("|r").Append(r);

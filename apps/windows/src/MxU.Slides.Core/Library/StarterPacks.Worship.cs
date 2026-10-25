@@ -82,7 +82,7 @@ public static partial class StarterPacks
             Lyric: "DMSerifDisplay-Regular", Display: "DMSerifDisplay-Regular", Body: "Montserrat-Regular", Kicker: "Montserrat-SemiBold",
             Quote: "DMSerifDisplay-Italic", Title: "DMSerifDisplay-Regular",
             Ink: "#F6F0E6FF", Soft: "#F6F0E6B8", Accent: "#D8B47AFF", InkOnAccent: "#15120EFF",
-            Plate: "#110F0CE6", Plate2: "#110F0C00", Backdrop: "#0F0D0BFF",
+            Plate: "#110F0CE6", Plate2: "#1E1A15E6", Backdrop: "#0F0D0BFF",
             Caps: false, Centered: true, LyricSize: 86, LyricLine: 1.12, LyricTracking: 0, KickerTracking: 10,
             Radius: 0, Motion: Motion.Focus, Rise: 22, Stagger: 0.32, Shadow: "#00000080"),
         _ => new(
@@ -142,7 +142,7 @@ public static partial class StarterPacks
         private SlideObject Label(string id, string name, string text, double x, double y, double w, double h, double size, string font,
             string? color = null, TextHorizontalAlignment align = TextHorizontalAlignment.Left, TextVerticalAlignment valign = TextVerticalAlignment.Middle,
             double tracking = 0, bool caps = false, double lineHeight = 1, bool shrink = false, bool page = false, ObjectShadow? shadow = null,
-            TextLink? link = null, List<AnimationStep>? steps = null) => new()
+            TextLink? link = null, bool balanced = true, List<AnimationStep>? steps = null) => new()
         {
             Id = id, ObjectKind = SlideObjectKind.Text, Name = name, Text = text, X = x, Y = y, Width = w, Height = h,
             TextLink = link,
@@ -150,7 +150,10 @@ public static partial class StarterPacks
             {
                 FontName = font, FontSize = size, ColorHex = color ?? look.Ink, Tracking = tracking, LineHeightMultiple = lineHeight,
                 HorizontalAlignment = align, VerticalAlignment = valign, TextTransform = caps ? TextTransform.Uppercase : null,
-                AutoShrink = shrink ? true : null, PageOnClick = page ? true : null, Shadow = shadow,
+                // Text that shrinks to fit stops at three quarters of its size; past that a third pages instead of turning tiny.
+                AutoShrink = shrink ? true : null, MinFontSize = shrink ? Math.Round(size * 0.75) : null, PageOnClick = page ? true : null, Shadow = shadow,
+                // Even lines: no word left alone on the last line of a lyric (the Mac's balanced wrap).
+                BalancedWrap = balanced && link is null ? true : null,
                 TabularFigures = link is { Source: TextSourceKind.Timer } ? true : null,
                 InsetLeft = 0, InsetRight = 0,
             },
@@ -316,7 +319,7 @@ public static partial class StarterPacks
                 _ => (180.0, 160.0, 1560.0, 760.0),
             };
             var text = Label($"{b}.text", "Lyrics", SampleLyrics, x, y, w, h, look.LyricSize, look.Lyric, align: Align,
-                tracking: look.LyricTracking, caps: look.Caps, lineHeight: look.LyricLine, shadow: TextShadow(), steps: [.. textIn, .. textOut]);
+                tracking: look.LyricTracking, caps: look.Caps, lineHeight: look.LyricLine, shrink: true, shadow: TextShadow(), steps: [.. textIn, .. textOut]);
             Kinetically(text, b);
             var objects = new List<SlideObject> { text };
             var order = Ids(textIn, textOut);
@@ -507,13 +510,14 @@ public static partial class StarterPacks
             var pillW = 340.0;
             var pillX = look.Centered ? cx + (cw - pillW) / 2 : cx + 80;
             var align = Align;
+            // The card goes first so it draws behind the words; the heading is still the first text (the slide's text lands there).
             return FullSlide("ctaFull", "Call to Action",
             [
-                Label($"{b}.head", "Heading", "Next Steps", cx + 80, cy + 80, cw - 160, 120, Arena ? 96 : 84, Arena ? "Montserrat-Black" : look.Display,
-                    align: align, caps: Arena, steps: [.. headIn, .. headOut]),
                 Block($"{b}.card", "Card", cx, cy, cw, ch, fill: Gradient(135, (look.Plate2, 0), (look.Plate, 1)), radius: Minimal ? 28 : look.Radius,
                     stroke: Serif ? new ObjectStroke { ColorHex = WithAlpha(look.Accent, 0.6), Width = 1.5 } : null,
                     shadow: new ObjectShadow { ColorHex = "#00000080", BlurRadius = 40, OffsetX = 0, OffsetY = 16 }, steps: [.. cardIn, .. cardOut]),
+                Label($"{b}.head", "Heading", "Next Steps", cx + 80, cy + 80, cw - 160, 120, Arena ? 96 : 84, Arena ? "Montserrat-Black" : look.Display,
+                    align: align, caps: Arena, steps: [.. headIn, .. headOut]),
                 Label($"{b}.body", "Body", "Text NEXT to 555-0100 or stop by the Welcome Desk after the service.", cx + 80, cy + 220, cw - 160, 150,
                     40, look.Body, look.Soft, align, lineHeight: 1.25, valign: TextVerticalAlignment.Top, steps: [.. bodyIn, .. bodyOut]),
                 Block($"{b}.pill", "Button", pillX, cy + ch - 150, pillW, 76, color: look.Accent, radius: Arena || Serif ? 0 : 38, steps: [.. pillIn, .. pillOut]),
@@ -546,18 +550,19 @@ public static partial class StarterPacks
                 align: TextHorizontalAlignment.Center, tracking: Arena ? 8 : 4, lineHeight: 0.9, shadow: TextShadow(40, 8),
                 link: new TextLink { Source = TextSourceKind.Timer, TimerPattern = "MM:ss", UsesWarningColor = false },
                 steps: [.. digitsIn, .. digitsOut]);
+            // The small words sit on a busy background, so they get a soft shadow too.
             var kicker = Serif
-                ? Label($"{b}.kicker", "Kicker", "Service starts in", 160, 250, 1600, 90, 58, "DMSerifDisplay-Italic", look.Accent,
-                    TextHorizontalAlignment.Center, steps: [.. kickIn, .. kickOut])
-                : Label($"{b}.kicker", "Kicker", "Service starts in", 160, 270, 1600, 60, Arena ? 34 : 30, look.Kicker, look.Accent,
-                    TextHorizontalAlignment.Center, tracking: Arena ? 16 : look.KickerTracking + 4, caps: true, steps: [.. kickIn, .. kickOut]);
+                ? Label($"{b}.kicker", "Kicker", "Service starts in", 160, 238, 1600, 90, 58, "DMSerifDisplay-Italic", look.Accent,
+                    TextHorizontalAlignment.Center, shadow: TextShadow(16, 2), steps: [.. kickIn, .. kickOut])
+                : Label($"{b}.kicker", "Kicker", "Service starts in", 160, 252, 1600, 60, Arena ? 34 : 30, look.Kicker, look.Accent,
+                    TextHorizontalAlignment.Center, tracking: Arena ? 16 : look.KickerTracking + 4, caps: true, shadow: TextShadow(16, 2), steps: [.. kickIn, .. kickOut]);
             return FullSlide("countdown", "Countdown",
             [
                 kicker,
                 digits,
                 Block($"{b}.rule", "Rule", 900, 780, 120, Serif ? 1.5 : 4, color: look.Accent, radius: 0, steps: [.. ruleIn, .. ruleOut]),
                 Label($"{b}.message", "Message", "Grab a coffee and find a seat. We're so glad you're here.", 260, 810, 1400, 60, 32, look.Body, look.Soft,
-                    TextHorizontalAlignment.Center, tracking: 0.5, steps: [.. messageIn, .. messageOut]),
+                    TextHorizontalAlignment.Center, tracking: 0.5, shadow: TextShadow(16, 2), steps: [.. messageIn, .. messageOut]),
             ], Ids(kickIn, digitsIn, ruleIn, messageIn, digitsOut, kickOut, messageOut, ruleOut));
         }
 
