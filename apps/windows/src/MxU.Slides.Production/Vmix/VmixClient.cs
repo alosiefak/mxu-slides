@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net.Sockets;
 using System.Xml;
 using System.Xml.Linq;
 using MxU.Slides.Production.Devices;
@@ -14,7 +15,9 @@ namespace MxU.Slides.Production.Vmix;
 /// <para>
 /// HTTP has no connection to watch, so a poll thread asks for the state every 3 s and sets the
 /// status light from the answer (and the inputs the pickers offer). A command while vMix
-/// doesn't answer is skipped at once rather than waiting out a time limit.
+/// doesn't answer is skipped at once rather than waiting out a time limit. A command vMix
+/// doesn't answer in time counts the same way: the ones after it are skipped at once until
+/// the poll hears from vMix again, rather than each waiting its own 2 s.
 /// </para>
 /// </summary>
 public sealed class VmixClient : ProductionDevice
@@ -84,7 +87,18 @@ public sealed class VmixClient : ProductionDevice
     private Task<bool> Call(string what, string path) => Enqueue(what, () =>
     {
         if (!online) return NotConnected(what);
-        var reply = Get(path);
+        MiniHttp.Response reply;
+        try
+        {
+            reply = Get(path);
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or TimeoutException)
+        {
+            online = false;
+            Note($"{what}: {ex.Message}");
+            SetStatus(DeviceState.Problem, $"No answer from {Where}; trying again…");
+            return false;
+        }
         if (reply.Status == 200)
         {
             Note($"sent {what}");

@@ -35,7 +35,10 @@ public static class ObsAuth
 /// answers each (op 7) with the same id; it also sends Events (op 5) when things change.</item>
 /// </list>
 /// One thread reads (and reconnects quietly when OBS closes, every 2 s at first, then less
-/// often); commands run on the device's queue, each waiting up to 2 s for its answer.
+/// often); commands run on the device's queue, each waiting up to 2 s for its answer. An OBS
+/// that doesn't answer in time has stopped working (frozen, or its PC gone without a word):
+/// the connection is dropped, so the commands after it are skipped at once rather than each
+/// waiting out its own 2 s, and the reader signs in again when it can.
 /// </summary>
 public sealed class ObsClient : ProductionDevice
 {
@@ -61,6 +64,10 @@ public sealed class ObsClient : ProductionDevice
     private volatile MiniWebSocket? socket;
     private Thread? reader;
     private int refreshQueued;
+
+    // Whether OBS has answered a request on this connection, and whether we dropped it for not answering.
+    private volatile bool answered;
+    private volatile bool stalled;
 
     private List<string> scenes = [];
     private List<string> transitions = [];
@@ -177,12 +184,13 @@ public sealed class ObsClient : ProductionDevice
             ws.SendText(message.ToJsonString());
             if (!waiting.Done.Wait(RequestTimeout))
             {
-                Note($"{type}: OBS didn't answer in time");
+                Stalled(ws, type);
                 return null;
             }
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
+            // The connection went while sending (the reader notices too, and reconnects).
             Note($"{type}: {ex.Message}");
             return null;
         }
@@ -192,12 +200,28 @@ public sealed class ObsClient : ProductionDevice
         }
         var reply = waiting.Reply;
         if (reply?["requestStatus"] is not JsonObject status) return null;
+        answered = true;
         if (status["result"]?.GetValue<bool>() != true)
         {
             Note($"{type}: OBS said no ({status["comment"]?.GetValue<string>() ?? "code " + status["code"]})");
             return null;
         }
         return reply["responseData"] as JsonObject ?? [];
+    }
+
+    /// <summary>
+    /// OBS took a request and didn't answer it in time: drop the connection. The commands queued
+    /// after this one then find no connection and are skipped at once, and the reader waits its
+    /// turn before signing in again (an OBS that signs in but never answers mustn't make the light flicker).
+    /// </summary>
+    private void Stalled(MiniWebSocket ws, string type)
+    {
+        Note($"{type}: OBS didn't answer in time; reconnecting");
+        if (socket != ws) return;
+        stalled = true;
+        socket = null;
+        SetStatus(DeviceState.Problem, "OBS stopped answering; trying again…");
+        ws.Dispose();
     }
 
     // MARK: The reader thread
@@ -209,13 +233,14 @@ public sealed class ObsClient : ProductionDevice
         {
             if (retry > TimeSpan.Zero && stopping.Wait(retry)) return;
             retry = retry == TimeSpan.Zero ? FirstRetry : TimeSpan.FromTicks(Math.Min(retry.Ticks * 2, TimeSpan.FromSeconds(10).Ticks));
+            answered = false;
+            stalled = false;
             MiniWebSocket? ws = null;
             try
             {
                 ws = MiniWebSocket.Connect(Settings.Host, Settings.EffectivePort, ConnectTimeout);
                 if (!SignIn(ws)) continue;
                 ws.ReadTimeout = TimeSpan.Zero;
-                retry = TimeSpan.Zero;
                 socket = ws;
                 SetStatus(DeviceState.Online, "Signed in");
                 Note("connected");
@@ -228,6 +253,7 @@ public sealed class ObsClient : ProductionDevice
                 // Whatever went wrong (no answer, a dropped line, a garbled message), the thread
                 // must live on to try again: a dead reader would leave OBS dead until a restart.
                 if (IsDisposed) return;
+                if (stalled) continue;   // dropped for not answering: the light already says so
                 if (Status.State != DeviceState.Problem) Note($"connection: {ex.Message}");
                 SetStatus(DeviceState.Problem, $"No answer from {Where}");
             }
@@ -236,6 +262,9 @@ public sealed class ObsClient : ProductionDevice
                 socket = null;
                 foreach (var waiting in pending.Values) waiting.Done.Set();
                 ws?.Dispose();
+                // A connection OBS worked on, now closed (OBS restarting): try again at once. One it
+                // never answered on, or one dropped for not answering, waits its turn.
+                if (answered && !stalled) retry = TimeSpan.Zero;
             }
         }
     }
@@ -325,6 +354,7 @@ public sealed class ObsClient : ProductionDevice
         {
             Interlocked.Exchange(ref refreshQueued, 0);
             var list = Request("GetSceneList");
+            if (list is null && socket is null) return false;   // gone (or stopped answering): the next sign-in reads them
             var transitionList = Request("GetSceneTransitionList");
             var studio = Request("GetStudioModeEnabled");
             var stream = Request("GetStreamStatus");

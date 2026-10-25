@@ -1,7 +1,7 @@
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -9,10 +9,16 @@ using System.Text.Json.Nodes;
 namespace MxU.Slides.Production.Simulators;
 
 /// <summary>
-/// A pretend OBS on 127.0.0.1: an obs-websocket v5 server built on .NET's own WebSocket
-/// (server side), so the app's hand-written client is checked against a real implementation.
-/// It says Hello (with a challenge when it has a password), checks the Identify's answer
-/// (closing with 4009 when it's wrong, as OBS does), then answers every request, recording it.
+/// A pretend OBS on 127.0.0.1: an obs-websocket v5 server. It says Hello (with a challenge
+/// when it has a password), checks the Identify's answer (closing with 4009 when it's wrong,
+/// as OBS does), then answers every request, recording it.
+/// <para>
+/// It runs on threads of its own with blocking sockets, like the app's devices, so a busy
+/// thread pool in the app can't make it slow (the self-test runs it inside the app). Its
+/// WebSocket framing is the server's half, written separately from the app's client
+/// (MiniWebSocket): it insists that what the client sends is masked, as RFC 6455 requires. The
+/// unit tests also check the client against .NET's own WebSocket server.
+/// </para>
 /// For the unit tests and the app's self-test only.
 /// </summary>
 public sealed class ObsSimulator : IDisposable
@@ -21,8 +27,9 @@ public sealed class ObsSimulator : IDisposable
     public const string Challenge = "+IxH4CnCiqpX1rM9scsNynZzbOe4KhDeYcTNS3PDaeY=";
 
     private readonly TcpListener listener;
-    private readonly CancellationTokenSource stop = new();
     private readonly string? password;
+    private readonly ConcurrentDictionary<TcpClient, byte> connections = new();
+    private volatile bool stopped;
 
     /// <param name="password">OBS's server password, or null for none.</param>
     /// <param name="port">The port to listen on (0: any free one).</param>
@@ -31,7 +38,7 @@ public sealed class ObsSimulator : IDisposable
         this.password = password;
         listener = new TcpListener(IPAddress.Loopback, port);
         listener.Start();
-        _ = AcceptLoop();
+        new Thread(AcceptLoop) { IsBackground = true, Name = "OBS simulator" }.Start();
     }
 
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
@@ -47,82 +54,99 @@ public sealed class ObsSimulator : IDisposable
     public int Identified;
     public int RefusedPasswords;
 
-    private async Task AcceptLoop()
+    /// <summary>
+    /// OBS has frozen: it still signs clients in (obs-websocket's own thread does that) but
+    /// takes requests without ever answering them, as when OBS's main thread is stuck.
+    /// </summary>
+    public volatile bool Hang;
+
+    private void AcceptLoop()
     {
-        while (!stop.IsCancellationRequested)
+        while (!stopped)
         {
             TcpClient client;
-            try { client = await listener.AcceptTcpClientAsync(stop.Token); }
+            try { client = listener.AcceptTcpClient(); }
             catch (Exception) { return; }
-            _ = Serve(client);
+            connections[client] = 0;
+            new Thread(() => Serve(client)) { IsBackground = true, Name = "OBS simulator connection" }.Start();
         }
     }
 
-    private async Task Serve(TcpClient client)
+    private void Serve(TcpClient client)
     {
-        using var _ = client;
-        var stream = client.GetStream();
+        using var connection = client;
         try
         {
+            var stream = client.GetStream();
             // The HTTP upgrade request: read to the blank line, answer 101 with the key's accept.
             var request = new StringBuilder();
-            var one = new byte[1];
             while (!request.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal))
             {
-                if (await stream.ReadAsync(one, stop.Token) == 0) return;
-                request.Append((char)one[0]);
+                var next = stream.ReadByte();
+                if (next < 0) return;
+                request.Append((char)next);
             }
             var key = request.ToString().Split("\r\n").First(l => l.StartsWith("Sec-WebSocket-Key:", StringComparison.OrdinalIgnoreCase))[18..].Trim();
             var accept = Convert.ToBase64String(SHA1.HashData(Encoding.ASCII.GetBytes(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
-            await stream.WriteAsync(Encoding.ASCII.GetBytes(
-                $"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"), stop.Token);
-            using var ws = WebSocket.CreateFromStream(stream, new WebSocketCreationOptions { IsServer = true, KeepAliveInterval = TimeSpan.Zero });
+            stream.Write(Encoding.ASCII.GetBytes(
+                $"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"));
 
             var hello = new JsonObject { ["obsWebSocketVersion"] = "5.5.0", ["rpcVersion"] = 1 };
             if (password is not null) hello["authentication"] = new JsonObject { ["challenge"] = Challenge, ["salt"] = Salt };
-            await Send(ws, 0, hello);
+            Send(stream, 0, hello);
 
-            var identify = await Receive(ws);
+            var identify = Receive(stream);
             if (identify?["op"]?.GetValue<int>() != 1) return;
             if (password is not null && identify["d"]?["authentication"]?.GetValue<string>() != Answer(password))
             {
                 Interlocked.Increment(ref RefusedPasswords);
-                await ws.CloseAsync((WebSocketCloseStatus)4009, "Authentication failed.", stop.Token);
+                // A close frame: code 4009, "Authentication failed."
+                var reason = Encoding.UTF8.GetBytes("Authentication failed.");
+                var payload = new byte[2 + reason.Length];
+                BinaryPrimitives.WriteUInt16BigEndian(payload, 4009);
+                reason.CopyTo(payload, 2);
+                Frame(stream, 0x8, payload);
                 return;
             }
-            await Send(ws, 2, new JsonObject { ["negotiatedRpcVersion"] = 1 });
+            Send(stream, 2, new JsonObject { ["negotiatedRpcVersion"] = 1 });
             Interlocked.Increment(ref Identified);
 
-            while (ws.State == WebSocketState.Open && await Receive(ws) is { } message)
+            while (!stopped && Receive(stream) is { } message)
             {
                 if (message["op"]?.GetValue<int>() != 6 || message["d"] is not JsonObject d) continue;
                 var type = d["requestType"]!.GetValue<string>();
                 var data = d["requestData"] as JsonObject ?? [];
                 Requests.Enqueue((type, (JsonObject)data.DeepClone()));
+                if (Hang) continue;
                 var ok = !Failing.Contains(type);
-                await Send(ws, 7, new JsonObject
+                Send(stream, 7, new JsonObject
                 {
                     ["requestType"] = type,
                     ["requestId"] = d["requestId"]!.GetValue<string>(),
                     ["requestStatus"] = ok
                         ? new JsonObject { ["result"] = true, ["code"] = 100 }
                         : new JsonObject { ["result"] = false, ["code"] = 600, ["comment"] = "Not in this test" },
-                    ["responseData"] = ok ? Reply(type, data) : null,
+                    ["responseData"] = ok ? Reply(type) : null,
                 });
                 if (ok && type == "SetCurrentProgramScene")
-                    await Send(ws, 5, new JsonObject
+                    Send(stream, 5, new JsonObject
                     {
                         ["eventType"] = "CurrentProgramSceneChanged", ["eventIntent"] = 4,
                         ["eventData"] = new JsonObject { ["sceneName"] = data["sceneName"]!.GetValue<string>() },
                     });
             }
         }
-        catch (Exception) when (stop.IsCancellationRequested) { }
-        catch (WebSocketException) { }
         catch (IOException) { }
+        catch (SocketException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+        finally
+        {
+            connections.TryRemove(connection, out _);
+        }
     }
 
-    private JsonObject? Reply(string type, JsonObject data) => type switch
+    private JsonObject? Reply(string type) => type switch
     {
         "GetSceneList" => new JsonObject
         {
@@ -150,21 +174,68 @@ public sealed class ObsSimulator : IDisposable
         return Convert.ToBase64String(sha.ComputeHash(Encoding.UTF8.GetBytes(secret + Challenge)));
     }
 
-    private async Task Send(WebSocket ws, int op, JsonObject d) =>
-        await ws.SendAsync(Encoding.UTF8.GetBytes(new JsonObject { ["op"] = op, ["d"] = d }.ToJsonString()), WebSocketMessageType.Text, true, stop.Token);
+    private static void Send(NetworkStream stream, int op, JsonObject d) =>
+        Frame(stream, 0x1, Encoding.UTF8.GetBytes(new JsonObject { ["op"] = op, ["d"] = d }.ToJsonString()));
 
-    private async Task<JsonObject?> Receive(WebSocket ws)
+    /// <summary>One frame from the server: FIN and the opcode, the length, the payload (servers don't mask).</summary>
+    private static void Frame(NetworkStream stream, byte opcode, byte[] payload)
     {
-        var buffer = new byte[65536];
+        using var frame = new MemoryStream();
+        frame.WriteByte((byte)(0x80 | opcode));
+        if (payload.Length < 126)
+        {
+            frame.WriteByte((byte)payload.Length);
+        }
+        else if (payload.Length <= ushort.MaxValue)
+        {
+            frame.WriteByte(126);
+            frame.WriteByte((byte)(payload.Length >> 8));
+            frame.WriteByte((byte)payload.Length);
+        }
+        else
+        {
+            frame.WriteByte(127);
+            var length = new byte[8];
+            BinaryPrimitives.WriteUInt64BigEndian(length, (ulong)payload.Length);
+            frame.Write(length);
+        }
+        frame.Write(payload);
+        stream.Write(frame.ToArray());
+    }
+
+    /// <summary>The next text message from the client (null when it closes). Fragments are joined; client frames must be masked.</summary>
+    private static JsonObject? Receive(NetworkStream stream)
+    {
         using var message = new MemoryStream();
         while (true)
         {
-            var result = await ws.ReceiveAsync(buffer, stop.Token);
-            if (result.MessageType == WebSocketMessageType.Close) return null;
-            message.Write(buffer, 0, result.Count);
-            if (result.EndOfMessage) break;
+            var head = new byte[2];
+            stream.ReadExactly(head);
+            var opcode = head[0] & 0x0F;
+            if ((head[1] & 0x80) == 0) throw new IOException("A client frame must be masked");
+            long length = head[1] & 0x7F;
+            if (length == 126)
+            {
+                var more = new byte[2];
+                stream.ReadExactly(more);
+                length = BinaryPrimitives.ReadUInt16BigEndian(more);
+            }
+            else if (length == 127)
+            {
+                var more = new byte[8];
+                stream.ReadExactly(more);
+                length = (long)BinaryPrimitives.ReadUInt64BigEndian(more);
+            }
+            var mask = new byte[4];
+            stream.ReadExactly(mask);
+            var payload = new byte[length];
+            stream.ReadExactly(payload);
+            for (var i = 0; i < payload.Length; i++) payload[i] ^= mask[i % 4];
+            if (opcode == 0x8) return null;
+            if (opcode is 0x9 or 0xA) continue;
+            message.Write(payload);
+            if ((head[0] & 0x80) != 0) return JsonNode.Parse(message.ToArray()) as JsonObject;
         }
-        return JsonNode.Parse(message.ToArray()) as JsonObject;
     }
 
     /// <summary>Waits for a request of a type (or the time is up).</summary>
@@ -180,9 +251,11 @@ public sealed class ObsSimulator : IDisposable
         return null;
     }
 
+    /// <summary>OBS quits: it stops listening and drops everyone connected.</summary>
     public void Dispose()
     {
-        stop.Cancel();
+        stopped = true;
         listener.Stop();
+        foreach (var client in connections.Keys) client.Dispose();
     }
 }

@@ -25,15 +25,16 @@ public sealed class VmixSimulator : IDisposable
         """;
 
     private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-    private readonly CancellationTokenSource stop = new();
     private readonly string? expectedAuth;
+    private volatile bool stopped;
 
     public VmixSimulator(string? user = null, string? password = null)
     {
         if (user is not null || password is not null)
             expectedAuth = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}"));
         listener.Start();
-        _ = AcceptLoop();
+        // Threads of its own with blocking sockets, so a busy thread pool in the app can't slow it.
+        new Thread(AcceptLoop) { IsBackground = true, Name = "vMix simulator" }.Start();
     }
 
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
@@ -46,34 +47,34 @@ public sealed class VmixSimulator : IDisposable
     /// <summary>Wait this long before answering (a slow vMix).</summary>
     public int DelayMilliseconds;
 
-    private async Task AcceptLoop()
+    private void AcceptLoop()
     {
-        while (!stop.IsCancellationRequested)
+        while (!stopped)
         {
             TcpClient client;
-            try { client = await listener.AcceptTcpClientAsync(stop.Token); }
+            try { client = listener.AcceptTcpClient(); }
             catch (Exception) { return; }
-            _ = Serve(client);
+            new Thread(() => Serve(client)) { IsBackground = true, Name = "vMix simulator request" }.Start();
         }
     }
 
-    private async Task Serve(TcpClient client)
+    private void Serve(TcpClient client)
     {
         using var _ = client;
         try
         {
             var stream = client.GetStream();
             var request = new StringBuilder();
-            var one = new byte[1];
             while (!request.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal))
             {
-                if (await stream.ReadAsync(one, stop.Token) == 0) return;
-                request.Append((char)one[0]);
+                var next = stream.ReadByte();
+                if (next < 0) return;
+                request.Append((char)next);
             }
             var lines = request.ToString().Split("\r\n");
             var path = lines[0].Split(' ')[1];
             var auth = lines.FirstOrDefault(l => l.StartsWith("Authorization:", StringComparison.OrdinalIgnoreCase))?[14..].Trim();
-            if (DelayMilliseconds > 0) await Task.Delay(DelayMilliseconds, stop.Token);
+            if (DelayMilliseconds > 0) Thread.Sleep(DelayMilliseconds);
             string status;
             string body;
             if (expectedAuth is not null && auth != expectedAuth)
@@ -91,12 +92,13 @@ public sealed class VmixSimulator : IDisposable
                 (status, body) = ("200 OK", "Function completed successfully.");
             }
             var bytes = Encoding.UTF8.GetBytes(body);
-            await stream.WriteAsync(Encoding.ASCII.GetBytes(
-                $"HTTP/1.1 {status}\r\nContent-Type: text/plain\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n"), stop.Token);
-            await stream.WriteAsync(bytes, stop.Token);
+            stream.Write(Encoding.ASCII.GetBytes(
+                $"HTTP/1.1 {status}\r\nContent-Type: text/plain\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n"));
+            stream.Write(bytes);
         }
-        catch (Exception) when (stop.IsCancellationRequested) { }
         catch (IOException) { }
+        catch (SocketException) { }
+        catch (ObjectDisposedException) { }
     }
 
     public string? WaitForFunction(Func<string, bool> match, int milliseconds = 3000)
@@ -113,7 +115,7 @@ public sealed class VmixSimulator : IDisposable
 
     public void Dispose()
     {
-        stop.Cancel();
+        stopped = true;
         listener.Stop();
     }
 }

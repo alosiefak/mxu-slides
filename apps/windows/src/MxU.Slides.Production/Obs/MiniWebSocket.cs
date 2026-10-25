@@ -50,13 +50,9 @@ internal sealed class MiniWebSocket : IDisposable
     /// </summary>
     public static MiniWebSocket Connect(string host, int port, TimeSpan timeout)
     {
-        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        var socket = Network.ConnectTcp(host, port, timeout);
         try
         {
-            var connecting = socket.BeginConnect(Network.ResolveIPv4(host), port, null, null);
-            if (!connecting.AsyncWaitHandle.WaitOne(timeout))
-                throw new TimeoutException($"No answer from {host}:{port}");
-            socket.EndConnect(connecting);
             socket.ReceiveTimeout = (int)timeout.TotalMilliseconds;
             socket.SendTimeout = (int)timeout.TotalMilliseconds;
             // TCP keepalives notice a peer that vanished (a PC unplugged) within about 8 s, where a

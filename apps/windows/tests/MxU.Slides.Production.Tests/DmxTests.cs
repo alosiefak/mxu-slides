@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using System.Net;
-using System.Text;
 using MxU.Slides.Production.Devices;
 using MxU.Slides.Production.Dmx;
 using MxU.Slides.Production.Lighting;
@@ -55,7 +54,8 @@ public class DmxPacketTests
         Assert.Equal(Hex("0010 0000 4153432D45312E3137000000 726E 00000004 0102030405060708090A0B0C0D0E0F10"), packet[..38]);
         // Framing layer: flags+length (600), vector 2, the name (64 bytes, zero padded), priority, sync, sequence, options, universe
         Assert.Equal(Hex("7258 00000002"), packet[38..44]);
-        Assert.Equal("MxU Slides (TEST)", Encoding.UTF8.GetString(packet, 44, 64).TrimEnd('\0'));
+        Assert.Equal("MxU Slides (TEST)"u8.ToArray(), packet[44..61]);
+        Assert.All(packet[61..108], b => Assert.Equal(0, b));   // the rest of the 64-byte name is zeros
         Assert.Equal(Hex("64 0000 2A 00 012C"), packet[108..115]);
         // DMP layer: flags+length (523), vector 2, type 0xA1, first address 0, increment 1, 513 values, start code 0
         Assert.Equal(Hex("720B 02 A1 0000 0001 0201 00"), packet[115..126]);

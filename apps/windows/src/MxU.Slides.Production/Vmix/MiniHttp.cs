@@ -23,10 +23,7 @@ internal static class MiniHttp
     public static Response Get(string host, int port, string pathAndQuery, string? user, string? password, TimeSpan timeout)
     {
         var started = Stopwatch.GetTimestamp();
-        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-        var connecting = socket.BeginConnect(Network.ResolveIPv4(host), port, null, null);
-        if (!connecting.AsyncWaitHandle.WaitOne(timeout)) throw new TimeoutException($"No answer from {host}:{port}");
-        socket.EndConnect(connecting);
+        using var socket = Network.ConnectTcp(host, port, timeout);
 
         var request = new StringBuilder()
             .Append(CultureInfo.InvariantCulture, $"GET {pathAndQuery} HTTP/1.1\r\n")
