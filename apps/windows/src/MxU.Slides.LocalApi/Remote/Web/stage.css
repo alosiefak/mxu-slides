@@ -1,0 +1,53 @@
+/* The stage view: a confidence monitor in a browser. Black, huge, high-contrast text that a
+   singer reads from across a stage. Sizes come from the screen (vh, vw), and stage.js then
+   shrinks a long slide until it fits its box. */
+.stage-page { background: #000; overflow: hidden; }
+
+.stage {
+  height: 100vh; height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: max(1.5vh, env(safe-area-inset-top)) max(2vw, env(safe-area-inset-right)) max(1.5vh, env(safe-area-inset-bottom)) max(2vw, env(safe-area-inset-left));
+  gap: 1.5vh;
+  color: #fff;
+  cursor: none;
+}
+.stage.pointer { cursor: default; }
+
+.stage-top { display: flex; align-items: baseline; gap: 3vw; font-variant-numeric: tabular-nums; }
+.stage-clock { font-size: clamp(22px, 6vh, 90px); font-weight: 600; }
+.stage-item { flex: 1; min-width: 0; color: #9ca3af; font-size: clamp(14px, 3vh, 40px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stage-timers { display: flex; gap: 3vw; font-size: clamp(22px, 6vh, 90px); font-weight: 600; }
+.stage-timers .timer-face small { display: block; font-size: 0.35em; color: #9ca3af; font-weight: 400; text-align: right; }
+.stage-timers .timer-face.running { color: #7ed957; }
+.stage-timers .timer-face.over { color: #ef4444; }
+
+.stage-current, .stage-next { position: relative; min-height: 0; overflow: hidden; }
+.stage-current { display: grid; align-items: center; }
+.stage-next { height: 24vh; border-top: 2px solid #374151; padding-top: 1vh; color: #fcd34d; }
+.stage-label { position: absolute; top: 1vh; right: 0; font-size: clamp(12px, 2.2vh, 28px); letter-spacing: 0.2em; color: #6b7280; }
+
+.stage-text {
+  white-space: pre-line;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+#current { font-size: 12vh; }
+#next { font-size: 6vh; font-weight: 600; text-align: left; }
+#current.empty { color: #4b5563; font-weight: 400; font-size: 5vh; }
+
+.stage-message {
+  position: fixed; left: 2vw; right: 2vw; bottom: 26vh;
+  padding: 1.5vh 2vw; border-radius: 1vh;
+  background: #b45309; color: #fff;
+  font-size: clamp(20px, 6vh, 80px); font-weight: 700; text-align: center;
+}
+.stage-message.flash { animation: flash 1s steps(1) infinite; }
+@keyframes flash { 50% { opacity: 0; } }
+
+.stage-link { position: fixed; left: 8px; bottom: 8px; width: 10px; height: 10px; border-radius: 50%; background: #374151; }
+.stage-link.offline { background: #ef4444; }
+.stage-full { position: fixed; right: 12px; bottom: 12px; opacity: 0; transition: opacity 0.3s; }
+.stage.pointer .stage-full { opacity: 0.85; }

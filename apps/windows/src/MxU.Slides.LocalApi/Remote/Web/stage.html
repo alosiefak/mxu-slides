@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <title>MxU Slides Stage</title>
+  <link rel="icon" href="/remote/assets/icon.svg">
+  <link rel="stylesheet" href="/remote/assets/remote.css">
+  <link rel="stylesheet" href="/remote/assets/stage.css">
+  <script src="/remote/assets/connect.js" defer></script>
+  <script src="/remote/assets/stage.js" defer></script>
+</head>
+<body class="stage-page">
+  <div id="pair" class="pair" hidden></div>
+
+  <div id="stage" class="stage" hidden>
+    <header class="stage-top">
+      <span id="clock" class="stage-clock"></span>
+      <span id="item" class="stage-item"></span>
+      <span id="timers" class="stage-timers"></span>
+    </header>
+    <section class="stage-current" aria-label="Current slide">
+      <div id="current" class="stage-text"></div>
+    </section>
+    <section class="stage-next" aria-label="Next slide">
+      <span class="stage-label">NEXT</span>
+      <div id="next" class="stage-text"></div>
+    </section>
+    <div id="message" class="stage-message" role="status" hidden></div>
+    <span id="link" class="stage-link" title="Connection"></span>
+    <button id="full" class="stage-full" type="button">Full screen</button>
+  </div>
+</body>
+</html>

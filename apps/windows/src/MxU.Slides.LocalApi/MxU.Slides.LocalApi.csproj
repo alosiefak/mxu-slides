@@ -17,6 +17,12 @@
     <InternalsVisibleTo Include="MxU.Slides.LocalApi.Tests" />
   </ItemGroup>
 
+  <!-- Windows: the browser remote's pages (Remote/RemoteSite.cs serves them under /remote).
+       Built into the DLL, so they need no internet and can't be swapped on disk. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Remote\Web\*" LogicalName="MxU.Slides.LocalApi.Remote.Web.%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- packages/schema/codegen.mjs writes this beside the Mac's LocalAPI. It is embedded
        as-is, so both apps serve the same document schemas in /openapi.json. -->
   <ItemGroup>
