@@ -156,6 +156,10 @@ public sealed partial class MainViewModel
         else Show.DismissOverlay(overlay.Id, now);
         if (AnimationSequence.HasAnimationSteps(overlay.Objects)) RenderOutputs(Rendering.SceneTransition.Cut, refreshOnly: true);
         else RenderOutputs(DefaultTransition());
+        // Putting an overlay up again replays its videos that don't loop from the start, as on the Mac.
+        if (up)
+            foreach (var mediaId in Core.Automation.VideoRestarts.OnOverlayFired(overlay, Library.Get<MediaItem>))
+                RestartVideo(mediaId);
         MarkLiveOverlays();
     }
 

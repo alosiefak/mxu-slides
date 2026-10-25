@@ -260,7 +260,13 @@ public sealed partial class MediaHub
     /// </summary>
     public MediaPlayer? Video(string playbackKey, string mediaId, bool loops, bool audible)
     {
-        if (players.TryGetValue(playbackKey, out var existing)) return existing.Failed ? null : existing.MediaPlayer;
+        if (players.TryGetValue(playbackKey, out var existing))
+        {
+            // The same cue fired again before its player closed (it lingers a moment after the last
+            // view lets go): it plays as fired now, so a video first fired once and now set to loop loops.
+            existing.Loops = loops;
+            return existing.Failed ? null : existing.MediaPlayer;
+        }
         if (resolve(mediaId) is not { Kind: MediaKind.Video } media) return null;
 
         var player = new Player { MediaPlayer = new MediaPlayer(), MediaId = mediaId, Loops = loops };

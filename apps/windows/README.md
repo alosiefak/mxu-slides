@@ -136,7 +136,17 @@ Phase 4 adds:
 - the rest of a ProPresenter workspace: screens, looks, masks, timers, video inputs, MIDI devices and group hot keys;
 - show timing that never waits for spare threads, and recording on PCs whose screen capture doesn't work.
 
-Still to come: see "Not ported yet" in [docs/PORTING.md](docs/PORTING.md).
+Phase 5 (Sunday essentials) adds:
+
+- slides that advance by themselves (timers, walk-in loops, "next when the video ends"), music rows that play, live video controls, Clear options and service tracking timers;
+- hidden service rows, a look per row, duplicating services, and 9am/11am service versions;
+- Mac and ProPresenter documents drawn faithfully: per-slide themes, video trims and speed, the library's fonts, tickers and text on a path, cameras inside slides, keystone, a "text doesn't fit" warning;
+- music and video sound on the speakers you choose (with delay), and a music manager for playlists;
+- saved alerts, timer folders and warnings, a look switcher, each screen Live or Off, a stage layout per stage screen, and pop-out previews;
+- `.mxuslides` files to move presentations to and from the Mac, missing-media badges with Locate and Replace Everywhere, and checks that media will play when it's imported;
+- recordings, streams and NDI bigger than the screen keep their full picture.
+
+Next: Phase 6, a motion and production pack (designed lower thirds and lyric looks, kinetic text, motion backgrounds, new transitions, Bible verses, Planning Center, a browser remote, and camera, OBS and lighting control). After that, the rest of "Not ported yet" in [docs/PORTING.md](docs/PORTING.md).
 
 See [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) to learn the code, and [docs/PORTING.md](docs/PORTING.md) for which Swift file each C# file comes from.
 

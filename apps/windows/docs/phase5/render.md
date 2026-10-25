@@ -235,64 +235,11 @@ checks the real measure with the Mac's TextEngineTests cases and the badge (`51-
 
 ## Other things learnt
 
-- **Line separators in source.** Writing `' '` in a C# file through some tools turns it into the
+- **Line separators in source.** Writing `'
+'` in a C# file through some tools turns it into the
   real character, which the compiler then reads as a line break. Use `(char)0x2028`.
 - **A video re-fired soon after it ended** reuses the cached player (kept 1.5 s after the last view
   lets go, plus any media dissolve), which is paused at its end. This was already so before Phase 5;
   it's noted for whoever works on media cues.
 
-## Changes to shared files
-
-| File | Change |
-|---|---|
-| `ViewModels/MainViewModel.cs` | `RebuildSlides` draws each tile with `ThemeFor(slide, p)`; one new line after `Media` is made: `Media.TrimOf = TrimFor;` |
-| `Infrastructure/SelfTest.cs` | one line: `await RenderFixesCheck();` after `BroadcastExtrasCheck()` |
-| `Views/MainWindow.xaml` | the slide tile's label row gains a third column with the clipped-text triangle |
-| `Rendering/MediaHub.cs` | `BeginPass`/`StartPass`/`PassEnded` hooks in `Video()`; `MediaEnded` now calls `PassEnded`; `Transport`, `Seek`, `Restart` work in the trimmed window; `Play` re-applies the rate; `VideoEnded`'s comment (now once per pass, looping videos too) |
-| `Rendering/MediaHub.LiveInputs.cs` | `IsLivePicture`, `ScreenFrames`, `RetainLive`/`ReleaseLive`; an input that a view holds never goes stale |
-| `Rendering/SceneView.cs` | path text, keystone pass, live-picture fills, `RetainKey`/`ReleaseKey`, overflowing text clipped |
-| `App.xaml.cs` | one line: `FontMap.ActivateStored(library.Root)` |
-
-## For PORTING.md
-
-Rows to add (Swift → C#):
-
-| Swift | C# |
-|---|---|
-| `PresenterCore/…/Library/PerSlideTheme.swift` (`themeId(for:)`, `hasSlideThemes`, `clearSlideThemes`, override designs) | `MxU.Slides.Core/Library/PerSlideTheme.cs`; `MxU.Slides.Windows/ViewModels/MainViewModel.Rendering.cs` (`ThemeFor`) |
-| `Sources/AppModel.swift` (`theme(for:in:)`), `Sources/PresentGridView.swift` (tile theme, `hasClippedText` badge) | `MainViewModel.Rendering.cs` (`ThemeFor`), `ViewModels/ItemViewModels.cs` (`HasClippedText`), the slide tile in `Views/MainWindow.xaml` |
-| `MediaEngine/…/MediaEngine.swift` (`PlaybackOptions`), `MediaPlayer.swift` (trim window, loop inside the trim, rate) | `MxU.Slides.Core/Media/PlaybackOptions.cs`; `MxU.Slides.Windows/Rendering/MediaHub.Trim.cs` |
-| `PresenterCore/…/MediaImport/FontActivator.swift` (`activateStored`, `register`) | `MxU.Slides.Windows/Rendering/FontMap.cs` (`ActivateStored`) |
-| `PresenterCore/…/MediaImport/FontSharing.swift` (`faces(inFileAt:)`) | `MxU.Slides.Core/Library/FontFiles.cs` |
-| `RenderEngine/…/PathTextLayout.swift`, `PathTextStrip.swift` (`normalizedText`, the strip) | `MxU.Slides.Core/Scene/PathTextLayout.cs`; `MxU.Slides.Windows/Rendering/PathTextRenderer.cs` |
-| `RenderEngine/…/Compositor.swift` (`drawPathText`'s phase, repeat and ramp) | `PathTextLayout.TickerPhase` |
-| `RenderEngine/…/ShapeRasterizer.swift` (`SVGPathParser`), `PathPresets.swift` | `MxU.Slides.Core/Scene/SvgPath.cs` (`SvgPath`, `PathPresets`) |
-| `RenderEngine/…/Compositor.swift` (`BuildProjector`, `buildQuadCorners`, `stretchKeystoneVertices`) | `MxU.Slides.Core/Animation/BuildProjector.cs`; `MxU.Slides.Windows/Rendering/KeystoneEffect.cs` |
-| `RenderEngine/…/TextRasterizer.swift` (`overflows`) | `MxU.Slides.Windows/Rendering/TextLayout.cs` (`OverflowsFrame`) |
-| `SlideScene/…/SlideSceneBuilder.swift` (`styledText` path and ticker fields, `renderItems` shape-edge text, `fill(_:)` inputs and mirrors, `fillMediaID`, `fillLiveInputID`, `fillScreenMirrorID`, `liveInputEngineID`, `screenMirrorEngineID`, `mediaWants`, `clippedTextObjectIDs`) | `MxU.Slides.Core/Scene/SlideSceneBuilder.cs` |
-| `RenderEngine/…/SceneModel.swift` (`StyledText` path, ticker and scroll fields) | `MxU.Slides.Core/Scene/SceneModel.cs` |
-| `Sources/LiveInputPlaceholder.swift` | `MxU.Slides.Windows/Rendering/LiveInputPlaceholder.cs` |
-| `Sources/ScreenMirrorService.swift` | `MxU.Slides.Windows/Outputs/ScreenMirrors.cs` |
-
-Replace the existing row `PresenterCore/…/Library/PerSlideTheme.swift (rendered(throughOverride:))` →
-`PlaceholderAnimations.RenderedThroughOverride` with the PerSlideTheme row above (that method stays
-where it is).
-
-Add to "Not ported yet":
-
-- **Theme picking for some slides:** the Mac's Apply Theme to selected slides, and its question
-  before a deck's theme replaces slides' own themes. Windows draws per-slide themes but its Theme
-  picker only changes the deck's theme; slides with their own theme keep it.
-- **Word spacing on block text:** it's drawn on path text and tickers; ordinary text boxes ignore it.
-- **Keystone with tilt or swing:** tilt and swing are still flattened to a squash, and keystone is
-  warped inside the item's 2-D transform, so the combination is approximate.
-- **Sharing fonts through the library** (`FontSharing.filesToShare`, `FontFile` documents): there is
-  no shared library folder on Windows yet. Fonts that arrive in the `fonts` folder are used.
-- **A direct device reference** in a slide's live input (`input::camera::<device>`) shows only if a
-  named input uses that device; the Mac opens the device itself.
-- **Gapless video loops:** a loop is a seek back to the in point (the Mac uses AVPlayerLooper), and
-  the out point is checked each screen refresh, so a trim ends within a frame of the Mac's.
-
-And in HOW-IT-WORKS: section 14's "Keystone … aren't drawn yet" is now out of date for keystone;
-section 22 can say an input can also fill a slide object; section 7 can mention path text and
-tickers (`PathTextRenderer`).
+*The PORTING.md rows for this work are in [PORTING.md](../PORTING.md); this is the walkthrough. See also [HOW-IT-WORKS.md](../HOW-IT-WORKS.md).*

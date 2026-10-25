@@ -211,7 +211,7 @@ What **Next** does depends on the slide, as on the Mac:
 
 The starter lyric designs put the words' Out on a click, so the first Next plays the Out and the second moves on. **Alt+→** goes straight to the next slide, skipping any builds left (Option+→ on the Mac). The live label shows "build 1 of 1". Previous takes builds back.
 
-What `SceneView` draws: moves, scales, rotation, fades, wipes with soft edges, blur, typewriter and word-by-word reveals, and line drawing. The 3-D tilt and swing are flattened into a squash. Keystone, burn, glitch and tint need GPU shaders and aren't drawn yet.
+What `SceneView` draws: moves, scales, rotation, fades, wipes with soft edges, blur, typewriter and word-by-word reveals, and line drawing. The 3-D tilt and swing are flattened into a squash. Burn, glitch and tint are drawn on the graphics card (section 18), and keystone by its own shader (section 37).
 - Page turns (section 28) are morph steps, so they count as clicks: the stage display's "build 2 of 4" counts them.
 
 ## 15. Remote control: the Local API (Phase 2)
@@ -318,7 +318,7 @@ The WPF half is in `src/MxU.Slides.Windows/Outputs/`:
 `src/MxU.Slides.Audio/` is a port of the Mac's AudioEngine, built on NAudio (MIT) and Windows' WASAPI.
 
 - `AudioController` is the Audio function: playlists with crossfades, single songs, fades when stopping, next/previous/seek. The **Music** tab in the bottom bin plays them, and F5 stops them.
-- Each output runs on its own sound device stream. With **no** sound device (a server, or speakers unplugged) the engine keeps time anyway, so playlists still advance and streams still get sound. It recovers when the device comes back.
+- Each output runs on its own sound device stream. With **no** sound device (a server, or speakers unplugged) the engine keeps time anyway, so playlists still advance and streams still get sound. It recovers when the device comes back. Which device music and video sound play on is chosen in Settings › Sound (section 38).
 - `ProgramAudioTap` records *this app's* sound only, through Windows' "process loopback". That includes video sound and music, but not system sounds or other apps. It's what recordings and streams hear.
 - Multitrack (stems and click tracks) is ported too: `MultitrackEngine`, and a separate tracks-player process so heavy decoding can't stall the show. The timeline editor (section 32) makes and edits them.
 
@@ -329,6 +329,7 @@ Cameras, capture cards, NDI sources and DeckLink inputs are **inputs**: named en
 - Set them up with **Media › Video inputs…**. Each one then appears as a tile at the start of the Media tab; clicking it puts it on the Video Input layer, under the slides.
 - Their cue ids start with `input::item::`, as on the Mac. `MediaHub.LiveInputs` copies each input's newest frame into one `WriteableBitmap` per refresh, and every view showing it draws that bitmap, so all outputs stay in step.
 - `LiveInputDelay` can hold an input back a few frames so lips line up with the sound.
+- An input can also fill a shape on a slide: a picture-in-picture camera (section 37).
 
 ## 23. Show automation (Phase 3)
 
@@ -672,6 +673,81 @@ As on the Mac, a finished recording is filed into the media library, so it appea
 - *The picture came out shrunk, with black bars.* That machine's screen is small (about 1024 × 768), and **Windows won't let a window be bigger than the screens** unless the window says otherwise. On top of that, a WPF `Window` caps its own layout at the screen's size. So the hidden 1920 × 1080 program window was really screen-sized, the 16:9 slide was letterboxed inside it, and the copy stretched that back to 1080p. It would have happened on a real PC too: a 1366 × 768 laptop streaming in 1080p, or any laptop sending 4K NDI. Just letting the window be bigger wasn't enough. WPF then drew only the on-screen part, and the rest came back blank. So a picture bigger than the screen is now drawn in screen-sized pieces and put back together (see "The picture may be bigger than the screen" above). The self-test makes a 4K capture on a smaller screen and checks each corner of the picture shows its own colour. The software copy's brush also now frames exactly the window's area (`ViewboxUnits = Absolute`), rather than whatever the content draws, which reaches off screen when the next page of a lyric is waiting.
 - *A replay froze on a slow PC.* Like the Mac, a replayed file drops a picture that's more than a quarter of a second late. But dropping a picture doesn't save decoding it, so a PC that decodes slower than the file plays fell further and further behind until it dropped every picture. `Broadcast/Media/ReplayPacer.cs` adds two rules: a picture goes out at least every half second, even a late one; and more than a second behind, the reader jumps to the present instead of decoding the backlog. The sound plays on time throughout. `ReplayPacerTests` acts out a decoder that can't keep up.
 
+## 36. A show that runs itself, and the service list (Phase 5)
+
+The Windows app used to ignore a slide's timer: imported announcement loops sat on their first slide. Now:
+
+- **Auto-advance.** `Core/Automation/AutoAdvanceController.cs` (a port of the auto-advance half of the Mac's `ServiceControls.swift`) arms a timer on the show clock when a slide with a timer goes live. It covers:
+  - "advance after 8 seconds";
+  - a presentation set to loop back to its first slide (a walk-in loop);
+  - a video that moves on when it ends, to the next slide or the next service item.
+
+  A manual Next, Clear, Hold, or firing something else cancels the timer, as on the Mac. The live area's chip shows the time left, and a click holds it. A looping *background* video never moves anything on; only the slide's own video does.
+- **Music rows play.** A song or playlist in a service plays when you double-click it or arrive on it with Next (`MainViewModel.ServiceMusic.cs`). Selecting it shows a card with its songs.
+- **The transport strip** controls the live video: play/pause, scrub, time left, back to start, and go to a typed time (`MainViewModel.Transport.cs`, `Core/Media/MediaTransport.cs`).
+- **Clear** has Music and Inputs buttons, one button per layer (green while something is on it), and a checklist for what Clear All clears (`Core/Scene/ClearAllScope.cs`).
+- **Service tracking timers.** "Item Remaining", "Service Elapsed" and eight more are timed from this PC's own fires (`Core/Stage/ServiceTiming.cs`). They're filed in the Timers board's read-only "Service Tracking" folder (section 39), and a stage layout can show them like any timer.
+- **The service list:**
+  - hide and unhide rows (a "HIDDEN" group);
+  - give a row its own look;
+  - duplicate a service and change its date;
+  - **service versions** (9am and 11am of the same service). Each PC remembers which version it runs (`Core/Library/ServiceVersions.cs`, `Infrastructure/ThisComputer.cs`).
+
+The full walkthrough is [phase5/show.md](phase5/show.md).
+
+## 37. Drawing Mac documents faithfully (Phase 5)
+
+Several things a Mac or ProPresenter document asks for were drawn wrongly, or not at all:
+
+- **Each slide's own theme.** A slide can name its own theme (or "Blank", none), not just the deck's. `Core/Library/PerSlideTheme.cs` and `MainViewModel.ThemeFor` decide, everywhere a slide is drawn.
+- **Trim and speed.** A video's in point, out point and play rate are honoured (`Rendering/MediaHub.Trim.cs`). WPF's player has no "stop here", so a trimmed video's position is checked on every screen refresh. A loop goes back to the in point. `VideoEnded` fires once per pass.
+- **Fonts saved in the library.** Fonts that came inside a PowerPoint or a `.mxuslides` file are loaded privately for drawing (`FontMap.ActivateStored`); nothing is installed into Windows.
+- **Tickers, and text on a path or a shape's edge** (`Core/Scene/PathTextLayout.cs`, `Rendering/PathTextRenderer.cs`).
+- **Live inputs and screen mirrors inside a shape**: a camera picture-in-picture on a slide. A placeholder shows while the input isn't there.
+- **Keystone on objects**, drawn by a small shader (`Rendering/KeystoneEffect.cs`).
+- **A warning triangle** on a slide tile whose text doesn't fit its box.
+
+The full walkthrough is [phase5/render.md](phase5/render.md).
+
+## 38. Where the sound goes (Phase 5)
+
+Before, music and video sound always played on the Windows default device. Now **Settings › Sound** chooses, for music and separately for video sound, an output (device, channels, delay), in the Mac's own shape (`Audio/Routing/`). An unplugged device falls back to the default and moves back when it returns.
+
+Video sound needed real engineering, because WPF's video player can't choose a device. So the picture's player is muted, and our own engine plays the file's sound track:
+- `Audio/Video/VideoSoundPlayer.cs` decodes the track with Media Foundation and plays it on the chosen output.
+- `Rendering/MediaHub.Sound.cs` reads the picture player's clock 25 times a second, and straight away on a pause, seek or loop.
+- `VideoClockFollower` keeps the sound on that clock. It nudges the speed by at most half a percent, so lips stay in sync: the self-test measures 0 to 8 ms between sound and picture.
+- A sped-up or slowed video keeps its pitch (`TimeStretch.cs`).
+- A file our engine can't read is handed back to WPF's player.
+
+The **Music tab** can now make and edit playlists: add, reorder and remove songs, Repeat, Shuffle and crossfade, and fades on play, pause and stop (`Views/MusicBin.xaml`, `MusicManagerWindow.cs`, `Core/Library/PlaylistLibrary.cs`).
+
+The full walkthrough is [phase5/sound.md](phase5/sound.md).
+
+## 39. The operator's panels (Phase 5)
+
+The right-hand column is now made of panels (`Views/Operator/`):
+
+- **Alerts:** saved alerts with folders, and `{blanks}` you fill in before sending ("Parent of child {number}"). Each has a target (stage, audience or both), a layer, a theme, and Flash or Persist. Send Update changes one that's already up. Imported ProPresenter messages appear here (`Core/Stage/AlertLibrary.cs`, `AlertScene.cs`).
+- **Timers:** a board with folders, saved in `timer-board.json` in the Mac's shape (`Core/Stage/TimerBoard.cs`). Each timer can have warning colours and a count-up limit, and there's a quick-length menu. The service-tracking timers (section 36) sit in their own read-only folder.
+- **Screens:** turn each screen Live or Off (an Off screen goes black, but recordings and previews keep their picture), and switch the look (output preset) from a chip.
+- **Stage:** each stage screen has its own layout, saved under `confidence.screenLayouts` as on the Mac.
+- **Previews:** pick which screen or stage layout the preview shows, and pop it out into its own window (handy on a second monitor).
+
+The full walkthrough is [phase5/operator.md](phase5/operator.md).
+
+## 40. Moving presentations between the Mac and Windows, and missing media (Phase 5)
+
+- **`.mxuslides` files.** A `.mxuslides` file is one presentation with its themes, media and fonts, zipped (`Core/Library/SlidesPresentationFile.cs`). It's the way documents move between the two apps today: the Mac's library itself is Automerge, which Windows can't read yet (that's Phase 10). The layout matches the Mac's byte for byte: a test builds a file exactly as the Mac writes one and imports it. Import asks Keep Both, Replace or Skip.
+- **Missing media.** A media file that isn't on this PC shows a "FILE MISSING" badge, on its tile, on slides that use it and on service rows:
+  - **Locate** finds it in a folder by its contents, and suggests files with the same name.
+  - **Replace Everywhere** swaps it in every place it's used.
+  - **Delete** says where a file is still used before removing it.
+- **Probing on import.** Each video is opened with Media Foundation as it's imported: its length, size and codec are read, and the first frame is decoded. A file Windows can't play is flagged then, not during the service. "Transcode now" makes an H.264 copy.
+- **The duplicate prompt.** Importing a file the library already has asks Use Existing or Add as New Copy.
+
+The full walkthrough is [phase5/library.md](phase5/library.md).
+
 ## Things to try, to learn by doing
 
 1. **Add a section name.** Make "Spontaneous" a recognised label. In `Lyrics/Reflow.cs`, add it to the list of names just above `LabelPattern`, then add a test in `ReflowTests.cs` and run `dotnet test`.
@@ -681,5 +757,5 @@ As on the Mac, a finished recording is filed into the media library, so it appea
 5. **Script the show.** Turn on the Local API, then write a PowerShell loop that calls `POST /v1/show/advance` with `{"steps":1,"settled":true}` every 5 seconds: an instant announcement loop.
 6. **Slow an animation down.** In `Library/StarterPacks.cs`, find `TextIn` and double its duration. Delete `starter-revision.txt` in your *test* library so the themes are rebuilt, then fire a lyric slide.
 7. **Record a timeline.** Open a song, press **Timeline › Record**, and click through the slides while you sing it in your head. Press ▶ and watch it run itself. Then look at the cues it wrote: open the song's JSON in your *test* library and find `timelines`.
-8. **Give the stream a lower third.** Give the stream a lower third: add a screen, set its Look to a starter theme and *Just 
+8. **Give the stream a lower third.** Add a screen, set its Look to a starter theme and *Just "Lyrics (Lower Third)"*, then make a stream preset that sends that screen (section 35). The stream gets lyrics along the bottom while the projector keeps the full-screen design.
 9. **Follow an upstream change.** When MxU changes a Swift file, find its C# twin in [PORTING.md](PORTING.md), compare the two, and port the change.

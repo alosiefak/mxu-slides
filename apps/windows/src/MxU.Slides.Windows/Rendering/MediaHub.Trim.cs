@@ -127,6 +127,18 @@ public sealed partial class MediaHub
         return (TimeSpan.FromSeconds(at), TimeSpan.FromSeconds(length));
     }
 
+    /// <summary>A player's state in one line, for a self-test report when something didn't play as expected.</summary>
+    public string DescribeVideo(string playbackKey)
+    {
+        if (!players.TryGetValue(playbackKey, out var player)) return "no player";
+        var pass = PassOf(player);
+        string at;
+        try { at = $"{player.MediaPlayer.Position.TotalSeconds:0.00} s in the file"; }
+        catch (InvalidOperationException) { at = "position unknown"; }
+        return $"opened {player.Opened}, playing {player.Playing}, loops {player.Loops}, views {player.References}, {at}; "
+            + $"pass {pass.Start:0.00}–{pass.End:0.00} s at ×{pass.Rate:0.##}, ended {pass.EndRaised}, seeking {pass.Seeking}, watched {pass.Watched}, failed {player.Failed}";
+    }
+
     private void WatchPasses()
     {
         if (watchingPasses) return;

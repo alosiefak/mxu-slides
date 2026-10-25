@@ -306,7 +306,13 @@ public sealed partial class SelfTest
         var planned = model.SelectedService!.Items.Sum(i => i.ItemKind == ServiceItemKind.Header ? 0 : i.Duration ?? 0);
         Check("firing a row starts Item Remaining from its length", item is { IsRunning: true } && item.Value(now) is > 118 and <= 120);
         Check("Service Remaining counts down every row's length", service is { IsRunning: true } && Math.Abs(service.Value(now) - planned) < 2);
-        Check("the tracking timers keep out of the Timers list", model.TimerRows.All(r => !TimerController.IsPermanent(r.Id)) && model.TimerRows.Count > 0);
+        // As on the Mac, they sit in the Timers board's own read-only folder, apart from the operator's timers, and are never saved.
+        var trackingFolder = model.Timers.Board.Folder(ServiceTrackingTimers.FolderId);
+        Check("the tracking timers are filed in the Timers board's Service Tracking folder",
+            trackingFolder is { } folder && ServiceTrackingTimers.AllIds.All(folder.TimerIds.Contains)
+            && model.Timers.Timers.Where(t => !TimerController.IsPermanent(t.Id)).All(t => !folder.TimerIds.Contains(t.Id))
+            && !TimerPanel.IsEditableFolder(folder.Id));
+        Check("the tracking timers aren't saved with the operator's timers", model.Timers.Export().All(t => !TimerController.IsPermanent(t.Id)));
 
         var layout = new ConfidenceLayout
         {

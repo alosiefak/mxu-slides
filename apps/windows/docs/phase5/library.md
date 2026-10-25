@@ -252,34 +252,4 @@ on WPF. `LibraryDialogs.Showing` lets the self-test picture each real dialog and
   just the Mac's `/ : \`.
 - `MediaReplaceSweepTests.swift` checks the Mac's SwiftUI source text and has no Windows twin.
 
-## For PORTING.md
-
-Rows to add to **Ported line by line**:
-
-| Swift | C# |
-|---|---|
-| `PresenterCore/…/Library/SlidesPresentationFile.swift`, `DeckBundle.swift` | `MxU.Slides.Core/Library/SlidesPresentationFile.cs`, `DeckBundle.cs`, `SafeZip.cs` (unzipping safely, instead of `ditto`) |
-| `PresenterCore/…/MediaImport/FontSharing.swift` (and the parts of `FontActivator.swift` it uses) | `MxU.Slides.Core/Library/FontSharing.cs` (`FontSharing`, `FontIndex`, `FontNames`: name tables instead of Core Text) |
-| `PresenterCore/…/Library/MediaReferences.swift` | `MxU.Slides.Core/Library/MediaReferences.cs` |
-| `PresenterCore/…/Library/MediaUsage.swift` (with `MediaPickCardLogic`) | `MxU.Slides.Core/Library/MediaUsage.cs` |
-| `PresenterCore/…/MediaImport/MediaRelink.swift`, `Sources/AppModel.swift` (`replaceMediaFile`, `restoreMediaTombstone`, `placeholderTombstone`, `missingMediaTargets`, `locateMissingMedia`, `mediaHolding`, `mediaUses`, `mediaReferenceDocuments`) | `MxU.Slides.Core/Library/MediaRelink.cs` (`MediaRelink`, `MissingMedia`), `MediaUsage.Documents` |
-| `PresenterCore/…/MediaImport/MediaImportDedupe.swift`, `Sources/AppModel.swift` (`importFiles`) | `MxU.Slides.Core/Library/MediaImportDedupe.cs`, `ViewModels/MainViewModel.MediaImport.cs` |
-| `PresenterCore/…/MediaImport/BlobStore.swift` | `MxU.Slides.Core/Library/BlobStore.cs` |
-| `PresenterCore/…/MediaImport/MediaImporter.swift` (files, adding items) | `MxU.Slides.Core/Library/MediaImporting.cs` |
-| `PresenterCore/…/MediaImport/MediaImporter.swift` (`probeVideo`, the image probe), `MediaRelink.probe` | `MxU.Slides.Broadcast/Media/MediaImportProbe.cs`, `MediaPlayability.cs` (Media Foundation and WIC instead of AVFoundation and ImageIO) |
-| `PresenterCore/…/MediaImport/TranscodeQueue.swift` | `MxU.Slides.Broadcast/Library/TranscodeQueue.cs`, `Media/MediaTranscoder.cs` (H.264 instead of HEVC) |
-| `Sources/PresentationFileImport.swift`, the `.mxuslides` half of `Sources/PresentationExportPanel.swift` | `ViewModels/MainViewModel.LibraryExchange.cs`, `Views/MainWindow.Library.cs` |
-| `Sources/LocateMissingMediaView.swift` | `Views/LocateMissingMediaWindow.cs`, `ViewModels/MainViewModel.MissingMedia.cs` |
-| `Sources/ReplaceMediaFileFlow.swift`, `Sources/MediaImportPrompt.swift`, the delete confirmation in `Sources/LibraryView.swift` | `Views/LibraryDialogs.cs`, `ViewModels/MainViewModel.MissingMedia.cs` |
-| the missing/status badges in `Sources/LibraryView.swift` and `PresentGridView.swift` | `Views/MediaBadge.cs`, `ViewModels/ItemViewModels.Library.cs` |
-
-Add to **Windows-only**: `Infrastructure/SelfTest.Library.cs`; the same-name suggestions after a
-folder scan (`MissingMedia.NameMatches`).
-
-Add to **Not ported yet**:
-
-- **Library exchange extras:** the export panel's other formats (PDF, slide images, plain text,
-  ChordPro) — the Export item makes `.mxuslides` only; double-clicking a `.mxuslides` in Explorer
-  (there's no file association, so import it or drop it on the library); the duplicate prompt for
-  music imports; reloading a live video in place after its file is replaced; transcoding to HEVC
-  and ProRes playback (no Windows decoder).
+*The PORTING.md rows for this work are in [PORTING.md](../PORTING.md); this is the walkthrough. See also [HOW-IT-WORKS.md](../HOW-IT-WORKS.md).*

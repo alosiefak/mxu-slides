@@ -59,7 +59,7 @@ flowchart LR
 
 - `Core/Stage/TimerBoard.cs` is a port of the Mac's `TimerBoard`: the board holds only **timer ids** and folders, in order. `TimerController` now owns one, and keeps it in step as timers are added and removed (`Reconcile`). The timers list is always kept in board order, so "the first timer" a stage layout shows is the first on the panel.
 - `Core/Stage/TimerPanel.cs` holds the panel's rules: the quick lengths, the editor's fields and what **Apply** changes (only what changed: re-applying a running countdown's length doesn't restart it), the warning palette, and how rows and folders read.
-- `Core/Stage/ServiceTrackingTimers.cs` is the Mac's set of read-only "Service Tracking" timers (item, section, service, video and timeline, remaining and elapsed) and how they are merged into their own folder. The folder and the merge are here; what feeds them on the Mac (`ServiceTimingController`, the service's planned lengths) isn't on Windows yet.
+- `Core/Stage/ServiceTrackingTimers.cs` is the Mac's set of read-only "Service Tracking" timers (item, section, service, video and timeline, remaining and elapsed) and how they are merged into their own folder. The folder and the merge are here. What feeds them, the port of the Mac's `ServiceTimingController` (`Core/Stage/ServiceTiming.cs`), came with the show flow work ([show.md](show.md), section 5).
 - **Saving:** `timers.json` as before, and the board in `timer-board.json` beside it, in the Swift encoding of `TimerBoard` (`{"nodes":[{"timer":{"_0":"…"}}, {"folder":{"_0":{…,"timerIDs":[…]}}}]}`). Both belong to this PC, as the Mac keeps them in its preferences.
 - **Readouts** change four times a second. The panel updates the digits, colours and bars in place on `TimersTicked`; it only redraws the rows when something else changed (a name, a length, a folder). That way a timer started by a slide action doesn't wipe out what you were typing in another timer's editor.
 
@@ -115,7 +115,6 @@ On the Mac each confidence screen picks its own layout: the band's monitor shows
 
 - **Reordering:** the Mac drags alerts and timers; Windows has Move up, Move down and a Folder › menu.
 - **No undo** for alert and timer edits or board moves (the Mac's `MoveUndoJournal`).
-- **Service Tracking** timers aren't fed yet (the Mac's `ServiceTimingController` and Service Tracking module): the folder and the merge are ported, nothing sends them.
 - **Live / Off** is per screen. The Mac's switches are for displays shown directly ("System Displays — Direct"), which Windows doesn't have.
 - **No stage layout editor**, so the Stage panel has no "Edit Layout in Library", and its layout menu is a flat list (the Mac groups layouts by folder).
 - **No output preset editor**: the look chip's last item opens the Screens window instead of "Edit Output Presets…".
@@ -124,59 +123,4 @@ On the Mac each confidence screen picks its own layout: the band's monitor shows
 - **Volunteer (run-only) mode** isn't on Windows, so the panels are never locked.
 - **The alert editor** saves a name or phrase when you press Enter or leave the box (the Windows editors' rule), not on every key as the Mac does.
 
-## For the integrator
-
-### Changes to shared files
-
-- `Views/MainWindow.xaml`: one line at the top of the live panel (`<v:LiveToolbar />`); the Stage, Timers and Message panels replaced by four lines (`ScreensPanel`, `StagePanel`, `TimersPanel`, `AlertsPanel`).
-- `Views/MainWindow.xaml.cs`: the `StagePreview` lines in the constructor removed (the Stage panel sets it), and the timer and message handlers (`TimerName_MouseDown`, `AlertText_KeyDown`) removed.
-- `Infrastructure/SelfTest.cs`: one line, `await OperatorCheck();`, after `BroadcastExtrasCheck`.
-- `Views/SettingsWindow.xaml`: the two transition sliders go to 3 s (the Mac's range); one line adds the Present section. `SettingsWindow.xaml.cs`: Fade through white and Blur dissolve in the transition list; the slider handlers no longer throw while the window loads.
-- Not on the shared list, but touched: `MainViewModel.Live.cs` (F6 plays a themed alert's Outs; the room defaults map the two new kinds; one line hands the audience scene to the previews), `Outputs/OutputManager.cs` (per-screen stage scenes and Live/Off), `Infrastructure/AppSettings.cs` (four settings with the Mac's names; two `OutputTransition` kinds), `MainViewModel.Actions.cs`, `.Api.cs`, `.Import.cs`, and in Core `Scene/ShowState.cs` (the alert region), `Scene/SlideSceneBuilder.cs` and `Scene/HotKeyJump.cs` (the empty-repeats default), `Stage/TimerController.cs` (the board) and `Automation/Timelines/ITimelineHost.cs`.
-
-### HOW-IT-WORKS.md
-
-- Section 16's Phase 4 note ("the first one ProPresenter assigns becomes the stage layout (this app has one stage layout for every confidence screen)") is out of date: each stage screen has its own layout now, and an import gives each screen the one ProPresenter gave it. Section 9 can say so too.
-- Section 26's self-test list can add "the operator panels (alerts, timers, screens, stage layouts, previews, looks, present settings)".
-
-### PORTING.md rows to add
-
-Ported line by line:
-
-| Swift | C# |
-|---|---|
-| `Sources/Modules/AlertsModule.swift` (the rules: tokens, timer identity, locations, layers, themes, commit) | `MxU.Slides.Core/Stage/AlertEditing.cs` |
-| `Sources/AppModel.swift` (`createAlertPreset`, `updateAlertPreset`, `alertBoard`, `updateAlertBoard`) | `MxU.Slides.Core/Stage/AlertLibrary.cs` |
-| `SlideScene/…/ConfidenceScene.swift` (`AlertSceneBuilder.audienceItems`), `ShowState.swift` (`liveAlert`, the alert's clock, `clearAlert`, the alert's layer) | `MxU.Slides.Core/Stage/AlertScene.cs`, `Scene/ShowState.cs` |
-| `Sources/ServiceControls.swift` (`fireAlert`, `show(alert:)`, `fire(alertPreset:)`, `dismissAlert`, `syncFlashClock`, `nextSkipsBlanks`) | `MxU.Slides.Windows/ViewModels/MainViewModel.Alerts.cs`, `MainViewModel.Stage.cs` |
-| `SlideScene/…/TimerBoard.swift`, `ServiceTrackingTimers.swift` | `MxU.Slides.Core/Stage/TimerBoard.cs`, `ServiceTrackingTimers.cs` |
-| `Sources/TimersController.swift` (the board: `moveTimer`, `moveFolder`, `addFolder`, `renameFolder`, `removeFolder`, `setSystemTimers`) | `MxU.Slides.Core/Stage/TimerController.cs` |
-| `Sources/Modules/TimersModule.swift` (the rules: quick lengths, the editor's apply, warnings, rows) | `MxU.Slides.Core/Stage/TimerPanel.cs` |
-| `Sources/ConfidenceMonitorController.swift` (assignments, apply, pruning, storage) | `MxU.Slides.Core/Stage/ConfidenceScreenLayouts.cs`, `MainViewModel.Stage.cs` |
-| `PresenterCore/…/Library/PreviewTargetLogic.swift`, `Sources/LivePanel.swift` (`PreviewTargets`) | `MxU.Slides.Core/Outputs/PreviewTargets.cs` |
-| `Sources/Modules/OutputsModule.swift` (`OutputPresetMenu`), `Sources/OutputPresetChip.swift` | `MxU.Slides.Core/Outputs/OutputPresetMenu.cs` |
-| `Sources/PerformanceHUD.swift` (`TransitionChip`), `AppShell.swift` (`transitionChips`) | `MxU.Slides.Core/Animation/TransitionChips.cs` |
-| `SlideScene/…/SlideSceneBuilder.swift` (`emptyRepeatsOnce`) | `MxU.Slides.Core/Scene/SlideSceneBuilder.cs` (`EmptyRepeatsOnce`) |
-
-The Mac tests ported: `TimerBoardTests.swift`, `ServiceTrackingTimersTests.swift`, the `PreviewTargetLogic` cases of `MultiViewTests.swift`, the alert cases of `ConfidenceSceneTests.swift`, `ShowStateTests.swift` (`alertAnchorRidesItsItems`) and `SlideSceneBuilderTests.swift` (`emptySectionPlayedTwiceInARowShowsOnceOnlyWhenChosen`).
-
-Re-implemented for Windows:
-
-| Mac | Windows |
-|---|---|
-| `Sources/Modules/AlertsModule.swift`, `TimersModule.swift`, `ConfidenceModule.swift`, `OutputsModule.swift`, `Sources/LivePanel.swift` (preview, screen picker, Open in Window), `OutputPresetChip.swift`, `AppShell.swift` (transition chips), `SettingsView.swift` (present.emptyRepeatsOnce, present.nextSkipsBlanks) | `MxU.Slides.Windows/Views/Operator/*` (`AlertsPanel`, `TimersPanel`, `StagePanel`, `ScreensPanel`, `LiveToolbar`, `PreviewPopOutWindow`, `PresentSettingsSection`, `OperatorKit`), `ViewModels/MainViewModel.{Alerts,Timers,Outputs,Present}.cs` |
-
-Windows-only:
-
-- `TimerBoard.StepTimer`, `StepFolder`, `PutInFolder` (Move up / Move down / Folder ›) and the same for alerts through `BoardSteps`.
-- `ConfidenceScreenLayouts.Migrated` (the one shared stage layout becomes each screen's).
-- Per-screen Live / Off in `Outputs/OutputManager.cs`.
-- `Infrastructure/SelfTest.Operator.cs`.
-
-### "Not ported yet": add
-
-- **Operator panel extras:** dragging alerts and timers (Move up/down and Folder › instead); undo for alert and timer edits and board moves; the Service Tracking module and `ServiceTimingController` (its timers' folder and merge are ported, nothing feeds them); volunteer (run-only) mode; the Stage panel's "Edit Layout in Library" and folder submenus (no stage layout editor); the preview keeping its target's shape in the main window (pop-outs do); the transition chips' inline slider; displays shown directly, so Live / Off is per screen.
-
-### "Not ported yet": change
-
-- **Looks, Windows differences:** "There is no output preset editor on Windows yet" still holds; the look chip switches presets, and its last item opens the Screens window.
+*The PORTING.md rows for this work are in [PORTING.md](../PORTING.md); this is the walkthrough. See also [HOW-IT-WORKS.md](../HOW-IT-WORKS.md).*

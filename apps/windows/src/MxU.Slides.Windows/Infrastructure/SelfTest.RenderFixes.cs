@@ -427,6 +427,7 @@ public sealed partial class SelfTest
             await Delay(2600);
             var looping = model.Media.Transport(key);
             report.AppendLine($"      looping trim: {ends.Count} passes in 2.6 s, at {looping?.Position.TotalSeconds:0.00} s of {looping?.Duration?.TotalSeconds:0.00} s");
+            if (ends.Count < 2) report.AppendLine($"      looping trim player: {model.Media.DescribeVideo(key)}");
             Check("a looping trimmed video loops inside its trim (a pass each 0.6 s at double speed)",
                 ends.Count >= 2 && looping is { Playing: true } && looping.Value.Position.TotalSeconds <= 1.25);
             await Step("56-trimmed-video", () => { }, settle: 300);

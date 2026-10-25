@@ -193,37 +193,4 @@ with no sound output the device checks are skipped; the sync checks still run.
   itself are Phase 8. Until then every playlist plays on the main mix.
 - Not here yet: a song's **Favourite** and **Tags**, and **Edit in Library** from a track.
 
-## For PORTING.md
-
-Rows to add to "Ported line by line":
-
-| Swift | C# |
-|---|---|
-| `Sources/AudioOutputInventory.swift` | `MxU.Slides.Audio/Routing/AudioOutputInventory.cs` (`AudioOutputEntry`, `AudioOutputInventory`) |
-| `Sources/AudioMixInventory.swift` (entries, main, create, rename, primaryToken, setPrimary, toggleSecondary, isVirtual, remove; not folders or the legacy migration) | `MxU.Slides.Audio/Routing/AudioMixInventory.cs` |
-| `Sources/AudioController.swift` (`routing(forMix:)`, `defaultRouting`, `resolveRouting`, the hardware check in `applyLevels`, `mediaMixId`/`setMediaMix`, `applyDefaultRoutingToMedia`, `reapplyAllRouting`, `deviceListChanged`, the fade and crossfade settings) | `MxU.Slides.Audio/Routing/AudioRoutingTable.cs`, `MxU.Slides.Windows/ViewModels/MainViewModel.Sound.cs` |
-| `PresenterCore/…/SettingsDeviceStatus.swift` (`showsNotConnected`), `Sources/SettingsPanes.swift` (`AudioOutputWords`) | `MxU.Slides.Audio/Routing/AudioOutputInventory.cs` → `AudioOutputWords` |
-| `Sources/SettingsPanes.swift` (`AudioOutputsSection`, `AudioOutputDetail`) | `MxU.Slides.Windows/Views/SoundSettingsPanel.cs` |
-| `Sources/AppModel.swift` (`createPlaylist`, `addToPlaylist`, `insertIntoPlaylist`, `handlePlaylistDrop`, `removePlaylistEntry`, `movePlaylistEntries`, `updatePlaylist`), `PresenterCore/…/Documents/DocumentEntity.swift` (`Playlist.effectiveKind`) | `MxU.Slides.Core/Library/PlaylistLibrary.cs` |
-| `Sources/AppModel.swift` (`replaceAudioFile`) | `MxU.Slides.Audio/Library/AudioImporter.cs` → `ReplaceFile` |
-| `Sources/Modules/AudioModule.swift`, `Sources/InspectorView.swift` (`PlaylistEditor`), `Sources/LibraryView.swift` (Add to Playlist, New Playlist…, Replace Music File…, Rename, Delete) | `MxU.Slides.Windows/Views/MusicBin.xaml(.cs)`, `MusicManagerWindow.cs`, `MusicMenus.cs`, `ViewModels/MainViewModel.Music.cs` |
-
-Row to add to "Re-implemented for Windows":
-
-| Mac | Windows |
-|---|---|
-| `MediaEngine/…/MediaEngine.swift` (`setAudioOutputDevice`, `setAudioOutputDelay`, `setAudioVolume`), `MediaPlayer.swift` (`audioOutputDeviceUniqueID`), `VideoAudioTap.swift` (the playout delay): AVPlayer plays its own sound | `MxU.Slides.Audio/Video/` (`VideoSound`, `VideoSoundPlayer`, `VideoClockFollower`, `TimeStretch`), `MxU.Slides.Windows/Rendering/MediaHub.Sound.cs`: the picture player is muted and our engine plays the sound, following its clock |
-
-To add to "Windows-only": `Audio/Video/VideoClockFollower.cs` and `TimeStretch.cs` (the Mac's
-AVPlayer keeps its own sound in step and stretches it); `MultitrackVarispeed.Reset`;
-`PlaylistLibrary.MoveBy` (↑ ↓); `Infrastructure/SelfTest.Sound.cs`.
-
-To add to "Not ported yet":
-
-- **Sound extras:** the playlist menu's **Mix** picker and per-playlist mixes, mix faders,
-  output trims and mutes (they come with the mixer); dragging songs within a playlist (↑ ↓ and
-  Move Up/Down instead); undo for playlist edits; a song's Favourite and Tags; "Edit in
-  Library" on a track.
-
-To change in "Not ported yet" (Broadcast extras): video sound now has its own output (device,
-channels, delay), but it still isn't sent into mixes, so a mix carries the music buses only.
+*The PORTING.md rows for this work are in [PORTING.md](../PORTING.md); this is the walkthrough. See also [HOW-IT-WORKS.md](../HOW-IT-WORKS.md).*

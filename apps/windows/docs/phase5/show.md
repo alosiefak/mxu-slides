@@ -143,8 +143,7 @@ as on the Mac, firing restarts it from the start of its pass, playing (`Core/Aut
 - firing media restarts it, unless it's background media (a loop that carries on under the slides);
 - a slide landing restarts its own non-looping videos, and its foreground video background if that
   one had played out (one still playing from the slide before carries on);
-- an overlay's non-looping videos restart when it goes up (the rule is ported and tested; the app
-  doesn't call it yet, because putting overlays up is in `MainViewModel.Overlays.cs`, outside show flow).
+- an overlay's non-looping videos restart when it goes up (`SetOverlay` in `MainViewModel.Overlays.cs`).
 
 The stage display's video countdown now follows the Mac: it counts down the Foreground Videos
 layer's video only; a background loop never counts down there.
@@ -181,8 +180,8 @@ Timeline, each Remaining and Elapsed, against the lengths planned on the rows (`
   last item's end if that's later), on the show clock.
 
 **Different from the Mac:** the Mac defines the Timeline faces but leaves them idle; Windows fills
-them from the song timeline that's playing. Windows has no timer board, so the tracking timers go
-after the user's timers instead of into a "Service Tracking" folder.
+them from the song timeline that's playing. Like the Mac's, they're filed in the Timers board's
+read-only "Service Tracking" folder (the board came with the operator panels: [operator.md](operator.md)).
 
 ## 6. The service list
 
@@ -232,43 +231,4 @@ week's service runs its "11am" too.
 2. Give a slide a click build and a timer: the chip only appears once you've pressed through it.
 3. Make a version of a service, hide a row in it, then pick Main and back again.
 
-## For PORTING.md
-
-Rows to add (Mac → C#):
-
-| Swift | C# |
-|---|---|
-| `Sources/ServiceControls.swift` (autoAdvance*, armAutoAdvance, syncAutoAdvanceArming, autoAdvancePollTick, fireAutoAdvance, fireNextServiceItem, fireServiceItem, armMediaAdvance, mediaAdvancePollTick, fireMediaAdvance, setAutoAdvancePaused, clear(function:), clear(layer:), clearAll, hasContent) | `MxU.Slides.Core/Automation/AutoAdvanceController.cs`; `ViewModels/MainViewModel.AutoAdvance.cs`, `MainViewModel.ServiceMusic.cs`, `MainViewModel.Clear.cs` |
-| `Sources/AutoAdvanceChip.swift` | `Views/LiveShowControls.xaml` (the chip), `MainViewModel.AutoAdvance.cs` |
-| `SlideScene/…/SlideSceneBuilder.swift` (autoAdvanceTarget, effectiveAutoAdvance, fillMediaID) | `MxU.Slides.Core/Scene/SlideSceneBuilder.AutoAdvance.cs` |
-| `SlideScene/…/ShowState.swift` (slideStepsCompletedAt, ShowFunction names, ClearAllScope, TracksClear) | `MxU.Slides.Core/Scene/ShowState.Flow.cs`, `Scene/ClearAllScope.cs` |
-| `SlideScene/…/MediaTransportTarget.swift`, `MediaEngine/…/MediaTransport.swift` | `MxU.Slides.Core/Media/MediaTransport.cs`, `ShowState.Flow.cs` (TransportSeeds) |
-| `Sources/MediaTransportController.swift`, `MediaTransportStrip.swift`, `ScrubBar.swift` | `ViewModels/MainViewModel.Transport.cs`, `Views/LiveShowControls.xaml(.cs)` |
-| `Sources/ClearChip.swift`, `PresentCommands.swift` (the clears) | `Views/LiveShowControls.xaml(.cs)`, `ViewModels/MainViewModel.Clear.cs` |
-| `SlideScene/…/ServiceTrackingTimers.swift` | `MxU.Slides.Core/Stage/ServiceTrackingTimers.cs` |
-| `Sources/ServiceTimingController.swift`, `Modules/ServiceTrackingModule.swift` | `MxU.Slides.Core/Stage/ServiceTiming.cs`; `ViewModels/MainViewModel.ServiceTracking.cs`, `Views/ServiceTrackingPanel.xaml` |
-| `PresenterCore/…/Library/ServiceRunOrder.swift` | `MxU.Slides.Core/Library/ServiceRunOrder.cs` |
-| `PresenterCore/…/Library/ServiceVersions.swift`, `Sources/AppModel.swift` (service, runningVersion, chooseServiceVersion, create/rename/deleteServiceVersion, useMainForServiceItem, versionChangedItemIDs, claimRememberedVersion, updateService, setServiceItemHidden, setServiceItemOutputPreset, duplicate for services) | `MxU.Slides.Core/Library/ServiceVersions.cs`; `ViewModels/MainViewModel.ServiceVersions.cs`, `Infrastructure/ThisComputer.cs` |
-| `Sources/AppShell.swift` (service picker row menu: Change Date, Duplicate, serviceVersionMenu, ServiceVersionAlerts) | `Views/ServiceMenus.cs`, `Views/ServiceVersionChip.cs`, `Views/ServiceDateWindow.cs` |
-| `Sources/ServicePlannerView.swift` (hiddenGroupRow, hiddenRow, outputPresetMenu, the Changed badge) | `Views/HiddenServiceRows.xaml`, `Views/ServiceMenus.cs` (AddItemOptions), `Views/MainWindow.xaml` (badge) |
-| `Sources/PresentGridView.swift` (AudioFireView, PlaylistFireView) | `Views/ServiceMusicCard.xaml`, `ViewModels/MainViewModel.ServiceMusic.cs` |
-| `Sources/ServiceControls.swift` (restart, resolvedLoops, the restarts in land, fire(mediaItem:), fire(overlay:)) | `MxU.Slides.Core/Automation/VideoRestarts.cs`; `MainViewModel.Transport.cs` (`RestartVideo`) |
-
-Add to **Windows-only**: `Infrastructure/SelfTest.Show.cs`; `ServiceTrackingTimers.Tracks` (publish only
-when news); `Infrastructure/ThisComputer.cs` (where the Mac uses UserDefaults).
-
-Add to **Not ported yet**:
-
-- **Auto-advance editing** (the Mac's AutoAdvanceControls and sheet in the slide inspector, the grid's
-  bulk menu, the presentation's Slide Show setting and a media item's Auto Advance…): Phase 6. The
-  fields are read and honoured; set them in the JSON, or import them.
-- **Transport strip extras**: the floating strip, and the scrub bar's trim handles (the media editor's).
-- **Service list extras**: collapsing headers, multi-select (bulk Hide, bulk Transition), the
-  service picker's Upcoming/Earlier grouping, plan times (`excludedTimeHexIds`, time orders: the
-  rules are ported in `ServiceRunOrder`, but there's no plan-time picker), and undo for service edits.
-- **Service tracking**: the timer board's "Service Tracking" folder (Windows has no timer board).
-- **Clear**: tracks (stems) count as Music for the green state only while the Music tab plays.
-- **Overlay video restarts**: `VideoRestarts.OnOverlayFired` is ported and tested, but nothing calls it
-  yet (overlays go up in `MainViewModel.Overlays.cs`); one line there would wire it.
-
-Remove from **Not ported yet**: nothing listed there before covered these.
+*The PORTING.md rows for this work are in [PORTING.md](../PORTING.md); this is the walkthrough. See also [HOW-IT-WORKS.md](../HOW-IT-WORKS.md).*
