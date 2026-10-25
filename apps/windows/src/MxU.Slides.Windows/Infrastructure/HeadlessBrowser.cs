@@ -24,16 +24,20 @@ internal sealed class HeadlessBrowser : IAsyncDisposable
     /// <summary>How long one DevTools command may take, so a stuck browser can't hang the self-test.</summary>
     private static readonly TimeSpan CommandWait = TimeSpan.FromSeconds(15);
 
+    private const string ProfilePrefix = "MxU self-test browser ";
+
     private readonly Process process;
     private readonly string profile;
     private readonly ClientWebSocket socket;
+    private readonly Uri browserEndpoint;
     private int lastId;
 
-    private HeadlessBrowser(Process process, string profile, ClientWebSocket socket)
+    private HeadlessBrowser(Process process, string profile, ClientWebSocket socket, Uri browserEndpoint)
     {
         this.process = process;
         this.profile = profile;
         this.socket = socket;
+        this.browserEndpoint = browserEndpoint;
     }
 
     /// <summary>Where Edge or Chrome is installed, or null when neither is.</summary>
@@ -52,7 +56,8 @@ internal sealed class HeadlessBrowser : IAsyncDisposable
     /// <summary>Starts the browser with an empty page and connects to it.</summary>
     public static async Task<HeadlessBrowser> StartAsync(string executable, CancellationToken cancellation)
     {
-        var profile = Path.Combine(Path.GetTempPath(), $"MxU self-test browser {Guid.NewGuid():N}");
+        await SweepOldProfilesAsync();
+        var profile = Path.Combine(Path.GetTempPath(), ProfilePrefix + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(profile);
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
         // Port 0 lets the browser pick a free port (the machine may be running other browsers and tests).
@@ -84,13 +89,16 @@ internal sealed class HeadlessBrowser : IAsyncDisposable
                     // Still being written: try again.
                 }
             }
+            // Two endpoints: the browser's own (to close it at the end) and its empty page's (everything else).
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var version = JsonNode.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/version", cancellation));
+            var browser = (string?)version?["webSocketDebuggerUrl"] ?? throw new InvalidOperationException("The browser gave no DevTools address.");
             var targets = JsonNode.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/list", cancellation))?.AsArray() ?? [];
             var page = (string?)targets.FirstOrDefault(t => (string?)t?["type"] == "page")?["webSocketDebuggerUrl"]
                 ?? throw new InvalidOperationException("The browser has no page open.");
             var socket = new ClientWebSocket();
             await socket.ConnectAsync(new Uri(page), cancellation);
-            return new HeadlessBrowser(process, profile, socket);
+            return new HeadlessBrowser(process, profile, socket, new Uri(browser));
         }
         catch
         {
@@ -182,35 +190,81 @@ internal sealed class HeadlessBrowser : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         socket.Dispose();
-        await StopAsync(process, profile);
+        // Asked to close, the browser ends all its processes and lets go of its profile's files; a kill
+        // can leave a helper holding them for a while, and the folder then can't be deleted.
+        try
+        {
+            using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var browser = new ClientWebSocket();
+            await browser.ConnectAsync(browserEndpoint, limit.Token);
+            await browser.SendAsync("""{"id":1,"method":"Browser.close"}"""u8.ToArray(), WebSocketMessageType.Text, true, limit.Token);
+        }
+        catch (Exception e) when (e is WebSocketException or OperationCanceledException)
+        {
+            // It's stopped below either way.
+        }
+        await StopAsync(process, profile, closing: true);
     }
 
-    /// <summary>Ends the browser (all its processes) and deletes its throwaway profile.</summary>
-    private static async Task StopAsync(Process process, string profile)
+    /// <summary>
+    /// Ends the browser and deletes its throwaway profile. When it was asked to close, it's given a
+    /// few seconds to do so first; then it, and every process it started, is ended.
+    /// </summary>
+    private static async Task StopAsync(Process process, string profile, bool closing = false)
     {
         try
         {
+            if (closing)
+            {
+                using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                try
+                {
+                    await process.WaitForExitAsync(wait.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Still running: ended below.
+                }
+            }
             if (!process.HasExited) process.Kill(entireProcessTree: true);
-            using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await process.WaitForExitAsync(wait.Token);
         }
-        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or OperationCanceledException)
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
-            // Already gone, or still closing: the folder below is tried anyway.
+            // Already gone: the folder below is tried anyway.
         }
         process.Dispose();
-        // Its processes can hold files (and the folder itself) for a few seconds after they end.
-        for (var attempt = 0; attempt < 20 && Directory.Exists(profile); attempt++)
+        if (!await DeleteAsync(profile, attempts: 20)) Log.Warn($"Couldn't remove the self-test's browser profile yet (the next run will): {profile}");
+    }
+
+    /// <summary>Deletes a folder, trying again for a while: the browser's processes can hold its files for a moment after they end.</summary>
+    private static async Task<bool> DeleteAsync(string folder, int attempts)
+    {
+        for (var attempt = 0; attempt < attempts && Directory.Exists(folder); attempt++)
         {
             try
             {
-                Directory.Delete(profile, recursive: true);
+                Directory.Delete(folder, recursive: true);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 await Task.Delay(500);
             }
         }
-        if (Directory.Exists(profile)) Log.Warn($"Couldn't remove the self-test's browser profile: {profile}");
+        return !Directory.Exists(folder);
+    }
+
+    /// <summary>Profiles an earlier run couldn't delete (a slow PC, a crash), once they're an hour old and surely unused.</summary>
+    private static async Task SweepOldProfilesAsync()
+    {
+        try
+        {
+            foreach (var old in new DirectoryInfo(Path.GetTempPath()).EnumerateDirectories(ProfilePrefix + "*")
+                         .Where(d => d.CreationTimeUtc < DateTime.UtcNow.AddHours(-1)))
+                await DeleteAsync(old.FullName, attempts: 1);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Not important: tried again next time.
+        }
     }
 }
