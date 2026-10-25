@@ -26,7 +26,11 @@ public sealed partial class SyncEngine
     }
 
     /// <summary>A shared document this version can't read: it stops the pass to ask, and nothing of it is written anywhere.</summary>
-    private sealed class UnreadableException(string reason) : Exception(reason);
+    private sealed class UnreadableException(string reason, string? name = null) : Exception(reason)
+    {
+        /// <summary>The document's name, when it could be read at all.</summary>
+        public string? Name { get; } = name;
+    }
 
     /// <summary>
     /// Brings one document into step on both sides. Tries again (up to three times) when either
@@ -44,8 +48,9 @@ public sealed partial class SyncEngine
         }
         catch (UnreadableException unreadable)
         {
-            pass.Unreadable.Add(new AttentionItem(key, NameOf(key), unreadable.Message));
-            Log.Add(SyncDirection.Problem, $"Can't read '{key}' from the shared folder: {unreadable.Message}");
+            var name = unreadable.Name ?? NameOf(key);
+            pass.Unreadable.Add(new AttentionItem(key, name, unreadable.Message));
+            Log.Add(SyncDirection.Problem, $"Can't read '{name}' ({key}) from the shared folder: {unreadable.Message}");
         }
         catch (SchemaViolationException violation)
         {
@@ -372,14 +377,24 @@ public sealed partial class SyncEngine
     private bool Save(string key, MacKind kind, JsonObject value, byte[]? expected)
     {
         savingKey = key;
+        bool saved;
         try
         {
-            return windows.SaveIfUnchanged(kind, value, expected);
+            saved = windows.SaveIfUnchanged(kind, value, expected);
         }
         finally
         {
             savingKey = null;
         }
+        if (saved && Parse(key) is { } parsed)
+        {
+            try { Received?.Invoke(kind.WindowsType!, parsed.Id); }
+            catch
+            {
+                // A listener's failure is its own.
+            }
+        }
+        return saved;
     }
 
     private bool Delete(string key, MacKind kind, string id, byte[] expected)
@@ -464,8 +479,10 @@ public sealed partial class SyncEngine
     /// <summary>The document read with the Mac's rules; one this version can't read stops sync to ask.</summary>
     private JsonObject Decoded(AmDocument document, MacKind kind)
     {
-        var decoded = documents.Decode(document, kind);
-        return decoded.Value ?? throw new UnreadableException(string.Join("; ", decoded.Errors.Take(3)));
+        var tree = document.Read();
+        var decoded = MacDecoder.Shared.Decode(tree, kind.RecordName);
+        return decoded.Value ?? throw new UnreadableException(string.Join("; ", decoded.Errors.Take(3)),
+            tree["name"] is AmScalar { Kind: AmScalarKind.String, Text: { Length: > 0 } name } ? name : null);
     }
 
     private string NameOf(string key) =>

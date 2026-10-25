@@ -273,6 +273,45 @@ public sealed class SyncEngineTests
     }
 
     [Fact]
+    public void EveryKindSyncCarriesIsOneTheLibraryKeeps()
+    {
+        using var fixture = new SyncFixture();
+        var windows = new WindowsLibrary(fixture.Store);
+        foreach (var kind in MacKind.SyncedKinds) Assert.Empty(windows.Ids(kind));
+        // Church-wide on the Mac and kept on Windows: carried. A computer's own set-up: not.
+        Assert.Contains(MacKind.SyncedKinds, k => k.RawValue == "presentation");
+        Assert.DoesNotContain(MacKind.SyncedKinds, k => k.RawValue is "outputPreset" or "controlBoard" or "midiDevice" or "streamDestination");
+        Assert.DoesNotContain(MacKind.SyncedKinds, k => k.RawValue is "note" or "font" or "importLedger");
+    }
+
+    [Fact]
+    public void OnlyASensibleFolderCanBeChosen()
+    {
+        using var fixture = new SyncFixture();
+        Assert.Null(SyncEngine.CheckFolder(fixture.Shared, fixture.Store.Root));
+        var empty = Directory.CreateDirectory(Path.Combine(fixture.Root, "Empty")).FullName;
+        Assert.Null(SyncEngine.CheckFolder(empty, fixture.Store.Root));
+        Assert.NotNull(SyncEngine.CheckFolder(fixture.Store.Root, fixture.Store.Root));
+        Assert.NotNull(SyncEngine.CheckFolder(Path.Combine(fixture.Store.Root, "Inside"), fixture.Store.Root));
+        Assert.NotNull(SyncEngine.CheckFolder(fixture.Root, fixture.Store.Root)); // holds the library
+        Assert.NotNull(SyncEngine.CheckFolder(Path.Combine(fixture.Root, "Missing"), fixture.Store.Root));
+        var busy = Directory.CreateDirectory(Path.Combine(fixture.Root, "Busy")).FullName;
+        File.WriteAllText(Path.Combine(busy, "notes.txt"), "x");
+        Assert.NotNull(SyncEngine.CheckFolder(busy, fixture.Store.Root));
+    }
+
+    [Fact]
+    public void WindowsExtrasStayOnWindows()
+    {
+        using var fixture = new SyncFixture();
+        fixture.Store.Save(Samples.Song());
+        fixture.Store.Extras.Save("transition", "slide-1", new { kind = "push" }, basis: "x");
+        fixture.Sync();
+        Assert.DoesNotContain(Directory.EnumerateFiles(fixture.Shared, "*.json", SearchOption.AllDirectories), f => !f.EndsWith(SharedFolder.MarkerName));
+        Assert.True(Directory.Exists(Path.Combine(fixture.Store.Root, "Windows extras")));
+    }
+
+    [Fact]
     public void StationDocumentsStayOnEachComputer()
     {
         using var fixture = new SyncFixture();

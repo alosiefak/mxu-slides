@@ -100,7 +100,7 @@ public sealed partial class SyncEngine
                     + "If they were deleted on the Mac, delete them here too; if not (a folder half-synced, a drive swapped), keep them, and they're put back.";
                 engine.attention = new SyncAttention(AttentionKind.HeldDeletions, message, items);
                 engine.Log.Add(SyncDirection.Problem, message);
-                engine.SetStatus(SyncState.NeedsAttention, message);
+                engine.SetStatus(SyncState.NeedsAttention, $"Stopped: {Count(items.Count, "document")} disappeared from the shared folder at once");
                 return false;
             }
             foreach (var key in confirmed)

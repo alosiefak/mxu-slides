@@ -143,6 +143,12 @@ public sealed partial class SyncEngine : IDisposable
     /// <summary>The status or <see cref="Attention"/> changed (raised on sync's own thread).</summary>
     public event Action? StatusChanged;
 
+    /// <summary>
+    /// A document changed by the Mac was just saved into the Windows library (raised on sync's own
+    /// thread, after <see cref="LibraryStore.Changed"/>): the app reopens it if it's on screen.
+    /// </summary>
+    public event Action<Type, string>? Received;
+
     private string LedgerPath => Path.Combine(stateFolder, "state.json");
 
     private string TrashFolder => Path.Combine(stateFolder, "trash", options.Now().LocalDateTime.ToString("yyyy-MM-dd"));
@@ -370,7 +376,7 @@ public sealed partial class SyncEngine : IDisposable
                 foreach (var key in keys) dirty[key] = 1;
                 Interlocked.Exchange(ref fullWanted, 1);
                 SetStatus(SyncState.WaitingForFolder,
-                    $"Waiting for the shared folder: {shared.Root} isn't there (an unplugged drive, or OneDrive offline?). Nothing is deleted; sync carries on when it's back.");
+                    "Waiting for the shared folder: it isn't there (an unplugged drive, or OneDrive offline?). Nothing is deleted; sync carries on when it's back.");
                 watcher?.Dispose();
                 watcher = null;
                 return;
@@ -379,7 +385,7 @@ public sealed partial class SyncEngine : IDisposable
             {
                 attention = new SyncAttention(AttentionKind.NewerFormat, newer, []);
                 Log.Add(SyncDirection.Problem, newer);
-                SetStatus(SyncState.NeedsAttention, newer);
+                SetStatus(SyncState.NeedsAttention, "Stopped: the folder's format is newer than this version knows");
                 return;
             }
             if (ledger.FirstSyncAt is null && !PrepareFirstSync()) return;
@@ -411,7 +417,7 @@ public sealed partial class SyncEngine : IDisposable
                 var message = $"Sync stopped: {Count(pass.Unreadable.Count, "document")} in the shared folder can't be read by this version of MxU Slides. "
                     + "A newer Mac may have made them; update MxU Slides for Windows. Or leave them out, and sync carries on without them.";
                 attention = new SyncAttention(AttentionKind.Unreadable, message, pass.Unreadable);
-                SetStatus(SyncState.NeedsAttention, message);
+                SetStatus(SyncState.NeedsAttention, $"Stopped: {Count(pass.Unreadable.Count, "document")} this version can't read");
             }
             ledger.LastSyncAt = options.Now();
             ledger.FirstSyncAt ??= ledger.LastSyncAt;
@@ -462,7 +468,7 @@ public sealed partial class SyncEngine : IDisposable
             {
                 var message = $"Sync stopped: {shared.Root} isn't empty, and isn't a Mac library or backup. Choose an empty folder, or the Mac's library or backup folder.";
                 attention = new SyncAttention(AttentionKind.NewerFormat, message, []);
-                SetStatus(SyncState.NeedsAttention, message);
+                SetStatus(SyncState.NeedsAttention, "Stopped: the folder isn't a library");
                 return false;
             }
             shared.MakeLibrary();
@@ -484,6 +490,41 @@ public sealed partial class SyncEngine : IDisposable
         {
             // A listener's failure is its own; sync carries on.
         }
+    }
+
+    /// <summary>
+    /// Why <paramref name="folder"/> can't be the shared folder, or null when it can: it must be
+    /// there, outside this PC's own library, and either empty (a new shared library), a Mac library
+    /// or backup, or a folder a Windows PC already syncs.
+    /// </summary>
+    public static string? CheckFolder(string folder, string libraryRoot)
+    {
+        if (string.IsNullOrWhiteSpace(folder)) return "Choose a folder.";
+        string full, library;
+        try
+        {
+            full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+            library = Path.TrimEndingDirectorySeparator(Path.GetFullPath(libraryRoot));
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return "That isn't a folder path.";
+        }
+        if (!Directory.Exists(full)) return "That folder isn't there.";
+        static bool Inside(string inner, string outer) =>
+            inner.Equals(outer, StringComparison.OrdinalIgnoreCase) || inner.StartsWith(outer + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        if (Inside(full, library) || Inside(library, full)) return "Choose a folder outside this PC's own library folder.";
+        var shared = new SharedFolder(full);
+        try
+        {
+            if (!shared.LooksLikeAMacLibrary() && !shared.IsEmpty() && shared.WindowsSchemaVersion() is null)
+                return "That folder has other things in it. Choose an empty folder (to start a shared library), or the Mac's library or backup folder.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return $"That folder can't be read: {error.Message}";
+        }
+        return null;
     }
 
     // MARK: Keys
