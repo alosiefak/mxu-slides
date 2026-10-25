@@ -63,6 +63,9 @@ public class BibleSearchTests
         Assert.Contains("loved", marked);
         Assert.Contains("world", marked);
         Assert.DoesNotContain("God", marked);
+        // Common words aren't bolded beside telling ones.
+        var patient = Search("web", "love is patient")[0];
+        Assert.DoesNotContain(patient.Matches, m => patient.Verse.Text.Substring(m.Start, m.Length) == "is");
     }
 
     [Fact]

@@ -171,7 +171,9 @@ public sealed class BibleSearch
         }).ToList();
         top.Sort((a, b) => b.Score != a.Score ? b.Score.CompareTo(a.Score) : a.Verse.CompareTo(b.Verse));
 
-        return [.. top.Take(limit).Select(r => new SearchHit(verses[r.Verse], Math.Round(r.Score, 2), Highlights(verses[r.Verse].Text, meaning)))];
+        // Bold goes on the telling words: "is" and "the" stay plain unless they're all there is.
+        var shown = (leading ? terms.Where(t => !t.IsStop) : terms).SelectMany(t => t.Ids).ToHashSet();
+        return [.. top.Take(limit).Select(r => new SearchHit(verses[r.Verse], Math.Round(r.Score, 2), Highlights(verses[r.Verse].Text, shown)))];
     }
 
     // The phrase itself (every query word, in order, side by side) scores 60; otherwise the closer
@@ -211,9 +213,9 @@ public sealed class BibleSearch
     }
 
     // The words in a found verse that match the query, for bold in the results.
-    private List<TextRange> Highlights(string text, Dictionary<int, int> meaning) =>
+    private List<TextRange> Highlights(string text, HashSet<int> shown) =>
         [.. Words(text)
-            .Where(w => ids.TryGetValue(Stem(w.Word), out var id) && meaning.ContainsKey(id))
+            .Where(w => ids.TryGetValue(Stem(w.Word), out var id) && shown.Contains(id))
             .Select(w => new TextRange(w.Start, w.Length))];
 
     private IEnumerable<int> StartingWith(string prefix)

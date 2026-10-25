@@ -204,6 +204,7 @@ public sealed partial class MainViewModel
             return true;
         }
 
+        if (StepScripture(direction)) return true; // a Bible passage: its next slide, then the next verse (MainViewModel.Scripture.cs)
         if (Library.Get<Presentation>(Live.PresentationId) is { } presentation)
         {
             var count = SlideSceneBuilder.ArrangedSlides(presentation, Live.ArrangementId).Count;

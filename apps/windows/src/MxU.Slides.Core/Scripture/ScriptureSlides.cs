@@ -82,7 +82,7 @@ public static class ScriptureSlides
     public static IReadOnlyList<ScripturePage> Pages(PassageText passage, Theme? theme, ScriptureSlideOptions options,
         Func<StyledText, SceneSize, bool>? overflows = null)
     {
-        var fits = Fitter(theme, options.Layout, overflows);
+        var (fits, guess) = Fitter(theme, options.Layout, overflows);
         var verses = passage.Verses;
         // A no-break space keeps a verse number with its first word.
         var texts = verses.Select(v => options.VerseNumbers ? $"{Superscript(v.Ref.Verse)} {v.Text}" : v.Text).ToList();
@@ -93,7 +93,7 @@ public static class ScriptureSlides
             if (!fits(texts[at]))
             {
                 // One verse is more than a slide holds: it goes over several, each with its reference.
-                foreach (var part in SplitLong(texts[at], fits))
+                foreach (var part in SplitLong(texts[at], fits, guess))
                     pages.Add(new ScripturePage(part, ReferenceLine(passage, [verses[at].Ref], options), verses[at].Ref, verses[at].Ref));
                 at++;
                 continue;
@@ -101,7 +101,7 @@ public static class ScriptureSlides
             // A new chapter starts a new slide (and a new section), as a printed Bible starts a new paragraph.
             var sameChapter = verses.Skip(at).TakeWhile(v => v.Ref.Book == verses[at].Ref.Book && v.Ref.Chapter == verses[at].Ref.Chapter).Count();
             var most = options.VersesPerSlide > 0 ? Math.Min(options.VersesPerSlide, sameChapter) : sameChapter;
-            var count = Largest(most, n => fits(Join(texts, at, n)));
+            var count = Largest(most, n => fits(Join(texts, at, n)), Largest(most, n => guess(Join(texts, at, n))));
             var covered = verses.Skip(at).Take(count).Select(v => v.Ref).ToList();
             pages.Add(new ScripturePage(Join(texts, at, count), ReferenceLine(passage, covered, options), covered[0], covered[^1]));
             at += count;
@@ -195,18 +195,49 @@ public static class ScriptureSlides
     {
         if (most <= 1) return 1;
         var good = 1;
-        var bad = most + 1;
-        for (var n = 2; n <= most; n *= 2)
+        for (var n = 2; ; n = Math.Min(most, n * 2))
         {
-            if (!fits(n))
-            {
-                bad = n;
-                break;
-            }
+            if (!fits(n)) return Between(good, n, fits);
+            if (n == most) return most;
             good = n;
         }
-        if (bad == most + 1 && good < most && fits(most)) return most;
-        if (bad == most + 1) bad = most;
+    }
+
+    /// <summary>
+    /// The same, starting from a <paramref name="guess"/> (the estimate's answer): the real
+    /// measurer then usually needs only two measurements, "the guess fits" and "one more doesn't",
+    /// stepping further, in growing strides, only when the guess was off.
+    /// </summary>
+    private static int Largest(int most, Func<int, bool> fits, int guess)
+    {
+        if (most <= 1) return 1;
+        guess = Math.Clamp(guess, 1, most);
+        var stride = 1;
+        if (guess == 1 || fits(guess))
+        {
+            var good = guess;
+            while (good < most)
+            {
+                var next = Math.Min(most, good + stride);
+                if (!fits(next)) return Between(good, next, fits);
+                good = next;
+                stride *= 2;
+            }
+            return good;
+        }
+        var bad = guess;
+        while (true)
+        {
+            var next = Math.Max(1, bad - stride);
+            if (next == 1 || fits(next)) return Between(next, bad, fits);
+            bad = next;
+            stride *= 2;
+        }
+    }
+
+    // The largest n that fits, knowing good fits and bad doesn't.
+    private static int Between(int good, int bad, Func<int, bool> fits)
+    {
         while (bad - good > 1)
         {
             var mid = (good + bad) / 2;
@@ -218,14 +249,15 @@ public static class ScriptureSlides
 
     // A verse too long for one slide, cut between words: each part as long as fits, ending at
     // punctuation when there's some in its last two fifths.
-    private static List<string> SplitLong(string text, Func<string, bool> fits)
+    private static List<string> SplitLong(string text, Func<string, bool> fits, Func<string, bool> guess)
     {
         var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var parts = new List<string>();
         var at = 0;
         while (at < words.Length)
         {
-            var count = Largest(words.Length - at, n => fits(string.Join(' ', words, at, n)));
+            var most = words.Length - at;
+            var count = Largest(most, n => fits(string.Join(' ', words, at, n)), Largest(most, n => guess(string.Join(' ', words, at, n))));
             if (at + count < words.Length)
             {
                 for (var end = at + count - 1; end >= at + (int)Math.Ceiling(count * 0.6); end--)
@@ -244,10 +276,10 @@ public static class ScriptureSlides
     }
 
     /// <summary>
-    /// "Does this text fit the layout's verse box?", from the theme's design: its box's size and
+    /// "Does this text fit the layout's verse box?" (and a quick guess at it), from the theme's design: its box's size and
     /// text style, at a readable size. With no theme or design, a 1920×1080 slide's middle at 64 pt.
     /// </summary>
-    private static Func<string, bool> Fitter(Theme? theme, ScriptureLayout layout, Func<StyledText, SceneSize, bool>? overflows)
+    private static (Func<string, bool> Fits, Func<string, bool> Guess) Fitter(Theme? theme, ScriptureLayout layout, Func<StyledText, SceneSize, bool>? overflows)
     {
         var design = Design(theme, layout);
         var boxes = design?.Objects.Where(o => o.ObjectKind == SlideObjectKind.Text).ToList() ?? [];
@@ -257,11 +289,23 @@ public static class ScriptureSlides
             ? new StyledText { FontName = theme?.FontFamily ?? "HelveticaNeue", FontSize = 64, LineHeightMultiple = 1.15 }
             : SlideSceneBuilder.StyledTextFor(probe, theme, box);
         var frame = new SceneSize(box?.Width ?? 1460, box?.Height ?? 600);
-        // Text that pages or shrinks to fit is measured at the smallest size we call readable, so
-        // the slide never relies on pages or tiny text.
-        style = style with { MinFontSize = Math.Max(style.MinFontSize, style.FontSize * ReadableShrink) };
+        // Text that shrinks to fit is measured at the smallest size we call readable, so the slide never
+        // relies on tiny text or on turning pages. Measuring once at that size is the same question as
+        // "does it fit, shrinking no further than that?", and a tenth of the work: the shrinking itself
+        // is a search over sizes.
+        if (style.AutoShrink)
+        {
+            var scale = Math.Max(ReadableShrink, Math.Min(1, style.MinFontSize / Math.Max(style.FontSize, 1)));
+            style = style with
+            {
+                AutoShrink = false, FontSize = style.FontSize * scale, Tracking = style.Tracking * scale,
+                ParagraphSpacing = style.ParagraphSpacing * scale,
+            };
+        }
+        // The estimate is cheap arithmetic; the real measurer lays the text out. The estimate's answer
+        // is where the real one starts, so it confirms more than it searches.
         var measure = overflows ?? EstimatedOverflow;
-        return text => !measure(style with { String = text }, frame);
+        return (text => !measure(style with { String = text }, frame), text => !EstimatedOverflow(style with { String = text }, frame));
     }
 
     /// <summary>

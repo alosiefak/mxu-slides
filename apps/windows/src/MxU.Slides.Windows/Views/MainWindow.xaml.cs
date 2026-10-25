@@ -231,6 +231,7 @@ public partial class MainWindow : Window
                 case Key.I: Import_Click(this, e); e.Handled = true; return;
                 case Key.E: model.IsEditing = !model.IsEditing; e.Handled = true; return;
                 case Key.F: LibrarySearchBox.Focus(); LibrarySearchBox.SelectAll(); e.Handled = true; return;
+                case Key.B: model.OpenBibleCommand.Execute(null); e.Handled = true; return;
             }
         }
 
