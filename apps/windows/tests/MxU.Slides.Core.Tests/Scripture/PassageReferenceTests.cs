@@ -49,6 +49,11 @@ public class PassageReferenceTests
         Assert.Equal("Matthew 3:28", Read("Matthew 3 verse 28"));
         Assert.Equal("John 3:16", Read("John 3:16a"));
         Assert.Equal("Romans 8:28, 31", Read("Rom 8:28 and 31"));
+        // A fast typist leaves the punctuation out.
+        Assert.Equal("Romans 8:28", Read("rom 8 28"));
+        Assert.Equal("John 3:16–18", Read("john 3 16 18"));
+        Assert.Equal("Romans 8:28, 31–32", Read("Rom 8:28, 31 32"));
+        Assert.Equal("Genesis 1; 2:3", Read("Gen 1, 2 3"));
     }
 
     [Fact]

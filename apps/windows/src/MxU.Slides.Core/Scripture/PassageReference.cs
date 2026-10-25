@@ -234,7 +234,26 @@ public sealed record PassageReference(IReadOnlyList<PassageSpan> Spans, string? 
             }
             // A separator or dash at the end is someone still typing ("John 3:", "Ps 23:1-"): read what's there.
             while (tokens.Count > 0 && tokens[^1].Kind != Kind.Number) tokens.RemoveAt(tokens.Count - 1);
-            return tokens.Count == 0 ? null : tokens;
+            return tokens.Count == 0 ? null : WithSpacesRead(tokens);
+        }
+
+        // A fast typist leaves the punctuation out: "rom 8 28" is 8:28 and "john 3 16 18" is
+        // 3:16–18. A number straight after a number is read as the verse, then the range's end.
+        private static List<Token> WithSpacesRead(List<Token> tokens)
+        {
+            var read = new List<Token>();
+            var named = false; // a chapter has been named (so a pair after it is a verse range)
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (i > 0 && tokens[i].Kind == Kind.Number && tokens[i - 1].Kind == Kind.Number)
+                {
+                    read.Add(new Token(named ? Kind.Dash : Kind.Separator));
+                    named = true;
+                }
+                if (tokens[i].Kind == Kind.Separator) named = true;
+                read.Add(tokens[i]);
+            }
+            return read;
         }
 
         private static bool Items(BibleBook book, List<Token> tokens, List<PassageSpan> spans)
