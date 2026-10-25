@@ -29,6 +29,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The bundled fonts (SIL Open Font License) with their licence and credits, in a Fonts folder beside the app (Core/Library/BundledFonts.cs). -->
+    <Content Include="..\..\assets\fonts\*.ttf;..\..\assets\fonts\OFL.txt;..\..\assets\fonts\FONT-NOTICES.txt" Link="Fonts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="Assets\AppIcon.ico" />
     <Resource Include="Assets\AppIcon256.png" />
   </ItemGroup>

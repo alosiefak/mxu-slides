@@ -56,6 +56,28 @@ public static class FontFiles
         }
     }
 
+    /// <summary>
+    /// Every string in the first face's <c>name</c> table, by name id: 0 the copyright notice, 1 the
+    /// family, 4 the full name, 5 the version, 13 the licence and 14 its web address, and so on.
+    /// Empty when the file can't be read. The font credits are made from these (BundledFonts).
+    /// </summary>
+    public static IReadOnlyDictionary<int, string> NameStrings(byte[] data)
+    {
+        try
+        {
+            if (data.Length < 12) return new Dictionary<int, string>();
+            var start = data.AsSpan(0, 4).SequenceEqual("ttcf"u8) ? U32(data, 12) : 0;
+            var tables = Tables(data, start);
+            return tables.TryGetValue("name", out var name)
+                ? Names(data, name.Offset, name.Length).ToDictionary(p => p.Key, p => p.Value.Trim('\0', ' '))
+                : new Dictionary<int, string>();
+        }
+        catch (Exception e) when (e is ArgumentOutOfRangeException or IndexOutOfRangeException)
+        {
+            return new Dictionary<int, string>();
+        }
+    }
+
     /// <summary>The family names a library's fonts add (for the font pickers and the PowerPoint importer).</summary>
     public static IReadOnlyList<string> Families(string libraryRoot)
     {

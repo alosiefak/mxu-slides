@@ -100,9 +100,13 @@ public static partial class FontMap
                     {
                         var family = families.FirstOrDefault(f => f.FamilyNames.Values.Contains(face.Family, StringComparer.OrdinalIgnoreCase)) ?? families[0];
                         LibraryFamilies.TryAdd(face.Family, new FontFamily(new Uri(folder + Path.DirectorySeparatorChar), "./#" + (FamilyName(family) ?? face.Family)));
-                        if (LibraryFaces.TryAdd(face.PostScriptName, new Face(family, FontWeight.FromOpenTypeWeight(Math.Clamp(face.Weight, 1, 999)),
-                                face.Italic ? FontStyles.Italic : FontStyles.Normal, FontStretch.FromOpenTypeStretch(Math.Clamp(face.Width, 1, 9)))))
-                            added++;
+                        var exact = new Face(family, FontWeight.FromOpenTypeWeight(Math.Clamp(face.Weight, 1, 999)),
+                            face.Italic ? FontStyles.Italic : FontStyles.Normal, FontStretch.FromOpenTypeStretch(Math.Clamp(face.Width, 1, 9)));
+                        if (LibraryFaces.TryAdd(face.PostScriptName, exact)) added++;
+                        // Its full name too ("Montserrat Black", "Poppins SemiBold"): what PowerPoint and ProPresenter
+                        // files often name, and what Core Text also resolves. Without it "Montserrat Black" read as the
+                        // family "Montserrat " plus a Black style, missed, and fell back to Segoe UI.
+                        if (face.FullName.Length > 0) LibraryFaces.TryAdd(face.FullName, exact);
                     }
                 }
                 catch (Exception ex)
@@ -162,7 +166,8 @@ public static partial class FontMap
         // "HelveticaNeue" with no dash may still carry a style ("HelveticaNeueBold").
         if (dash < 0 && TrailingStyle().Match(fontName) is { Success: true } m && m.Index > 0)
         {
-            familyPart = fontName[..m.Index];
+            // "Poppins SemiBold" → "Poppins" + SemiBold (trimmed, or the family's name wouldn't match).
+            familyPart = fontName[..m.Index].TrimEnd();
             stylePart = m.Value;
         }
 

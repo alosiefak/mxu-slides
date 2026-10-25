@@ -1,0 +1,6 @@
+Sources (downloaded 2026-10-25, with the user's approval):
+- Poppins (Regular, Medium, SemiBold, Bold, ExtraBold, Black, Italic): https://github.com/google/fonts/tree/main/ofl/poppins
+- Bebas Neue (Regular): https://github.com/google/fonts/tree/main/ofl/bebasneue
+- DM Serif Display (Regular, Italic): https://github.com/google/fonts/tree/main/ofl/dmserifdisplay
+- Montserrat (Regular, SemiBold, Bold, ExtraBold, Black): https://github.com/JulietaUla/Montserrat (fonts/ttf)
+All are licensed under the SIL Open Font License 1.1, which allows bundling them with software.
