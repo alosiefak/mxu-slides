@@ -25,7 +25,7 @@ public sealed class SlideActionsWindow : Window
     internal ActionListEditor Editor { get; }
 
     internal SlideActionsWindow(Window? owner, MainViewModel model, string title, string help,
-        IReadOnlyList<SlideAction> actions, Func<IReadOnlyList<SlideAction>, bool> save)
+        IReadOnlyList<SlideAction> actions, Func<IReadOnlyList<SlideAction>, bool> save, string? ownerId = null)
     {
         this.save = save;
         EditorKit.Dress(this, owner, title, 520, 600);
@@ -33,6 +33,8 @@ public sealed class SlideActionsWindow : Window
         Editor = new ActionListEditor(model.ActionChoices, emptyText: "No actions yet. Press + Add action to add one.");
         Editor.Load(actions);
         Editor.Changed += Save;
+        // Windows only: the slide's or media item's production steps (cameras, OBS, vMix, lights), kept beside the library.
+        if (ownerId is not null) Production.ProductionStepsSection.Attach(Editor, model, ownerId);
 
         var done = EditorKit.Button("Done", Close, accent: true);
         done.IsDefault = true;
@@ -111,7 +113,7 @@ public sealed class SlideActionsWindow : Window
         return new SlideActionsWindow(owner, model, title,
             "These run, in order, each time this slide goes live. A delay waits that many seconds first. "
             + "A Clear step never clears what this slide itself just put up.",
-            stored.Actions ?? [], actions => model.SaveSlideActions(deckId, slideId, actions));
+            stored.Actions ?? [], actions => model.SaveSlideActions(deckId, slideId, actions), slideId);
     }
 
     /// <summary>The window for a media item, not yet shown.</summary>
@@ -121,7 +123,7 @@ public sealed class SlideActionsWindow : Window
         var id = stored.Id;
         return new SlideActionsWindow(owner, model, $"Media Actions — {stored.Name}",
             "These run, in order, each time this media item is fired (from the bin, a service or a slide). A delay waits that many seconds first.",
-            stored.Actions ?? [], actions => model.SaveMediaActions(id, actions));
+            stored.Actions ?? [], actions => model.SaveMediaActions(id, actions), id);
     }
 
     // MARK: The slide's right-click menu

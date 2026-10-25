@@ -565,6 +565,8 @@ public static class TimelineActionsWindow
         editor.Load(vm.Cues.FirstOrDefault(c => c.Id == cue.Id)?.Actions ?? []);
         IReadOnlyList<SlideAction>? edited = null;
         editor.Changed += list => edited = list;
+        // Windows only: the cue's production steps (cameras, OBS, vMix, lights), kept beside the library and saved at once.
+        Production.ProductionStepsSection.Attach(editor, model, cue.Id);
         body.Children.Add(new ScrollViewer { Content = editor, MaxHeight = 380, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         body.Children.Add(TimelineDialog.Footer(window));
         window.Closed += (_, _) =>

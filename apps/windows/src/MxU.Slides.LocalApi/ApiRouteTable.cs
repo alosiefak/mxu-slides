@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 namespace MxU.Slides.LocalApi;
 
 /// <summary>Every operation, with the Mac's paths, methods, scopes and shapes. Port of APIRouteTable.</summary>
-public static class ApiRouteTable
+public static partial class ApiRouteTable
 {
     public static List<ApiRoute> Build(IApiBridge bridge)
     {
@@ -319,6 +319,8 @@ public static class ApiRouteTable
                 return ok;
             }, Ref("AddServiceItemCommand"));
 
+        // Windows only (ApiRouteTable.Windows.cs): production control.
+        AddWindowsRoutes(routes, bridge);
         return routes;
     }
 }

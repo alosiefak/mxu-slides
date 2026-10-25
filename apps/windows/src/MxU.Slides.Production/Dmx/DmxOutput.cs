@@ -58,7 +58,7 @@ public sealed class DmxOutput : ProductionDevice
                 return;
             }
         }
-        SetStatus(DeviceState.Idle, "Ready: sends when a lighting step runs");
+        SetStatus(DeviceState.Idle, "Sends once a lighting step runs");
     }
 
     /// <summary>Where a show universe goes, as the status line says it.</summary>

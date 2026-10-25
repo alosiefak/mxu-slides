@@ -274,7 +274,7 @@ public static class ProductionEditing
             case ProductionKind.LightsLook:
                 fields.Add(look);
                 fields.Add(fade);
-                fields.Add(new SwitchField("How", "On top", "Instead", s => s.OnTop ?? false, (s, v) => s.OnTop = v == true ? true : null));
+                fields.Add(new SwitchField("How", "Add it on top", "Crossfade to it", s => s.OnTop ?? false, (s, v) => s.OnTop = v == true ? true : null));
                 break;
             case ProductionKind.LightsRelease:
                 fields.Add(look);

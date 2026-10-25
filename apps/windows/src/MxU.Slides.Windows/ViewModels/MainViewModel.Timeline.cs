@@ -404,6 +404,9 @@ public sealed partial class MainViewModel : ITimelineHost, ITimecodeHost, ITimec
 
     void ITimelineHost.RunActions(IReadOnlyList<SlideAction> actions) => Actions.Execute(actions);
 
+    // Naming the cue lets its production steps (Windows only) run beside its actions.
+    void ITimelineHost.RunActions(string cueId, IReadOnlyList<SlideAction> actions) => Actions.Execute(cueId, actions);
+
     IReadOnlySet<string> ITimelineHost.Live
     {
         get

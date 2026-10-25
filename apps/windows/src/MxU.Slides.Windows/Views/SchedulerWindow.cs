@@ -574,6 +574,8 @@ public sealed class SchedulerWindow : Window
         editor.Load(trigger.Actions);
         editor.Changed += actions => Edit(id, t => t.Actions = [.. actions]);
         Editor = editor;
+        // Windows only: the trigger's production steps (cameras, OBS, vMix, lights), kept beside the library.
+        Production.ProductionStepsSection.Attach(editor, model, id);
         panel.Children.Add(editor);
 
         // Filled in now, and kept up to date by Refresh.

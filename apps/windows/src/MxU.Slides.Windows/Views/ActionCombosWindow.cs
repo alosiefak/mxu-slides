@@ -386,6 +386,8 @@ public sealed class ActionCombosWindow : Window
             run.ToolTip = EditorKit.RunTooltip(actions.Count);
         };
         Editor = editor;
+        // Windows only: the combo's production steps (cameras, OBS, vMix, lights), kept beside the library.
+        Production.ProductionStepsSection.Attach(editor, model, id);
         panel.Children.Add(editor);
         return panel;
     }

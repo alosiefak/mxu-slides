@@ -217,7 +217,7 @@ public sealed class ObsClient : ProductionDevice
                 ws.ReadTimeout = TimeSpan.Zero;
                 retry = TimeSpan.Zero;
                 socket = ws;
-                SetStatus(DeviceState.Online, "Connected");
+                SetStatus(DeviceState.Online, "Signed in");
                 Note("connected");
                 QueueRefresh();
                 while (!IsDisposed && ws.ReceiveText() is { } text) Handle(text);
@@ -365,7 +365,7 @@ public sealed class ObsClient : ProductionDevice
         string detail;
         lock (gate)
         {
-            var parts = new List<string> { programScene is { } scene ? $"Program: {scene}" : "Connected" };
+            var parts = new List<string> { programScene is { } scene ? $"Program: {scene}" : "Signed in" };
             if (studioMode) parts.Add("studio mode");
             if (streaming) parts.Add("streaming");
             if (recording) parts.Add("recording");
