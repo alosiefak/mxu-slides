@@ -95,11 +95,34 @@ public sealed class EditBar : StackPanel
         menu.Items.Add(Item("Paste", "Ctrl+V", model.HasPresentation && Infrastructure.AppClipboard.HasAnything(), () => _ = model.Paste(target)));
         menu.Items.Add(Item("Duplicate" + what, "Ctrl+D", any, () => model.Duplicate(target)));
         menu.Items.Add(Item("Select All Slides", "Ctrl+A", model.IsEditing && model.HasPresentation, () => model.SelectAllSlidesCommand.Execute(null)));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(ArrangeMenu(model));
         foreach (var extra in MenuSections) extra(model, menu);
         return menu;
     }
 
-    /// <summary>More of the Edit menu (arranging, text tools), added by their own files.</summary>
+    /// <summary>The Mac's Arrange menu: layer order, align, distribute, group.</summary>
+    private static MenuItem ArrangeMenu(MainViewModel model)
+    {
+        var arrange = new MenuItem { Header = "Arrange", IsEnabled = model.IsEditing && model.HasCanvasSelection };
+        foreach (var move in Enum.GetValues<Core.Editing.LayerMove>())
+            arrange.Items.Add(Item(Core.Editing.Layers.Title(move), null, model.CanMoveLayers(move), () => model.MoveLayers(move)));
+        arrange.Items.Add(new Separator());
+        foreach (var (edge, title) in new[] { ("Left", "Align Left"), ("CenterX", "Align Centre"), ("Right", "Align Right"), ("Top", "Align Top"), ("CenterY", "Align Middle"), ("Bottom", "Align Bottom") })
+            arrange.Items.Add(Item(title, null, true, () => model.AlignCommand.Execute(edge)));
+        arrange.Items.Add(new Separator());
+        var three = (model.Canvas?.Selection.Count ?? 0) >= 3;
+        arrange.Items.Add(Item("Distribute Horizontally", null, three, () => model.DistributeCommand.Execute("Horizontal")));
+        arrange.Items.Add(Item("Distribute Vertically", null, three, () => model.DistributeCommand.Execute("Vertical")));
+        arrange.Items.Add(new Separator());
+        arrange.Items.Add(Item("Group", "Ctrl+G", model.CanGroupObjects, () => model.GroupObjectsCommand.Execute(null)));
+        arrange.Items.Add(Item("Ungroup", "Ctrl+Shift+G", model.CanUngroupObjects, () => model.UngroupObjectsCommand.Execute(null)));
+        arrange.Items.Add(new Separator());
+        arrange.Items.Add(Item("Nudge: arrow keys (Shift: 10 px)", null, false, () => { }));
+        return arrange;
+    }
+
+    /// <summary>More of the Edit menu (the text tools), added by their own files.</summary>
     internal static readonly List<Action<MainViewModel, ContextMenu>> MenuSections = [];
 
     private void OpenMenu(Button anchor)

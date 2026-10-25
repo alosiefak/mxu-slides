@@ -397,6 +397,8 @@
                                 <TextBlock Text="ARRANGE" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <Button Command="{Binding BringToFrontCommand}" Content="Front" Margin="0,0,4,0" />
                                 <Button Command="{Binding SendToBackCommand}" Content="Back" Margin="0,0,4,0" />
+                                <Button Command="{Binding BringForwardCommand}" ToolTip="Bring forward one" Margin="0,0,2,0"><TextBlock FontFamily="{StaticResource Icons}" Text="&#xE70E;" /></Button>
+                                <Button Command="{Binding SendBackwardCommand}" ToolTip="Send backward one" Margin="0,0,6,0"><TextBlock FontFamily="{StaticResource Icons}" Text="&#xE70D;" /></Button>
                                 <Button Command="{Binding AlignCommand}" CommandParameter="Left" ToolTip="Align left (to the slide when one is selected)" Margin="0,0,2,0">
                                     <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8E4;" />
                                 </Button>
@@ -408,7 +410,11 @@
                                 </Button>
                                 <Button Command="{Binding AlignCommand}" CommandParameter="Top" Content="Top" Margin="0,0,2,0" />
                                 <Button Command="{Binding AlignCommand}" CommandParameter="CenterY" Content="Middle" Margin="0,0,2,0" />
-                                <Button Command="{Binding AlignCommand}" CommandParameter="Bottom" Content="Bottom" Margin="0,0,14,0" />
+                                <Button Command="{Binding AlignCommand}" CommandParameter="Bottom" Content="Bottom" Margin="0,0,6,0" />
+                                <Button Command="{Binding DistributeCommand}" CommandParameter="Horizontal" Content="Space ↔" ToolTip="Distribute three or more evenly, left to right" Margin="0,0,2,0" />
+                                <Button Command="{Binding DistributeCommand}" CommandParameter="Vertical" Content="Space ↕" ToolTip="Distribute three or more evenly, top to bottom" Margin="0,0,6,0" />
+                                <Button Command="{Binding GroupObjectsCommand}" Content="Group" ToolTip="Group (Ctrl+G): they select and move together" Margin="0,0,2,0" />
+                                <Button Command="{Binding UngroupObjectsCommand}" Content="Ungroup" ToolTip="Ungroup (Ctrl+Shift+G)" Margin="0,0,14,0" />
                                 <Button Command="{Binding ResetToThemeCommand}" Content="Reset to theme" Margin="0,0,4,0"
                                         ToolTip="Give the selected text (or all text) its theme position and style back" />
                                 <Button Command="{Binding DuplicateSelectedObjectsCommand}" Content="Duplicate" Margin="0,0,4,0" />
@@ -416,12 +422,16 @@
                             </WrapPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.3*" />
+                                    <ColumnDefinition Width="1.2*" />
                                     <ColumnDefinition Width="12" />
-                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="0.8*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="0.9*" />
                                     <ColumnDefinition Width="12" />
                                     <ColumnDefinition Width="1.6*" />
                                 </Grid.ColumnDefinitions>
+                                <!-- The slide's objects, top first (Views/LayersPanel.cs) -->
+                                <v:LayersPanel Grid.Column="4" />
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <ItemsControl ItemsSource="{Binding SlideTextFields}">
                                         <ItemsControl.ItemTemplate>
@@ -439,7 +449,7 @@
                                     <TextBlock Text="Notes (shown to you, never to the room)" Style="{StaticResource Muted}" FontSize="11" Margin="0,0,0,3" />
                                     <TextBox Text="{Binding SlideNotes, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
                                 </StackPanel>
-                                <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto">
+                                <ScrollViewer Grid.Column="6" VerticalScrollBarVisibility="Auto">
                                     <Grid>
                                         <TextBlock Text="Click something on the slide to change its font, colour, size and position."
                                                    Style="{StaticResource Muted}" TextWrapping="Wrap"

@@ -28,6 +28,7 @@ public sealed partial class MainViewModel
             }
             canvas = value;
             if (canvas is null) return;
+            canvas.IsLocked = id => Locks.IsLocked(id);
             canvas.SelectionChanged += OnCanvasSelectionChanged;
             canvas.Edited += OnCanvasEdited;
             canvas.DeleteRequested += DeleteSelectedObjects;
@@ -41,7 +42,11 @@ public sealed partial class MainViewModel
 
     public bool HasCanvasSelection => canvas?.Selection.Count > 0;
 
-    private void LoadCanvas() => canvas?.Load(IsEditing ? EditedSlide : null, EditedSlideTheme, CurrentPresentation);
+    private void LoadCanvas()
+    {
+        canvas?.Load(IsEditing ? EditedSlide : null, EditedSlideTheme, CurrentPresentation);
+        RaiseLayersChanged();
+    }
 
     private List<SlideObject> SelectedObjects() =>
         EditedSlide is { } slide && canvas is not null ? slide.Objects.Where(o => canvas.Selection.Contains(o.Id)).ToList() : [];
@@ -61,6 +66,7 @@ public sealed partial class MainViewModel
             Inspector = null;
         }
         OnPropertyChanged(nameof(HasCanvasSelection));
+        RaiseLayersChanged();
     }
 
     private void OnCanvasEdited(bool final)
@@ -73,6 +79,7 @@ public sealed partial class MainViewModel
     {
         canvas?.Refresh();
         SlideEdited();
+        RaiseLayersChanged(); // a rename in the inspector shows in the layers list
         // Keep the text boxes list in step when the inspector edits text.
         foreach (var field in SlideTextFields) field.Refresh();
     }
@@ -97,6 +104,7 @@ public sealed partial class MainViewModel
         canvas?.Select(select);
         RefreshSlideFields();
         SlideEdited();
+        RaiseLayersChanged();
     }
 
     private void RefreshSlideFields()

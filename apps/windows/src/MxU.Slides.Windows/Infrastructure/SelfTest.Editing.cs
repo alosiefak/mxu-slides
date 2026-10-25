@@ -32,6 +32,7 @@ public sealed partial class SelfTest
         {
             await UndoChecks(copy);
             await ClipboardChecks(copy);
+            await LayersChecks(copy);
         }
         finally
         {
@@ -305,6 +306,76 @@ public sealed partial class SelfTest
             }
             model.IsEditing = false;
         }
+    }
+
+    // MARK: Layers and arranging
+
+    private async Task LayersChecks(Presentation song)
+    {
+        model.Open(model.Library.Get<Presentation>(song.Id)!, null, null);
+        model.IsEditing = true;
+        model.SelectedSlide = model.Slides[2];
+        await Delay(300);
+        model.AddBoxCommand.Execute(null);
+        model.AddCircleCommand.Execute(null);
+        model.FlushPendingSave();
+        var slide = model.CurrentPresentation!.Slides.First(s => s.Id == model.SelectedSlide!.Slide.Id);
+        var box = slide.Objects[^2];
+        var circle = slide.Objects[^1];
+        var rows = model.LayerRows;
+        Check("layers: the list is top first, the circle above the box", rows.Count >= 3 && rows[0].Id == circle.Id && rows[1].Id == box.Id);
+        Check("layers: the theme's decor is listed, fixed", rows.Any(r => r.FromTheme) || slide.ThemeSlideName is null);
+
+        model.PickLayers([box.Id]);
+        Check("layers: picking a row selects the object on the canvas", window.CanvasEditor.Selection.SetEquals([box.Id]) && model.Inspector is { IsShape: true });
+        model.MoveLayers(Core.Editing.LayerMove.BringForward);
+        Check("layers: Bring Forward moves it above the circle", slide.Objects[^1].Id == box.Id && model.LayerRows[0].Id == box.Id);
+        model.MoveLayers(Core.Editing.LayerMove.SendToBack);
+        Check("layers: Send to Back puts it at the bottom", slide.Objects[0].Id == box.Id);
+        model.MoveLayer(box.Id, circle.Id);
+        Check("layers: dragging its row above the circle's moves it there", slide.Objects[^1].Id == box.Id);
+        await Delay(100); // a step is named once its piece of work is over
+        Check("layers: each move is a step called Arrange", model.UndoMenuText == "Undo Arrange");
+
+        model.RenameObject(box.Id, "Banner");
+        await Delay(100);
+        Check("layers: renaming a row renames the object", slide.Objects.First(o => o.Id == box.Id).Name == "Banner" && model.UndoMenuText == "Undo Rename");
+        model.ToggleHidden(circle.Id);
+        Check("layers: the eye hides an object on every screen", circle.Hidden == true
+            && !Core.Scene.SlideSceneBuilder.Scene(slide, model.CurrentTheme, model.CurrentPresentation).AllItems.Any(i => i.Id.Contains(circle.Id)));
+        model.ToggleLocked(box.Id);
+        Check("layers: the padlock locks an object (a Windows extra)", model.Locks.IsLocked(box.Id) && window.CanvasEditor.IsLocked?.Invoke(box.Id) == true);
+        var x = box.X;
+        window.CanvasEditor.Focus();
+        window.CanvasEditor.Select([box.Id]);
+        PressKey(window.CanvasEditor, System.Windows.Input.Key.Right);
+        Check("layers: arrow keys leave a locked object where it is", box.X == x);
+        model.ToggleLocked(box.Id);
+        PressKey(window.CanvasEditor, System.Windows.Input.Key.Right);
+        Check("layers: unlocked, an arrow key nudges it one point", box.X == x + 1);
+        await Delay(100);
+        model.ToggleLocked(box.Id); // locked again, for the picture
+
+        model.PickLayers([box.Id, circle.Id]);
+        model.GroupObjectsCommand.Execute(null);
+        Check("layers: Group gives both one group", box.GroupId is { Length: > 0 } && box.GroupId == circle.GroupId);
+        model.PickLayers([circle.Id]);
+        Check("layers: picking one of a group picks the group", window.CanvasEditor.Selection.SetEquals([box.Id, circle.Id]));
+        await Step("49-layers", () => { }, settle: 500);
+        model.UngroupObjectsCommand.Execute(null);
+        Check("layers: Ungroup takes them out", box.GroupId is null && circle.GroupId is null);
+        model.ToggleLocked(box.Id);
+        model.IsEditing = false;
+    }
+
+    /// <summary>Presses a key on an element, as the keyboard would.</summary>
+    private static void PressKey(UIElement target, System.Windows.Input.Key key)
+    {
+        if (PresentationSource.FromVisual(target) is not { } source) return;
+        target.RaiseEvent(new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, source, 0, key)
+        {
+            RoutedEvent = System.Windows.Input.Keyboard.KeyDownEvent,
+        });
     }
 
     /// <summary>The library's copy as it is on disk now.</summary>

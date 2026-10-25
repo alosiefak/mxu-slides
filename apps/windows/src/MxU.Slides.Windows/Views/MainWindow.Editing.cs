@@ -53,7 +53,17 @@ public partial class MainWindow
                     model.SelectAllSlidesCommand.Execute(null);
                     e.Handled = true;
                     return true;
+                case Key.G when target == EditTarget.Objects:
+                    model.GroupObjectsCommand.Execute(null);
+                    e.Handled = true;
+                    return true;
             }
+        }
+        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.G && target == EditTarget.Objects)
+        {
+            model.UngroupObjectsCommand.Execute(null);
+            e.Handled = true;
+            return true;
         }
         // Delete removes the picked slides, in Edit mode only: a stray key mid-service does nothing.
         if (key is Key.Delete && Keyboard.Modifiers == ModifierKeys.None && model.IsEditing && target == EditTarget.Slides)
