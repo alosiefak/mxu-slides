@@ -5,7 +5,8 @@ using System.Text.Json.Nodes;
 // copies a prepared video to -output); run as "AfterFX.exe -r script.jsx" it does what the bridge's
 // script asks (lists compositions, or writes the changes into the project copy). What it finds and
 // does comes from the project, a text file of "key=value" lines the tests write:
-//   log=<file>       every run appends its arguments here (one JSON array per line)
+//   log=<file>       every run appends its arguments here (one JSON array per line; AfterFX adds the
+//                    script's job, and aerender what the script saved into the copy it renders)
 //   source=<file>    the video aerender "renders" (copied to -output)
 //   frames=<n>, delay=<ms>  how many frames aerender reports, and how slowly
 //   comp=<name>|<w>|<h>|<seconds>|<fps>, text=<comp>|<layer>|<name>|<words>,
@@ -47,6 +48,8 @@ static int Aerender(string[] args)
     }
     var project = Read(projectPath);
     Log(project, "aerender", args);
+    // What the script saved into this copy beforehand, so the tests can see it rendered the changed copy.
+    if (project.TryGetValue("applied", out var applied)) Log(project, "aerender-saw", [.. applied]);
     var comp = Arg("-comp") ?? "";
     Console.WriteLine("aerender version 26.0x12");
     Console.WriteLine("PROGRESS:  Launching After Effects...");
@@ -91,7 +94,7 @@ static int AfterFx(string[] args)
     var projectPath = job["project"]!.GetValue<string>();
     var resultPath = job["result"]!.GetValue<string>();
     var project = Read(projectPath);
-    Log(project, "AfterFX", args);
+    Log(project, "AfterFX", [.. args, job.ToJsonString()]);
     JsonObject result;
     if (One(project, "dirty") == "true")
     {

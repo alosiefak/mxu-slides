@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using MxU.Slides.Broadcast.Media;
+using MxU.Slides.Core.Library;
+using MxU.Slides.Core.Model;
 
 namespace MxU.Slides.MotionTemplates.AfterEffects;
 
@@ -78,6 +81,34 @@ public sealed class AfterEffectsBridge(AfterEffectsInstall install, string workR
         {
             if (!succeeded) TryDelete(output);
             TryDeleteFolder(job);
+        }
+    }
+
+    /// <summary>The media library folder After Effects renders are filed in.</summary>
+    public const string MediaFolder = "After Effects";
+
+    /// <summary>
+    /// Files a finished render into the media library as an ordinary video (in the "After Effects"
+    /// folder): a looping background, or a foreground video that plays once. The file is copied in and
+    /// then removed. A file Windows can't play is still kept, but flagged (Phase 5's import probe), so
+    /// it can be turned into H.264.
+    /// </summary>
+    /// <exception cref="IOException">The file isn't a video.</exception>
+    public static MediaItem FileIntoLibrary(LibraryStore library, string path, string name, bool background)
+    {
+        try
+        {
+            var probe = library.Prober?.Probe(path) ?? MediaImportProbe.ProbeVideo(path);
+            var item = MediaImporting.AddMedia(library, path, name, background ? MediaClassification.Background : MediaClassification.Foreground, probe: probe)
+                       ?? throw new IOException("The render isn't a video the library can take");
+            item.Folder = MediaFolder;
+            item.Loops = background;
+            library.Save(item);
+            return item;
+        }
+        finally
+        {
+            TryDelete(path);
         }
     }
 
