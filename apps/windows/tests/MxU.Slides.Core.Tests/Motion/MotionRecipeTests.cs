@@ -1,3 +1,4 @@
+using System.Numerics;
 using MxU.Slides.Core.Json;
 using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Motion;
@@ -92,6 +93,33 @@ public sealed class MotionRecipeTests : IDisposable
         Assert.InRange(MotionColor.ToOklab(stops[0]).X, 0, 0.2001);
         // Same hue: still pink, just deep.
         Assert.True(stops[0].X > stops[0].Z);
+    }
+
+    [Fact]
+    public void BlendingTwoHuesKeepsTheColourInsteadOfGoingGrey()
+    {
+        static Vector3 Lab(string hex) => MotionColor.ToOklab(MotionColor.FromHex(hex)!.Value);
+        // Royal's purple and gold: far apart in hue.
+        Vector3 purple = Lab("#8E44C9"), gold = Lab("#F3C96B");
+        var straight = Vector3.Lerp(purple, gold, 0.5f);
+        var kept = MotionColor.LerpLab(purple, gold, 0.5f);
+        // A straight line through OKLab loses most of the colour half-way: that's the mud...
+        Assert.True(MotionColor.Chroma(straight) < 0.75f * Math.Min(MotionColor.Chroma(purple), MotionColor.Chroma(gold)),
+            $"straight {MotionColor.Chroma(straight):0.000}, purple {MotionColor.Chroma(purple):0.000}, gold {MotionColor.Chroma(gold):0.000}");
+        // ...the blend keeps the two colours' average colourfulness, with the straight line's lightness and hue.
+        Assert.Equal((MotionColor.Chroma(purple) + MotionColor.Chroma(gold)) / 2, MotionColor.Chroma(kept), 3);
+        Assert.Equal(straight.X, kept.X, 5);
+        Assert.Equal(MathF.Atan2(straight.Z, straight.Y), MathF.Atan2(kept.Z, kept.Y), 4);
+        // The ends are the colours themselves.
+        Assert.Equal(purple, MotionColor.LerpLab(purple, gold, 0));
+        Assert.Equal(gold, MotionColor.LerpLab(purple, gold, 1));
+
+        // Two shades of one hue (Midnight's blues) blend almost exactly as a straight line does.
+        Vector3 navy = Lab("#0B1E4B"), blue = Lab("#2160C4");
+        Assert.InRange(MotionColor.Chroma(MotionColor.LerpLab(navy, blue, 0.5f)) / MotionColor.Chroma(Vector3.Lerp(navy, blue, 0.5f)), 1, 1.05);
+        // And two opposite colours aren't given a strong colour that neither has.
+        var grey = MotionColor.LerpLab(new Vector3(0.6f, 0.1f, 0), new Vector3(0.6f, -0.1f, 0.001f), 0.5f);
+        Assert.True(MotionColor.Chroma(grey) < 0.01f);
     }
 
     [Fact]

@@ -64,8 +64,37 @@ public static class MotionColor
             -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s));
     }
 
-    /// <summary>The colour <paramref name="t"/> of the way from <paramref name="a"/> to <paramref name="b"/>, mixed in OKLab.</summary>
-    public static Vector3 Mix(Vector3 a, Vector3 b, float t) => FromOklab(Vector3.Lerp(ToOklab(a), ToOklab(b), t));
+    /// <summary>The colour <paramref name="t"/> of the way from <paramref name="a"/> to <paramref name="b"/>, mixed in OKLab (<see cref="LerpLab"/>).</summary>
+    public static Vector3 Mix(Vector3 a, Vector3 b, float t) => FromOklab(LerpLab(ToOklab(a), ToOklab(b), t));
+
+    /// <summary>How colourful an OKLab colour is: its distance from grey.</summary>
+    public static float Chroma(Vector3 lab) => MathF.Sqrt(lab.Y * lab.Y + lab.Z * lab.Z);
+
+    // How far LerpLab may turn up the colour: enough to bring back what a straight line loses
+    // between hues far apart, without inventing a strong colour between two that are opposite.
+    private const float MostBoost = 2.5f;
+
+    /// <summary>
+    /// Two OKLab colours blended, keeping their colourfulness. A straight line between two quite
+    /// different hues (purple and gold, say) passes close to grey half-way, which reads as mud.
+    /// So lightness and hue follow the straight line, but the chroma (how colourful) is set to the
+    /// blend of the two colours' own chromas: purple to gold goes through a clear rose instead.
+    /// Colours of similar hue barely change, since their straight line loses almost nothing.
+    /// </summary>
+    public static Vector3 LerpLab(Vector3 a, Vector3 b, float t) => KeepChroma(Vector3.Lerp(a, b, t), Chroma(a) + (Chroma(b) - Chroma(a)) * t);
+
+    /// <summary>
+    /// <paramref name="lab"/> with its chroma turned up to <paramref name="chroma"/> (never down,
+    /// and at most <see cref="MostBoost"/> times), its lightness and hue unchanged: for blends,
+    /// which lose colour on the way (<see cref="LerpLab"/>, and weighted averages of several colours).
+    /// </summary>
+    public static Vector3 KeepChroma(Vector3 lab, float chroma)
+    {
+        var have = Chroma(lab);
+        if (have < 1e-6f || chroma <= have) return lab;
+        var scale = Math.Min(chroma / have, MostBoost);
+        return new Vector3(lab.X, lab.Y * scale, lab.Z * scale);
+    }
 
     public static float Smoothstep(float edge0, float edge1, float x)
     {
@@ -91,7 +120,7 @@ public sealed class PaletteRamp
         {
             var at = (float)i / Size * (labs.Length - 1);
             var from = Math.Min((int)at, labs.Length - 2);
-            table[i] = MotionColor.FromOklab(Vector3.Lerp(labs[from], labs[from + 1], at - from));
+            table[i] = MotionColor.FromOklab(MotionColor.LerpLab(labs[from], labs[from + 1], at - from));
         }
     }
 

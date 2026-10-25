@@ -60,8 +60,8 @@ public sealed record MotionPalette(string Name, IReadOnlyList<string> Colors)
         if (labs.Count == 1) labs.Insert(0, labs[0] * new Vector3(0.25f, 0.6f, 0.6f));
         var four = labs.Count switch
         {
-            2 => new[] { labs[0], Vector3.Lerp(labs[0], labs[1], 1 / 3f), Vector3.Lerp(labs[0], labs[1], 2 / 3f), labs[1] },
-            3 => [labs[0], labs[1], Vector3.Lerp(labs[1], labs[2], 0.5f), labs[2]],
+            2 => new[] { labs[0], MotionColor.LerpLab(labs[0], labs[1], 1 / 3f), MotionColor.LerpLab(labs[0], labs[1], 2 / 3f), labs[1] },
+            3 => [labs[0], labs[1], MotionColor.LerpLab(labs[1], labs[2], 0.5f), labs[2]],
             _ => [labs[0], labs[1], labs[^2], labs[^1]],
         };
         // OKLab lightness 0.2 is about the darkest a projector shows as more than black; keep the
