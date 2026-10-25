@@ -261,10 +261,13 @@ The reference line is measured too. The lower third's reference sits on a small 
 pixels wide), and "1 THESSALONIANS 4:13–18 KJV" doesn't fit it at the design's size: it wraps
 onto a second line, below the plate. So `ReferenceSizer` asks "does it fit on **one** line of
 the design's Reference box?" (it measures in a box a line and a half tall, so two lines can't
-pass). When the answer is no, the slide's Reference box gets a smaller font size: 90, 80 or
-70 % of the design's, or 60 % at the least. Like the side-by-side halves, that's one ordinary
-field (`textStyle.fontSize`), and the rest of the style is still the design's. A reference that
-fits, which is nearly all of them, gets nothing of its own.
+pass). When the answer is no, the slide's Reference box gets a smaller font size, 90, 80, 70 or
+60 % of the design's, with the design's letter spacing shrunk to match. If even 60 % won't hold
+it on one line (two translations and a long book name: "1 Thessalonians 4:13 WEB · KJV"), that
+slide's line leaves the translations out, at the largest size that holds the rest. Like the
+side-by-side halves, those are ordinary fields (`textStyle.fontSize` and `textStyle.tracking`),
+and the rest of the style is still the design's. A reference that fits, which is nearly all of
+them, gets nothing of its own.
 
 ### Two translations on one slide
 

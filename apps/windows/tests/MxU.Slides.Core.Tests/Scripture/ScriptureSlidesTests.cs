@@ -214,6 +214,15 @@ public class ScriptureSlidesTests
         });
         // Full screen has room for it at the design's size.
         Assert.All(ScriptureSlides.Pages(Look("kjv", "1 Thess 4:13-18"), Theme, new(), Wraps), p => Assert.Null(p.ReferenceFontSize));
+
+        // When no size holds it on one line, that slide's line leaves the translation out, at the
+        // largest size that holds the rest. (This stand-in plate holds 20 letters at any size.)
+        static bool PlateHolds20(StyledText text, SceneSize frame) => frame.Height < 100 && text.String.Length > 20;
+        var revelation = Assert.Single(ScriptureSlides.Pages(Look("kjv", "Rev 21:1-4"), Theme, lower, PlateHolds20));
+        Assert.Equal(("Revelation 21:1–4", (double?)null), (revelation.Reference, revelation.ReferenceFontSize));
+        // The letter spacing shrinks with the size.
+        var thess = ScriptureSlides.Pages(Look("kjv", "1 Thess 4:13-18"), Theme, lower, Wraps)[0];
+        Assert.Equal(Math.Round(plateStyle.Tracking * thess.ReferenceFontSize!.Value / plateStyle.FontSize, 2), thess.ReferenceTracking);
     }
 
     [Fact]

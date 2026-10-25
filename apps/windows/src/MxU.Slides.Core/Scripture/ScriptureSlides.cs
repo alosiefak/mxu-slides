@@ -31,6 +31,9 @@ public sealed record ScripturePage(string Text, string Reference, VerseRef First
 
     /// <summary>A smaller font size for the reference line when it's too long for the design's box at its own; null when it fits.</summary>
     public double? ReferenceFontSize { get; init; }
+
+    /// <summary>With <see cref="ReferenceFontSize"/>, the design's letter spacing made smaller to match (null when it has none).</summary>
+    public double? ReferenceTracking { get; init; }
 }
 
 /// <summary>
@@ -146,8 +149,14 @@ public static class ScriptureSlides
             at += count;
         }
         if (!options.ShowReference) return pages;
-        var referenceSize = ReferenceSizer(theme, options.Layout, overflows);
-        return [.. pages.Select(p => p with { ReferenceFontSize = referenceSize(p.Reference) })];
+        // Each slide's reference line, fitted to the design's reference box (the shorter form leaves the translation out).
+        var fit = ReferenceSizer(theme, options.Layout, overflows);
+        var named = " " + Translations(passage, beside, " · ");
+        return [.. pages.Select(p =>
+        {
+            var (text, size, tracking) = fit(p.Reference, p.Reference.EndsWith(named, StringComparison.Ordinal) ? p.Reference[..^named.Length] : p.Reference);
+            return p with { Reference = text, ReferenceFontSize = size, ReferenceTracking = tracking };
+        })];
     }
 
     /// <summary>
@@ -178,7 +187,7 @@ public static class ScriptureSlides
             if (options.ShowReference)
             {
                 var reference = Text("Reference", page.Reference);
-                if (page.ReferenceFontSize is { } smaller) reference.TextStyle = new TextStyle { FontSize = smaller };
+                if (page.ReferenceFontSize is { } smaller) reference.TextStyle = new TextStyle { FontSize = smaller, Tracking = page.ReferenceTracking };
                 objects.Add(reference);
             }
             slides.Add(new Slide
@@ -422,44 +431,52 @@ public static class ScriptureSlides
         return (text => !measure(style with { String = text }, frame), text => !EstimatedOverflow(style with { String = text }, frame));
     }
 
+    /// <summary>A reference line as it goes on a slide: its words, and a smaller size and letter spacing when it needs them.</summary>
+    private readonly record struct ReferenceFit(string Text, double? FontSize, double? Tracking);
+
+    // The sizes a reference line may take, as shares of the design's.
+    private static readonly double[] ReferenceScales = [1, 0.9, 0.8, 0.7, 0.6];
+
     /// <summary>
-    /// The font size a reference line needs to sit on one line of the design's "Reference" box:
-    /// null when the design's own size does ("John 3:16 KJV"), else the largest of 90, 80 and 70 %
-    /// of it that does, or 60 % ("1 Thessalonians 4:13–18 KJV", or two translations, on a lower
-    /// third's small plate). One line, because a reference wrapped onto a second line overflows a
-    /// plate made for one. Each different line is measured once.
+    /// Fits a reference line on one line of the design's "Reference" box. One line, because a
+    /// reference wrapped onto a second line overflows a plate made for one. In order:
+    /// <list type="number">
+    /// <item>at the design's own size ("John 3:16 KJV": nearly every line, which then has nothing of its own);</item>
+    /// <item>at 90, 80, 70 or 60 % of it, the letter spacing shrinking with it ("1 Thessalonians
+    /// 4:13–14 KJV", or two translations, on a lower third's small plate);</item>
+    /// <item>without the translation (the shorter line the caller passes), at the same sizes; and
+    /// if even that won't fit, the shorter line at 60 %.</item>
+    /// </list>
+    /// Each different line is measured once.
     /// </summary>
-    private static Func<string, double?> ReferenceSizer(Theme? theme, ScriptureLayout layout, Func<StyledText, SceneSize, bool>? overflows)
+    private static Func<string, string, ReferenceFit> ReferenceSizer(Theme? theme, ScriptureLayout layout, Func<StyledText, SceneSize, bool>? overflows)
     {
         var box = Design(theme, layout)?.Objects.FirstOrDefault(o =>
             o.ObjectKind == SlideObjectKind.Text && string.Equals(o.Name, "Reference", StringComparison.OrdinalIgnoreCase));
-        if (box is null) return _ => null;
+        if (box is null) return (text, _) => new ReferenceFit(text, null, null);
         var probe = new SlideObject { Id = "reference-probe", ObjectKind = SlideObjectKind.Text, Name = "Reference", Text = "" };
         var style = SlideSceneBuilder.StyledTextFor(probe, theme, box) with { AutoShrink = false };
         var frame = SlideSceneBuilder.Frame(box);
         var measure = overflows ?? EstimatedOverflow;
-        bool OneLine(string text, double size)
+        ReferenceFit At(string text, double scale)
         {
+            if (scale == 1) return new ReferenceFit(text, null, null);
+            var size = Math.Round(style.FontSize * scale);
+            return new ReferenceFit(text, size, style.Tracking == 0 ? null : Math.Round(style.Tracking * size / style.FontSize, 2));
+        }
+        bool OneLine(ReferenceFit fit)
+        {
+            var size = fit.FontSize ?? style.FontSize;
             // Room for a line and a half: one fits, two don't.
             var height = Math.Min(frame.Height, size * Math.Max(style.LineHeightMultiple, 1) * 1.6 + style.InsetTop + style.InsetBottom);
-            var sized = style with { String = text, FontSize = size, Tracking = style.Tracking * size / Math.Max(style.FontSize, 1) };
-            return !measure(sized, new SceneSize(frame.Width, height));
+            return !measure(style with { String = fit.Text, FontSize = size, Tracking = fit.Tracking ?? style.Tracking }, new SceneSize(frame.Width, height));
         }
-        var known = new Dictionary<string, double?>();
-        return text =>
+        var known = new Dictionary<string, ReferenceFit>();
+        return (text, shorter) =>
         {
-            if (known.TryGetValue(text, out var size)) return size;
-            if (!OneLine(text, style.FontSize))
-            {
-                size = Math.Round(style.FontSize * 0.6);
-                foreach (var scale in new[] { 0.9, 0.8, 0.7 })
-                {
-                    if (!OneLine(text, Math.Round(style.FontSize * scale))) continue;
-                    size = Math.Round(style.FontSize * scale);
-                    break;
-                }
-            }
-            return known[text] = size;
+            if (known.TryGetValue(text, out var fitted)) return fitted;
+            var tries = new[] { text, shorter }.Distinct().SelectMany(line => ReferenceScales.Select(scale => At(line, scale)));
+            return known[text] = tries.FirstOrDefault(OneLine, At(shorter, ReferenceScales[^1]));
         };
     }
 

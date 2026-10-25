@@ -184,7 +184,7 @@ public sealed partial class SelfTest
         await Type(panel, "1 Thess 4:13-18");
         Check("a long reference is made smaller to stay on one line of the lower third's plate, none cut off",
             bible.Preview is { } thess && Overflowing(thess) == 0
-            && thess.Slides.All(s => s.Objects.Single(o => o.Name == "Reference").TextStyle?.FontSize is not null));
+            && thess.Slides.All(s => s.Objects.Single(o => o.Name == "Reference").TextStyle?.FontSize is not null && ReferenceOnOneLine(s, thess)));
         if (bible.Pages.Count > 0) await Snapshot("62e-bible-long-reference", bible.Pages[0].Scene);
 
         bible.Layout = ScriptureLayout.FullScreen;
@@ -223,6 +223,16 @@ public sealed partial class SelfTest
                 && TextLayout.Pages(styled, new SceneSize(item.Frame.Width, item.Frame.Height)).Count > 1);
             return paged || SlideSceneBuilder.ClippedTextObjectIds(slide, scene, TextLayout.OverflowsFrame).Count > 0;
         });
+    }
+
+    // True when a slide's reference line sits on one line of its box: in a box a line and a half
+    // tall it still fits (two lines wouldn't, and two small lines can fit a plate made for one).
+    private bool ReferenceOnOneLine(Slide slide, Presentation deck)
+    {
+        var scene = SlideSceneBuilder.Scene(slide, model.Library.Get<Theme>(deck.ThemeId), deck);
+        var id = slide.Objects.Single(o => o.Name == "Reference").Id;
+        return scene[LayerKind.Slide].Items.FirstOrDefault(item => item.Id == id) is { Content: ItemContent.Text { Styled: var styled } } reference
+            && !TextLayout.OverflowsFrame(styled, new SceneSize(reference.Frame.Width, Math.Min(reference.Frame.Height, styled.FontSize * 1.6)));
     }
 
     /// <summary>"love is patient" in the WEB: 1 Corinthians 13:4 comes first, and Enter shows it.</summary>
