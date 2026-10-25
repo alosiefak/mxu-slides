@@ -47,22 +47,30 @@ public sealed partial class SelfTest
             var lastGrowth = DateTime.Now;
             var stalled = false;
             var stallNote = "";
+            var lastHeartbeat = DateTime.Now;
             while (!done)
             {
                 // Is the UI thread answering? (A check awaiting a delay still lets it answer.)
                 var answered = dispatcher.InvokeAsync(() => { }, DispatcherPriority.Send).Task.Wait(TimeSpan.FromSeconds(20));
                 if (done) return;
                 var text = Snapshot();
+                if (DateTime.Now - lastHeartbeat > TimeSpan.FromMinutes(1))
+                {
+                    // Proof the watchdog itself is alive, with where the run has got to.
+                    Log.Info($"Self-test: still running; {Pool()}; the last report line: {LastLine(text)}");
+                    lastHeartbeat = DateTime.Now;
+                }
                 if (!answered)
                 {
                     var first = stuckSince is null;
                     stuckSince ??= DateTime.Now.AddSeconds(-20);
-                    var line = $"STUCK the UI thread hasn't answered since {stuckSince:HH:mm:ss} (the last report line: {LastLine(text)})";
-                    // Where every thread is, once per hang: what the UI thread is stuck in, and what it may be waiting for.
+                    var line = $"STUCK the UI thread hasn't answered since {stuckSince:HH:mm:ss} (the last report line: {LastLine(text)}); {Pool()}";
+                    // Once per hang: say so at once, then where every thread is (what the UI thread is stuck in, and what it may be waiting for).
                     if (first)
                     {
-                        stacks = ThreadStacks.Describe(uiThreadId);
-                        Log.Warn($"Self-test: {line}{Environment.NewLine}{stacks}");
+                        Log.Warn($"Self-test: {line}");
+                        stacks = StacksWithin(TimeSpan.FromSeconds(20));
+                        Log.Warn($"Self-test: the threads' stacks:{Environment.NewLine}{stacks}");
                     }
                     text += line + Environment.NewLine + stacks;
                 }
@@ -80,13 +88,14 @@ public sealed partial class SelfTest
                     else if (!stalled && DateTime.Now - lastGrowth > TimeSpan.FromSeconds(45))
                     {
                         stalled = true;
-                        System.Threading.ThreadPool.GetAvailableThreads(out var workers, out _);
-                        System.Threading.ThreadPool.GetMaxThreads(out var maxWorkers, out _);
-                        stacks = ThreadStacks.Describe(uiThreadId);
-                        var line = $"STALLED no new report line for 45 s, though the UI thread answers (the last line: {LastLine(text)}); "
-                            + $"thread pool: {ThreadPool.ThreadCount} threads, {maxWorkers - workers} busy, {ThreadPool.PendingWorkItemCount} jobs waiting";
-                        Log.Warn($"Self-test: {line}{Environment.NewLine}{stacks}");
-                        stallNote = line + Environment.NewLine + stacks;
+                        var line = $"STALLED no new report line for 45 s, though the UI thread answers (the last line: {LastLine(text)}); {Pool()}";
+                        Log.Warn($"Self-test: {line}");
+                        stallNote = line + Environment.NewLine;
+                        try { File.WriteAllText(partial, text + stallNote); }
+                        catch (IOException) { }
+                        stacks = StacksWithin(TimeSpan.FromSeconds(20));
+                        Log.Warn($"Self-test: the threads' stacks:{Environment.NewLine}{stacks}");
+                        stallNote += stacks;
                     }
                     if (stalled) text += stallNote;
                 }
@@ -100,6 +109,24 @@ public sealed partial class SelfTest
             }
             try { File.Delete(partial); }
             catch (IOException) { }
+        }
+
+        /// <summary>The thread pool's state in a few words (cheap, and safe while something is stuck).</summary>
+        private static string Pool()
+        {
+            ThreadPool.GetAvailableThreads(out var workers, out _);
+            ThreadPool.GetMaxThreads(out var maxWorkers, out _);
+            return $"thread pool: {ThreadPool.ThreadCount} threads, {maxWorkers - workers} busy, {ThreadPool.PendingWorkItemCount} jobs waiting";
+        }
+
+        /// <summary>Every thread's stack, read on a thread of its own: if reading them hangs too, the watchdog carries on.</summary>
+        private string StacksWithin(TimeSpan limit)
+        {
+            var result = "(reading the threads' stacks didn't finish in time)";
+            var reader = new Thread(() => result = ThreadStacks.Describe(uiThreadId)) { IsBackground = true, Name = "MxU self-test stacks" };
+            reader.Start();
+            reader.Join(limit);
+            return result;
         }
 
         // The report is written on the UI thread; reading it from here is best effort (a torn read is retried next time).
