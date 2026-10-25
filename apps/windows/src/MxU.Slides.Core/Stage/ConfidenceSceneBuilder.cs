@@ -53,6 +53,10 @@ public static partial class ConfidenceSceneBuilder
             .Where(o => o.Name.Length > 0 && o.Text.Length > 0)
             .Select(o => new ObjectText(o.Name, o.Text))
             .ToList();
+        // Windows: a stage box reading the object called "Notes" shows the slide's own notes when the
+        // slide has no object of that name (StageLayoutEditing.NotesObjectName). Listed last, so a real one wins.
+        if (slide.Notes is { Length: > 0 } notes)
+            objectTexts.Add(new ObjectText(StageLayoutEditing.NotesObjectName, notes));
         return new SlideText(LyricText(slide))
         {
             Chords = LyricChords(slide),

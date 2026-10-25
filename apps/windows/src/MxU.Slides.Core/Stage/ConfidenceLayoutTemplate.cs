@@ -193,7 +193,7 @@ public static class ConfidenceLayoutTemplates
         },
     };
 
-    private static SlideObject Box(string objectName, double x, double y, double width, double height, string color = White) => new()
+    internal static SlideObject Box(string objectName, double x, double y, double width, double height, string color = White) => new()
     {
         Id = StageIds.New(),
         ObjectKind = SlideObjectKind.Shape,
@@ -209,7 +209,7 @@ public static class ConfidenceLayoutTemplates
         Stroke = new ObjectStroke { ColorHex = color, Width = 3 },
     };
 
-    private static SlideObject Caption(string text, double x, double width, double boxBottom, string color = White) => new()
+    internal static SlideObject Caption(string text, double x, double width, double boxBottom, string color = White) => new()
     {
         Id = StageIds.New(),
         ObjectKind = SlideObjectKind.Text,

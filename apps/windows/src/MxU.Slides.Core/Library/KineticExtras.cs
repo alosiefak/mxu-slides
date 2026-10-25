@@ -56,18 +56,33 @@ public sealed class KineticExtras
 
     /// <summary>
     /// Saves each build the starter looks declare, unless the same one is already saved for the
-    /// same steps. A build whose theme has been changed elsewhere stays as it was (ignored).
+    /// same steps. A build saved against other steps is left as it is: the placeholder was changed
+    /// since (on a Mac, which drops the build, or in the theme editor, which saved its own), and
+    /// either way that change wins over the starter's build.
     /// </summary>
     public int Seed(IEnumerable<(SlideObject Placeholder, KineticBuild Build)> builds)
     {
         var saved = 0;
         foreach (var (placeholder, build) in builds)
         {
-            if (extras.Get<KineticBuild>(Kind, placeholder.Id, BasisOf(placeholder)) is { } existing
-                && WindowsExtras.Fingerprint(existing) == WindowsExtras.Fingerprint(build)) continue;
+            var basis = BasisOf(placeholder);
+            if (extras.Read<KineticBuild>(Kind, placeholder.Id) is { } existing
+                && (existing.Basis != basis || WindowsExtras.Fingerprint(existing.Value) == WindowsExtras.Fingerprint(build))) continue;
             Save(placeholder, build);
             saved++;
         }
         return saved;
+    }
+
+    /// <summary>The build saved for a placeholder whatever its steps are now (the theme editor shows it, to keep or to drop), or null.</summary>
+    public KineticBuild? Stored(SlideObject placeholder) => extras.Read<KineticBuild>(Kind, placeholder.Id)?.Value;
+
+    /// <summary>Drops a placeholder's build: its shared steps play as they are, on Windows too.</summary>
+    public void Remove(SlideObject placeholder) => extras.Delete(Kind, placeholder.Id);
+
+    /// <summary>A copied placeholder (a duplicated theme or design) takes its original's build, if that still matches its steps.</summary>
+    public void Copied(SlideObject from, SlideObject to)
+    {
+        if (For(from) is { } build) Save(to, build);
     }
 }

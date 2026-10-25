@@ -143,6 +143,8 @@ public static class LinkedText
         {
             Chords = [Chord(0, 0, "G"), Chord(0, 24, "C"), Chord(0, 30, "G"), Chord(1, 5, "Em"), Chord(1, 13, "D")],
             MusicKey = "G",
+            // Windows: so a slide-notes box reads something in the layout editor (StageLayoutEditing.NotesObjectName).
+            ObjectTexts = [new ObjectText(StageLayoutEditing.NotesObjectName, "Build into the last chorus; hold the final line.")],
         },
         Next = new SlideText("I once was lost, but now am found\nWas blind, but now I see")
         {
