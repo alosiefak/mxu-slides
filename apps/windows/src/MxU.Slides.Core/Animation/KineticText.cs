@@ -237,6 +237,23 @@ public static class KineticText
         return added;
     }
 
+    /// <summary>The widest a theme's build spreads (first piece to last) on a long slide, in seconds, unless four pieces already spread wider.</summary>
+    public const double LongTextSpread = 0.8;
+
+    /// <summary>
+    /// The stagger a theme's build plays with over a slide's words. A design is made for a slide of
+    /// a few lines; a long one (a whole hymn verse pasted in) would take seconds to arrive at that
+    /// pace while the room is already singing. So after the fourth piece the pieces squeeze closer:
+    /// the build never spreads wider than four pieces would, or <see cref="LongTextSpread"/>.
+    /// </summary>
+    public static double StaggerFor(KineticBuild build, string text)
+    {
+        var count = Pieces(text, build.Split).Count;
+        if (count <= 4 || build.Stagger <= 0) return build.Stagger;
+        var widest = Math.Max(build.Stagger * 3, LongTextSpread);
+        return Math.Round(Math.Min(build.Stagger, widest / (count - 1)), 4);
+    }
+
     /// <summary>
     /// A theme placeholder's donated steps with a kinetic build in place of its Ins, over the slide's
     /// own words (<paramref name="text"/>). <paramref name="donated"/> are the steps already copied
@@ -257,7 +274,7 @@ public static class KineticText
         }
         var lead = donated[firstIn];
         var counter = 0;
-        var expanded = Expand(build.In, text, build.Split, build.Stagger, () => $"{lead.Id}::kinetic{counter++}");
+        var expanded = Expand(build.In, text, build.Split, StaggerFor(build, text), () => $"{lead.Id}::kinetic{counter++}");
         // The build starts when the design's own In did.
         expanded[0].Trigger = lead.Trigger;
         expanded[0].DelaySeconds = lead.DelaySeconds;

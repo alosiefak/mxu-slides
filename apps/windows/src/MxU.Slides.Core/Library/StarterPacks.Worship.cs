@@ -150,8 +150,10 @@ public static partial class StarterPacks
             {
                 FontName = font, FontSize = size, ColorHex = color ?? look.Ink, Tracking = tracking, LineHeightMultiple = lineHeight,
                 HorizontalAlignment = align, VerticalAlignment = valign, TextTransform = caps ? TextTransform.Uppercase : null,
-                // Text that shrinks to fit stops at three quarters of its size; past that a third pages instead of turning tiny.
-                AutoShrink = shrink ? true : null, MinFontSize = shrink ? Math.Round(size * 0.75) : null, PageOnClick = page ? true : null, Shadow = shadow,
+                // Text that pages shrinks to three quarters of its size, then turns the page instead of turning tiny.
+                // Text that can't page (the full-screen lyrics) shrinks as far as it must, as the Mac's starter themes
+                // do: a long lyric on the projector must still fit on the screen.
+                AutoShrink = shrink ? true : null, MinFontSize = shrink && page ? Math.Round(size * 0.75) : null, PageOnClick = page ? true : null, Shadow = shadow,
                 // Even lines: no word left alone on the last line of a lyric (the Mac's balanced wrap).
                 BalancedWrap = balanced && link is null ? true : null,
                 TabularFigures = link is { Source: TextSourceKind.Timer } ? true : null,

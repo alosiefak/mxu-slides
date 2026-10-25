@@ -229,6 +229,26 @@ public class KineticTextTests
     }
 
     [Fact]
+    public void ALongSlidesLinesSqueezeCloserSoTheBuildStillArrivesQuickly()
+    {
+        var build = new KineticBuild(KineticSplit.Lines, 0.2, [Step("tpl", AnimationTrigger.OnClick, animation: StepAnimation.Move, duration: 0.85)]);
+        var four = string.Join("\n", Enumerable.Range(1, 4).Select(i => $"Line {i}"));
+        var sixteen = string.Join("\n", Enumerable.Range(1, 16).Select(i => $"Line {i}"));
+        Assert.Equal(0.2, KineticText.StaggerFor(build, four)); // a slide of the size the design was made for keeps its pace
+        Assert.Equal(KineticText.LongTextSpread / 15, KineticText.StaggerFor(build, sixteen), 3);
+
+        var (steps, _) = KineticText.Donate(build, sixteen, [Step("lyrics::in", AnimationTrigger.WithPrevious, delay: 0)], ["in"]);
+        var slide = new Slide { Id = "s", Name = "S", Objects = [Text("lyrics", sixteen, steps)] };
+        var starts = Starts(slide);
+        Assert.Equal(16, starts.Count);
+        Assert.InRange(starts.Values.Max() - starts.Values.Min(), KineticText.LongTextSpread - 0.01, KineticText.LongTextSpread + 0.01);
+
+        // A slow design (four lines already spread wider than that) is never squeezed below its four-line width.
+        var slow = build with { Stagger = 0.4 };
+        Assert.Equal(1.2 / 15, KineticText.StaggerFor(slow, sixteen), 3);
+    }
+
+    [Fact]
     public void ABuildWithNothingToSplitPlaysOnce()
     {
         var build = new KineticBuild(KineticSplit.Lines, 0.2, [Step("tpl", AnimationTrigger.OnClick, animation: StepAnimation.Move)]);

@@ -249,12 +249,12 @@ public sealed partial class SelfTest
             vm.Category = LowerThirdGalleryViewModel.AllCategories;
 
             gallery.Pick(LowerThirdGallery.All.Single(t => t.Id == "gallery.speaker.broadcast"));
-            vm.SetField("Name", "Pastor Grace Okafor");
+            vm.SetField("Name", "Pastor Adaeze Nwosu");
             vm.SetField("Title", "Teaching Pastor");
             await Delay(2600);
             Save(gallery, "64-gallery-window-speaker");
             Check("the pack box shows the pack it goes into", vm.Pack == LowerThirdGallery.DefaultPack && vm.Packs.Contains(vm.Pack));
-            Check("typing into a draft's field changes only the preview", !model.Library.All<Overlay>().Any(o => o.Objects.Any(x => x.Text == "Pastor Grace Okafor")));
+            Check("typing into a draft's field changes only the preview", !model.Library.All<Overlay>().Any(o => o.Objects.Any(x => x.Text == "Pastor Adaeze Nwosu")));
 
             speaker = vm.AddToLibrary();
             Check($"Add to library saves it as an overlay in the Lower Thirds pack, under Speaker (folder {speaker?.Folder ?? "none"}, bin showing {model.SelectedOverlayPack})",
@@ -264,17 +264,17 @@ public sealed partial class SelfTest
             model.Show.Fire(new CueMedia { MediaId = camera.Id, Layer = CueMediaLayer.LoopingVideos }, LayerKind.LoopingVideos);
             vm.GoLive();
             await Delay(1600);
-            Check("Go live puts it up on the program", model.IsOverlayLive(speaker.Id) && VisibleAudienceText().Contains("Pastor Grace Okafor"));
+            Check("Go live puts it up on the program", model.IsOverlayLive(speaker.Id) && VisibleAudienceText().Contains("Pastor Adaeze Nwosu"));
             await Snapshot("64-gallery-live-program", model.ProgramScene());
             foreach (var t in new[] { 0.15, 0.35, 0.7 })
                 await SnapshotAt($"64-gallery-live-in-{t:0.00}s", model.ProgramAnimatedScene(), t);
-            vm.SetField("Name", "Pastor Grace Okafor-Bello");
-            Check("fixing the name while it's up fixes it on the program", AudienceText().Contains("Pastor Grace Okafor-Bello") && !model.Show.IsLeaving(speaker.Id));
+            vm.SetField("Name", "Pastor Adaeze Nwosu-Bello");
+            Check("fixing the name while it's up fixes it on the program", AudienceText().Contains("Pastor Adaeze Nwosu-Bello") && !model.Show.IsLeaving(speaker.Id));
             await Snapshot4K("64-gallery-live-4k", model.ProgramScene());
             vm.TakeDown();
             Check("Take down plays its Out", model.Show.IsLeaving(speaker.Id));
             await Delay(1200);
-            Check("…and then it's gone", !AudienceText().Contains("Grace Okafor"));
+            Check("…and then it's gone", !AudienceText().Contains("Adaeze Nwosu"));
 
             // Song credits from the song that's open (the sample song has a title and writer, no CCLI number).
             gallery.Pick(LowerThirdGallery.All.Single(t => t.Id == "gallery.credits.clean"));
@@ -438,7 +438,13 @@ public sealed partial class SelfTest
                 await Delay(300);
                 var text = TextOf(model.ProgramScene());
                 var pack = StarterPacks.All.First(p => p.ThemeId() == slide.ThemeId);
-                Check($"the {pack.Title()} countdown shows the running timer's minutes and seconds", text.Contains("04:5", StringComparison.Ordinal)
+                // The digits follow the running timer (the first one running, when earlier checks left
+                // others going), as minutes and seconds; a second either side allows for the tick.
+                var primary = Core.Stage.ConfidenceSceneBuilder.PrimaryTimer(model.Timers.Timers);
+                var now = DateTimeOffset.Now;
+                var expected = primary is null ? [] : new[] { -1, 0, 1 }.Select(s => primary.DisplayString(now.AddSeconds(s), null, "MM:ss")).ToList();
+                Check($"the {pack.Title()} countdown shows the running timer's minutes and seconds ({primary?.Name}: {string.Join(" / ", expected)})",
+                    primary is { IsLive: true } && expected.Any(e => text.Contains(e, StringComparison.Ordinal))
                     && text.Contains(slide.Objects[0].Text, StringComparison.Ordinal));
                 await Snapshot($"62-countdown-{Safe(pack.Title())}", model.ProgramScene());
                 await SnapshotAt($"62-countdown-{Safe(pack.Title())}-in-0.40s", model.ProgramAnimatedScene(), 0.4);

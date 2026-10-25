@@ -121,6 +121,23 @@ public class StarterPackTests : ScratchFolderTest
     }
 
     [Fact]
+    public void ALongLyricStillFitsTheScreenAndThirdsPageInstead()
+    {
+        foreach (var pack in StarterPacks.All.Where(p => p.IsWorshipLook()))
+        {
+            foreach (var slide in pack.MakeTheme().Slides!)
+                foreach (var style in slide.Objects.Where(o => o.TextStyle?.AutoShrink == true).Select(o => o.TextStyle!))
+                {
+                    // What pages may stop shrinking (it turns the page instead); what can't page shrinks as far as it must.
+                    if (style.PageOnClick == true) Assert.True(style.MinFontSize >= style.FontSize * 0.7, $"{pack}/{slide.Name}");
+                    else Assert.True(style.MinFontSize is null, $"{pack}/{slide.Name} would spill off the screen");
+                }
+            var lyrics = pack.MakeTheme().Slides!.Single(s => s.Name == "Lyrics").Objects[0].TextStyle!;
+            Assert.Null(lyrics.PageOnClick); // the projector holds the whole lyric
+        }
+    }
+
+    [Fact]
     public void TheWorshipLooksAskForKineticLyrics()
     {
         foreach (var pack in StarterPacks.All)
