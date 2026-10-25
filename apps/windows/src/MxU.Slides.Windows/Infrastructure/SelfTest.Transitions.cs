@@ -18,7 +18,7 @@ namespace MxU.Slides.Windows.Infrastructure;
 
 // The Windows-only transitions (Phase 6): every kind pictured half-way (60-*), a push on the real
 // program feed with its frame pacing (61-*), the Mac-readable fallback and a Mac edit winning, the
-// no-shader fallback, and the pickers (62-*).
+// no-shader fallback, a background's own iris (61-media-*), and the pickers (62-*).
 public sealed partial class SelfTest
 {
     private async Task TransitionsCheck()
@@ -27,6 +27,7 @@ public sealed partial class SelfTest
         {
             await TransitionPicturesCheck();
             await TransitionOutputCheck();
+            await TransitionMediaCheck();
             await TransitionPickersCheck();
         }
         finally
@@ -36,8 +37,11 @@ public sealed partial class SelfTest
         }
     }
 
-    /// <summary>Draws a scene offscreen (WPF's software drawing, as thumbnails and the software copy do) and returns its pixels.</summary>
-    private async Task<(BitmapSource Bitmap, byte[] Pixels)> Drawn(AnimatedScene scene, int width = 1280, int height = 720)
+    /// <summary>
+    /// Draws a scene offscreen (WPF's software drawing, as thumbnails and the software copy do) and
+    /// returns its pixels, and how long the drawing itself took in milliseconds.
+    /// </summary>
+    private async Task<(BitmapSource Bitmap, byte[] Pixels, double Milliseconds)> Drawn(AnimatedScene scene, int width, int height)
     {
         var view = new SceneView { Media = model.Media, PlaysVideo = false, Width = width, Height = height };
         view.Measure(new Size(width, height));
@@ -45,10 +49,12 @@ public sealed partial class SelfTest
         view.Present(scene, Rendering.SceneTransition.Cut);
         await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        var drawing = Stopwatch.StartNew();
         bitmap.Render(view);
+        var milliseconds = drawing.Elapsed.TotalMilliseconds;
         var pixels = new byte[width * height * 4];
         bitmap.CopyPixels(pixels, width * 4, 0);
-        return (bitmap, pixels);
+        return (bitmap, pixels, milliseconds);
     }
 
     /// <summary>How different two pictures are: the mean difference of their colours (0–255), every fourth pixel.</summary>
@@ -84,19 +90,23 @@ public sealed partial class SelfTest
     /// Every Windows-only kind, half-way between the two sample slides (a background and words, both
     /// changing), drawn as an output draws it: each picture must be neither the old slide nor the new
     /// one. Drawn offscreen, which is WPF's software drawing: it shows the shaders run without a
-    /// graphics card too (they're ps_2_0), as on a PC that can't capture (the software copy).
+    /// graphics card too (they're ps_2_0), as thumbnails and the picker's previews do on a PC without
+    /// one. Software drawing is slow (and much slower on a busy PC), so the pictures are 640 × 360;
+    /// the program feed's pictures (61-*) are the graphics card's, at full size.
     /// </summary>
     private async Task TransitionPicturesCheck()
     {
+        const int width = 640, height = 360;
         var before = TransitionSamples.Before();
         var after = TransitionSamples.After();
-        var (_, beforePixels) = await Drawn(before);
-        var (_, afterPixels) = await Drawn(after);
+        var (_, beforePixels, _) = await Drawn(before, width, height);
+        var (_, afterPixels, _) = await Drawn(after, width, height);
         Check("every transition shader compiles on this PC", WindowsTransitions.All.All(TransitionShaders.CanDraw));
 
         var failed = new List<string>();
         var sheet = new DrawingVisual();
         var cells = new List<(BitmapSource Bitmap, string Name)>();
+        var timings = new List<(string Name, double Milliseconds)>();
         var index = 0;
         var started = Stopwatch.StartNew();
         WindowsTransition[] extras =
@@ -110,16 +120,21 @@ public sealed partial class SelfTest
         {
             var engine = new SceneTransitionEngine(before);
             engine.Push(after, LayerTransition.Of(transition with { DurationSeconds = 1 }), now: 0);
-            var half = engine.Scene(0.5);
+            // Exactly half-way a flip is edge-on, with nothing to see: it's pictured a little before.
+            var half = engine.Scene(transition.Kind == WindowsTransitionKind.Flip ? 0.4 : 0.5);
             var name = transition.Kind.ToString() + (index >= WindowsTransitions.WindowsOnly.Count ? $"-{transition.Direction}{(transition.ColorHex is null ? "" : "-blue")}" : "");
-            var (bitmap, pixels) = await Drawn(half);
+            var (bitmap, pixels, milliseconds) = await Drawn(half, width, height);
             Write(bitmap, $"60-{++index:00}-{name}-half");
+            timings.Add((name, milliseconds));
             var fromOld = Difference(pixels, beforePixels);
             var fromNew = Difference(pixels, afterPixels);
             if (fromOld < 4 || fromNew < 4) failed.Add($"{name} ({fromOld:0.0} / {fromNew:0.0})");
             if (index <= WindowsTransitions.WindowsOnly.Count) cells.Add((bitmap, WindowsTransitions.Name(transition.Kind)));
         }
-        report.AppendLine($"      {index} transitions pictured half-way in {started.ElapsedMilliseconds} ms{(failed.Count > 0 ? "; unchanged: " + string.Join(", ", failed) : "")}");
+        var slowest = timings.MaxBy(t => t.Milliseconds);
+        report.AppendLine($"      {index} transitions pictured half-way in {started.ElapsedMilliseconds} ms; software drawing of a 640 × 360 frame: "
+            + $"median {timings.Select(t => t.Milliseconds).Order().ElementAt(timings.Count / 2):0} ms, slowest {slowest.Name} {slowest.Milliseconds:0} ms"
+            + (failed.Count > 0 ? "; unchanged: " + string.Join(", ", failed) : ""));
         Check("every new transition draws half-way between the old picture and the new (software drawing)", failed.Count == 0);
 
         // One sheet with all eighteen, the picture to look at first.
@@ -167,13 +182,24 @@ public sealed partial class SelfTest
 
     /// <summary>
     /// Fires slide 1, then slide 2, which has its own Windows-only transition, and watches the
-    /// program feed (the stream's picture) all the way through, timing every frame the screen draws.
-    /// Returns the frame nearest the middle, the last one, and the first one, or null without frames.
+    /// program feed (the stream's picture) all the way through (see <see cref="WatchProgram"/>).
     /// </summary>
     private Task<(byte[] Before, byte[] Middle, byte[] Landed, int Width, int Height, double Fps, double Longest, double First)?> PlayOnProgram(
         Presentation deck, double seconds) => WatchProgram(() => FireSlide(deck, 0), () => FireSlide(deck, 1), seconds);
 
-    /// <summary>Does <paramref name="prepare"/>, then <paramref name="change"/>, watching the program feed through a transition of <paramref name="seconds"/>.</summary>
+    /// <summary>
+    /// Does <paramref name="prepare"/>, then <paramref name="change"/>, watching the program feed
+    /// through a transition of <paramref name="seconds"/> and timing every frame the screen draws.
+    /// Returns the program's picture before, half-way and landed (at half size, 960 × 540), or null
+    /// without frames.
+    /// <para>
+    /// The half-way picture is picked by what it shows, not by when it came: of every picture the
+    /// transition made, the one as far from the old picture as from the new. On a busy PC (or the
+    /// slower software copy) pictures arrive late and unevenly, so the one that came half-way
+    /// through the time can show a transition that has barely begun. Each new picture is kept, at
+    /// half size, until the new picture is known.
+    /// </para>
+    /// </summary>
     private async Task<(byte[] Before, byte[] Middle, byte[] Landed, int Width, int Height, double Fps, double Longest, double First)?> WatchProgram(
         Action prepare, Action change, double seconds)
     {
@@ -188,34 +214,51 @@ public sealed partial class SelfTest
             prepare();
             // Long enough for whatever the preparation set off to land (it may use the same transition).
             await Delay(Math.Max(1200, (int)(seconds * 1000) + 500));
-            var before = sink.Last;
+            if (sink.Last is not { } first) return null;
+            var (width, height) = (sink.Width / 2, sink.Height / 2);
+            var before = Halved(first, sink.Width, sink.Height);
             clock.Start();
             CompositionTarget.Rendering += Tick;
             change();
-            byte[]? middle = null;
-            var bestDistance = double.MaxValue;
+            var made = new List<byte[]>();
+            var seen = first;
             while (clock.Elapsed.TotalSeconds < seconds + 0.4)
             {
                 await Delay(25);
-                var at = clock.Elapsed.TotalSeconds;
-                if (sink.Last is { } frame && Math.Abs(at - seconds / 2) < bestDistance && at < seconds)
-                {
-                    bestDistance = Math.Abs(at - seconds / 2);
-                    middle = frame;
-                }
+                if (sink.Last is not { } frame || ReferenceEquals(frame, seen)) continue;
+                seen = frame;
+                // Keep it if it's new: the feed repeats the last picture while nothing changes.
+                var half = Halved(frame, sink.Width, sink.Height);
+                if (Difference(half, made.Count > 0 ? made[^1] : before) > 0.3) made.Add(half);
             }
             CompositionTarget.Rendering -= Tick;
             await Delay(400);
-            if (before is null || middle is null || sink.Last is not { } landed) return null;
+            if (sink.Last is not { } last) return null;
+            var landed = Halved(last, sink.Width, sink.Height);
+            var middle = made.Count > 0 ? made.MinBy(f => Math.Abs(Difference(f, before) - Difference(f, landed)))! : before;
             var during = ticks.Where(t => t <= seconds * 1000).ToList();
             var gaps = during.Zip(during.Skip(1), (a, b) => b - a).ToList();
-            return (before, middle, landed, sink.Width, sink.Height, during.Count / seconds, gaps.Count > 0 ? gaps.Max() : 0, during.Count > 0 ? during[0] : 0);
+            return (before, middle, landed, width, height, during.Count / seconds, gaps.Count > 0 ? gaps.Max() : 0, during.Count > 0 ? during[0] : 0);
         }
         finally
         {
             CompositionTarget.Rendering -= Tick;
             feed.Remove(sink);
         }
+    }
+
+    /// <summary>A picture at half its width and height (every other pixel of every other row).</summary>
+    private static byte[] Halved(byte[] pixels, int width, int height)
+    {
+        var (w, h) = (width / 2, height / 2);
+        var half = new byte[w * h * 4];
+        // A pixel is four bytes: copy them as one number each.
+        var from = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(pixels.AsSpan());
+        var to = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(half.AsSpan());
+        for (var y = 0; y < h; y++)
+            for (var x = 0; x < w; x++)
+                to[y * w + x] = from[y * 2 * width + x * 2];
+        return half;
     }
 
     /// <summary>
@@ -248,11 +291,17 @@ public sealed partial class SelfTest
                 Write(BitmapSource.Create(w, h, 96, 96, PixelFormats.Pbgra32, null, played.Landed, w * 4), "61-push-on-program-landed");
                 var change = Difference(played.Before, played.Landed);
                 var crossFade = FromCrossFade(played.Middle, played.Before, played.Landed);
+                var copied = model.Program?.UsesSoftwareCopy == true;
                 report.AppendLine($"      Push on the program feed: {played.Fps:0} frames a second on the screen, longest frame {played.Longest:0} ms, "
                     + $"first {played.First:0} ms; middle frame {crossFade / Math.Max(change, 1):0.00} of the change away from a cross-fade"
-                    + (model.Program?.UsesSoftwareCopy == true ? " (software copy)" : ""));
-                Check("a slide's Windows-only transition plays on the outputs (the program is mid-push, not a cross-fade)",
-                    change > 20 && crossFade > change * 0.3 && Difference(played.Middle, played.Before) > 5 && Difference(played.Middle, played.Landed) > 5);
+                    + (copied ? " (software copy)" : ""));
+                // The software copy draws on the UI thread, where a push would cost too much a frame: it
+                // plays the push's Dissolve instead (the screens, drawn by the graphics card, still push).
+                if (copied)
+                    Check("on the software copy, the program feed plays the push's Dissolve instead", change > 20 && crossFade < change * 0.3);
+                else
+                    Check("a slide's Windows-only transition plays on the outputs (the program is mid-push, not a cross-fade)",
+                        change > 20 && crossFade > change * 0.3 && Difference(played.Middle, played.Before) > 5 && Difference(played.Middle, played.Landed) > 5);
                 Check("the push lands on the new slide", AudienceText().Contains("After", StringComparison.Ordinal) && Difference(played.Landed, played.Before) > 20);
                 // The laptop's screen runs at 60 Hz; on a busy or shared PC, allow some slack before calling it a stutter.
                 Check("the outputs keep drawing through the transition (30+ frames a second, no frame over 100 ms, the first on time)",
@@ -314,6 +363,65 @@ public sealed partial class SelfTest
             model.ClearAllCommand.Execute(null);
             foreach (var slide in deck.Slides) model.TransitionExtras.Store.Delete(TransitionExtras.SlideKind, slide.Id);
             model.Library.Delete<Presentation>(deck.Id);
+        }
+    }
+
+    /// <summary>
+    /// A media item's own Windows-only transition (a media tile's right-click › Transition…): two
+    /// pictures fired one after the other on the background layer, the second with an Iris, play an
+    /// iris on the program feed, and the item's document keeps the Dissolve a Mac can read.
+    /// </summary>
+    private async Task TransitionMediaCheck()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"MxU self-test transitions {Guid.NewGuid():N}")).FullName;
+        var bluePath = Path.Combine(folder, "Transition test blue.png");
+        var amberPath = Path.Combine(folder, "Transition test amber.png");
+        WritePicture(bluePath, Color.FromRgb(0x0B, 0x1E, 0x5B), Color.FromRgb(0x3B, 0x82, 0xF6), 640, 360);
+        WritePicture(amberPath, Color.FromRgb(0x7C, 0x2D, 0x12), Color.FromRgb(0xFB, 0xBF, 0x24), 640, 360);
+        var imported = await model.ImportMediaFilesAsync([bluePath, amberPath]);
+        var iris = new WindowsTransition { Kind = WindowsTransitionKind.Iris, DurationSeconds = 1.6, Softness = 0.3 };
+        try
+        {
+            if (imported is not [var blue, var amber])
+            {
+                Check("two pictures import for the media transition check", false);
+                return;
+            }
+            Check("a media item can be given a Windows-only transition", model.SaveMediaTransition(amber.Id, iris));
+            var stored = File.ReadAllText(model.Library.DocumentPath(typeof(MediaItem), amber.Id));
+            Check("the media item's document keeps a Dissolve the Mac can read, never the Windows kind",
+                stored.Contains("\"dissolve\"", StringComparison.Ordinal) && !stored.Contains("iris", StringComparison.OrdinalIgnoreCase)
+                && model.MediaTransitionChoice(model.Library.Get<MediaItem>(amber.Id)!) == iris);
+
+            if (await WatchProgram(() => model.FireMedia(blue), () => model.FireMedia(model.Library.Get<MediaItem>(amber.Id)!), iris.DurationSeconds) is { } played)
+            {
+                var (w, h) = (played.Width, played.Height);
+                Write(BitmapSource.Create(w, h, 96, 96, PixelFormats.Pbgra32, null, played.Middle, w * 4), "61-media-iris-on-program-middle");
+                var change = Difference(played.Before, played.Landed);
+                var crossFade = FromCrossFade(played.Middle, played.Before, played.Landed);
+                var copied = model.Program?.UsesSoftwareCopy == true;
+                report.AppendLine($"      Iris on a background: middle frame {crossFade / Math.Max(change, 1):0.00} of the change away from a cross-fade, "
+                    + $"{played.Fps:0} frames a second, longest {played.Longest:0} ms" + (copied ? " (software copy)" : ""));
+                if (copied)
+                    Check("on the software copy, the program feed plays the iris's Dissolve instead", change > 20 && crossFade < change * 0.3);
+                else
+                    Check("a media item's Windows-only transition plays on the outputs (the background irises in, not a cross-fade)",
+                        change > 20 && crossFade > change * 0.3 && Difference(played.Middle, played.Before) > 5 && Difference(played.Middle, played.Landed) > 5);
+            }
+            else
+            {
+                Skip("a media item's Windows-only transition on the program feed", "this PC's capture gave no frames");
+            }
+        }
+        finally
+        {
+            model.ClearAllCommand.Execute(null);
+            foreach (var item in imported)
+            {
+                model.TransitionExtras.Store.Delete(TransitionExtras.MediaKind, item.Id);
+                model.Library.Delete<MediaItem>(item.Id);
+            }
+            try { Directory.Delete(folder, recursive: true); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
     }
 
