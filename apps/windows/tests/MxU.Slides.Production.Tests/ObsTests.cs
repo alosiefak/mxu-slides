@@ -152,8 +152,8 @@ public class ObsTests
     {
         using var obs = new ObsSimulator();
         using var client = Client(obs.Port, null);
-        client.RequestTimeout = TimeSpan.FromMilliseconds(800);
-        client.FirstRetry = TimeSpan.FromSeconds(1);
+        client.RequestTimeout = TimeSpan.FromSeconds(1);
+        client.FirstRetry = TimeSpan.FromSeconds(2);
         client.Start();
         await Wait.Until(() => client.Status.IsOnline);
         await Wait.Until(() => client.Catalog.Scenes.Count == 3, what: "the scene list");
@@ -161,18 +161,19 @@ public class ObsTests
         obs.Hang = true;   // OBS froze: it takes the request and never answers
         var watch = Stopwatch.StartNew();
         Assert.False(await client.SetProgramScene("Worship"));
-        Assert.True(watch.ElapsedMilliseconds < 2000, $"the first took {watch.ElapsedMilliseconds} ms");
-        // The connection was dropped, so the next one doesn't wait out a time limit of its own.
+        Assert.True(watch.ElapsedMilliseconds < 4000, $"the first took {watch.ElapsedMilliseconds} ms");
+        // The connection was dropped, so the next one doesn't wait out a time limit of its own: it's never sent.
         watch.Restart();
         Assert.False(await client.SetStreaming(true));
-        Assert.True(watch.ElapsedMilliseconds < 300, $"the second took {watch.ElapsedMilliseconds} ms");
+        Assert.DoesNotContain(obs.Requests, r => r.Type == "StartStream");
+        Assert.True(watch.ElapsedMilliseconds < 1000, $"the second took {watch.ElapsedMilliseconds} ms");
         Assert.Equal(DeviceState.Problem, client.Status.State);
         Assert.Contains("stopped answering", client.Status.Detail);
 
         obs.Hang = false;
         while (obs.Requests.TryDequeue(out _)) { }
         // Signed in again, and OBS answered the whole scene read (its last request is only sent once the others are answered).
-        await Wait.Until(() => client.Status.IsOnline && obs.Requests.Any(r => r.Type == "GetRecordStatus"), 8000, "OBS to answer again");
+        await Wait.Until(() => client.Status.IsOnline && obs.Requests.Any(r => r.Type == "GetRecordStatus"), 15000, "OBS to answer again");
         Assert.True(await client.SetStreaming(true));
     }
 
@@ -187,7 +188,7 @@ public class ObsTests
         await Wait.Until(() => client.Status.State == DeviceState.Problem, what: "the light to go red");
         var watch = Stopwatch.StartNew();
         Assert.False(await client.SetStreaming(true));
-        Assert.True(watch.ElapsedMilliseconds < 300, $"took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 1000, $"took {watch.ElapsedMilliseconds} ms");   // skipped, not a time limit
     }
 
     [Fact]

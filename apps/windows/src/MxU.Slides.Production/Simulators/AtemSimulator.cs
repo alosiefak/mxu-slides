@@ -49,6 +49,7 @@ public sealed class AtemSimulator : IDisposable
     private readonly Lock gate = new();
     private readonly List<Unacked> unacked = [];
     private readonly HashSet<ushort> seen = [];
+    private readonly Dictionary<ushort, byte[]> arrived = [];
     private volatile bool stopped;
     private EndPoint? client;
     private ushort clientSession;
@@ -76,8 +77,11 @@ public sealed class AtemSimulator : IDisposable
     /// <summary>Hellos the client sent (one per session).</summary>
     public int Hellos;
 
-    /// <summary>Command packets the client sent again (flagged as resends).</summary>
+    /// <summary>Command packets the client sent again (a packet id that has come before; clients don't flag their resends).</summary>
     public int Retransmits;
+
+    /// <summary>Resends from the client that weren't byte for byte the packet first sent (atem-connection's are).</summary>
+    public int ResendsThatDiffer;
 
     /// <summary>Numbered packets this switcher sent again because the client hadn't acked them.</summary>
     public int Resends;
@@ -127,6 +131,17 @@ public sealed class AtemSimulator : IDisposable
     /// <summary>Say nothing at all (a switcher that's switched off).</summary>
     public volatile bool Silent;
 
+    private readonly HashSet<ushort> heardWhileSilent = [];
+
+    /// <summary>Different command packets (by packet id) the client sent while this switcher was silent.</summary>
+    public int CommandsWhileSilent
+    {
+        get
+        {
+            lock (gate) return heardWhileSilent.Count;
+        }
+    }
+
     private void Run()
     {
         var buffer = new byte[2048];
@@ -138,7 +153,13 @@ public sealed class AtemSimulator : IDisposable
                 if (!socket.Poll(20_000, SelectMode.SelectRead)) continue;
                 EndPoint from = new IPEndPoint(IPAddress.Any, 0);
                 var length = socket.ReceiveFrom(buffer, ref from);
-                if (Silent) continue;
+                if (Silent)
+                {
+                    // A numbered packet with something in it is a command (an empty one would be a ping).
+                    if (length > 12 && ((buffer[0] >> 3) & AckRequest) != 0)
+                        lock (gate) heardWhileSilent.Add(BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(10)));
+                    continue;
+                }
                 Handle(buffer.AsSpan(0, length).ToArray(), from);
             }
             catch (SocketException) { }
@@ -199,6 +220,7 @@ public sealed class AtemSimulator : IDisposable
                 nextId = 1;
                 gap = null;
                 seen.Clear();
+                arrived.Clear();
                 unacked.Clear();
                 var reply = new byte[20];
                 BinaryPrimitives.WriteUInt16BigEndian(reply, (ushort)((Hello << 11) | 20));
@@ -225,7 +247,7 @@ public sealed class AtemSimulator : IDisposable
                 return;
             }
             if ((flags & Ack) != 0) TakeAck(ackId);
-            if ((flags & AckRequest) != 0) TakeCommands(packet, flags, packetId, from);
+            if ((flags & AckRequest) != 0) TakeCommands(packet, packetId, from);
         }
     }
 
@@ -245,9 +267,17 @@ public sealed class AtemSimulator : IDisposable
     }
 
     /// <summary>A numbered packet from the client: ack it (or not, as the knobs say) and keep its commands. Called with the lock held.</summary>
-    private void TakeCommands(byte[] packet, int flags, ushort packetId, EndPoint from)
+    private void TakeCommands(byte[] packet, ushort packetId, EndPoint from)
     {
-        if ((flags & Resend) != 0) Interlocked.Increment(ref Retransmits);
+        if (arrived.TryGetValue(packetId, out var first))
+        {
+            Interlocked.Increment(ref Retransmits);
+            if (!first.AsSpan().SequenceEqual(packet)) Interlocked.Increment(ref ResendsThatDiffer);
+        }
+        else
+        {
+            arrived[packetId] = packet;
+        }
         if (packet.Length > 12 && DropCommandPackets > 0)
         {
             DropCommandPackets--;

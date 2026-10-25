@@ -15,7 +15,10 @@ public enum AtemFlags : byte
     /// <summary>The hello that opens a session (and the switcher's answer to it).</summary>
     Hello = 0x02,
 
-    /// <summary>This is a resend of a packet sent before.</summary>
+    /// <summary>
+    /// This is a resend of a packet sent before. The switcher marks its own resends this way; a
+    /// client's resends go out unchanged, as atem-connection sends them.
+    /// </summary>
     Retransmit = 0x04,
 
     /// <summary>"Send me again everything from packet N" (N is in the header).</summary>
@@ -97,22 +100,17 @@ public static class AtemPacket
         return packet;
     }
 
-    /// <summary>A packet that must be acked, carrying commands (or none, as a keepalive ping).</summary>
-    public static byte[] Reliable(ushort session, ushort packetId, ReadOnlySpan<byte> payload, bool retransmit = false)
+    /// <summary>
+    /// A packet that must be acked, carrying commands (or none, as a keepalive ping). A resend
+    /// is this same packet again, byte for byte: the packet id is what tells the switcher it has
+    /// had it before.
+    /// </summary>
+    public static byte[] Reliable(ushort session, ushort packetId, ReadOnlySpan<byte> payload)
     {
         var packet = new byte[AtemHeader.Size + payload.Length];
-        var flags = AtemFlags.AckRequest | (retransmit ? AtemFlags.Retransmit : AtemFlags.None);
-        new AtemHeader(flags, packet.Length, session, 0, 0, packetId).Write(packet);
+        new AtemHeader(AtemFlags.AckRequest, packet.Length, session, 0, 0, packetId).Write(packet);
         payload.CopyTo(packet.AsSpan(AtemHeader.Size));
         return packet;
-    }
-
-    /// <summary>Marks an already-built reliable packet as a resend (the same packet id, the Retransmit flag set).</summary>
-    public static byte[] AsRetransmit(byte[] packet)
-    {
-        var copy = (byte[])packet.Clone();
-        copy[0] |= (byte)((int)AtemFlags.Retransmit << 3);
-        return copy;
     }
 
     /// <summary>

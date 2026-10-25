@@ -213,7 +213,8 @@ public sealed class AtemSwitcher : ProductionDevice
                 }
                 sent.Resends++;
                 sent.SentAt = now;
-                Transmit(AtemPacket.AsRetransmit(sent.Packet));
+                // The same bytes again, as atem-connection resends (no Retransmit flag).
+                Transmit(sent.Packet);
             }
             if (Stopwatch.GetElapsedTime(lastSent, now) >= KeepaliveEvery) Transmit(AtemPacket.Ack(session, lastReceived));
         }
@@ -261,7 +262,7 @@ public sealed class AtemSwitcher : ProductionDevice
 
             if (header.Flags.HasFlag(AtemFlags.RetransmitRequest))
                 foreach (var sent in inFlight.Where(p => AtemPacket.Covers(p.Id, header.RetransmitFrom)))
-                    Transmit(AtemPacket.AsRetransmit(sent.Packet));
+                    Transmit(sent.Packet);
 
             if (header.Flags.HasFlag(AtemFlags.AckRequest))
             {

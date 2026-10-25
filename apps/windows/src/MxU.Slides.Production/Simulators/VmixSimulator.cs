@@ -39,7 +39,7 @@ public sealed class VmixSimulator : IDisposable
 
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
 
-    /// <summary>The paths of the function calls (not the state polls), in order.</summary>
+    /// <summary>The paths of the function calls (not the state polls), in order, as they arrive (a slow vMix still gets them).</summary>
     public ConcurrentQueue<string> Functions { get; } = new();
 
     public int Polls;
@@ -74,7 +74,6 @@ public sealed class VmixSimulator : IDisposable
             var lines = request.ToString().Split("\r\n");
             var path = lines[0].Split(' ')[1];
             var auth = lines.FirstOrDefault(l => l.StartsWith("Authorization:", StringComparison.OrdinalIgnoreCase))?[14..].Trim();
-            if (DelayMilliseconds > 0) Thread.Sleep(DelayMilliseconds);
             string status;
             string body;
             if (expectedAuth is not null && auth != expectedAuth)
@@ -91,6 +90,7 @@ public sealed class VmixSimulator : IDisposable
                 Functions.Enqueue(path);
                 (status, body) = ("200 OK", "Function completed successfully.");
             }
+            if (DelayMilliseconds > 0) Thread.Sleep(DelayMilliseconds);
             var bytes = Encoding.UTF8.GetBytes(body);
             stream.Write(Encoding.ASCII.GetBytes(
                 $"HTTP/1.1 {status}\r\nContent-Type: text/plain\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n"));

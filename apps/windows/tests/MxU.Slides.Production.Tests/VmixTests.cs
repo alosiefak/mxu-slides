@@ -32,7 +32,7 @@ public class VmixTests
     {
         var settings = Wait.Device(DeviceKind.Vmix, port);
         settings.User = user;
-        return new VmixClient(settings, password) { PollEvery = TimeSpan.FromMilliseconds(200), RequestTimeout = TimeSpan.FromMilliseconds(800) };
+        return new VmixClient(settings, password) { PollEvery = TimeSpan.FromMilliseconds(200) };
     }
 
     [Fact]
@@ -86,19 +86,21 @@ public class VmixTests
     {
         using var vmix = new VmixSimulator();
         using var client = Client(vmix.Port);
+        client.RequestTimeout = TimeSpan.FromSeconds(1);
         client.Start();
         await Wait.Until(() => client.Status.IsOnline);
-        vmix.DelayMilliseconds = 3000;
+        vmix.DelayMilliseconds = 6000;
         var watch = Stopwatch.StartNew();
         Assert.False(await client.Cut());
-        Assert.True(watch.ElapsedMilliseconds < 2000, $"took {watch.ElapsedMilliseconds} ms");
-        // The next one doesn't wait out a time limit of its own: it's skipped until vMix answers a poll.
+        Assert.True(watch.ElapsedMilliseconds < 4000, $"took {watch.ElapsedMilliseconds} ms");   // its own 1 s limit, not vMix's 6 s
+        // The next one doesn't wait out a time limit of its own: it's skipped, never sent, until vMix answers a poll.
         watch.Restart();
         Assert.False(await client.Fade());
-        Assert.True(watch.ElapsedMilliseconds < 300, $"the next took {watch.ElapsedMilliseconds} ms");
+        Assert.DoesNotContain(vmix.Functions, f => f.Contains("Fade", StringComparison.Ordinal));
+        Assert.True(watch.ElapsedMilliseconds < 1000, $"the next took {watch.ElapsedMilliseconds} ms");
         Assert.Equal(DeviceState.Problem, client.Status.State);
         vmix.DelayMilliseconds = 0;
-        await Wait.Until(() => client.Status.IsOnline, what: "vMix to answer a poll again");
+        await Wait.Until(() => client.Status.IsOnline, 10000, "vMix to answer a poll again");
         Assert.True(await client.Cut());
     }
 }

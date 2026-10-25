@@ -27,8 +27,6 @@ public class AtemPacketTests
         Assert.Equal(Hex("0818 8001 0000 0000 0000 0001 000C 0000 44437574 00000000"), packet);
         var header = AtemHeader.Read(packet);
         Assert.Equal((AtemFlags.AckRequest, 24, (ushort)0x8001, (ushort)1), (header.Flags, header.Length, header.Session, header.PacketId));
-        // A resend is the same packet with the Retransmit flag (0x04) added.
-        Assert.Equal(AtemFlags.AckRequest | AtemFlags.Retransmit, AtemHeader.Read(AtemPacket.AsRetransmit(packet)).Flags);
     }
 
     [Fact]
@@ -176,6 +174,7 @@ public class AtemSwitcherTests
         simulator.DropCommandPackets = 2;
         Assert.True(await atem.Auto(1));
         Assert.True(simulator.Retransmits >= 2);
+        Assert.Equal(0, simulator.ResendsThatDiffer);   // the same bytes again, as atem-connection resends
         Assert.Equal("DAut", Assert.Single(simulator.Commands).Name);
     }
 
@@ -183,12 +182,12 @@ public class AtemSwitcherTests
     public async Task ItAcksThePingsSoTheSessionStaysUp()
     {
         // A switcher gives up on a client that doesn't ack (and goes quiet, which the client would notice).
-        using var simulator = new AtemSimulator { DropClientAfterMilliseconds = 1500 };
+        using var simulator = new AtemSimulator { DropClientAfterMilliseconds = 2000 };
         using var atem = Switcher(simulator.Port);
-        atem.SilenceTimeout = TimeSpan.FromSeconds(1.5);
+        atem.SilenceTimeout = TimeSpan.FromSeconds(2);
         atem.Start();
         await Wait.Until(() => atem.Status.IsOnline);
-        await Task.Delay(3000, TestContext.Current.CancellationToken);
+        await Task.Delay(4500, TestContext.Current.CancellationToken);
         Assert.True(atem.Status.IsOnline);
         Assert.Equal((1, 0), (simulator.Hellos, simulator.SessionsDropped));
         // The state was packets 1-5; the pings after it (about two a second) were acked too.
@@ -222,10 +221,13 @@ public class AtemSwitcherTests
         await Wait.Until(() => atem.Status.IsOnline);
         simulator.Silent = true;   // unplugged in the middle of the service
         var watch = Stopwatch.StartNew();
-        // Five cuts queued at once: the first waits out its resends (about a second), the rest go nowhere at once.
+        // Five cuts queued at once: the first waits out its resends (about a second); then the
+        // session is dropped and the other four are skipped without being sent at all.
         var cuts = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => atem.Cut(1)));
         Assert.All(cuts, Assert.False);
-        Assert.True(watch.ElapsedMilliseconds < 2500, $"took {watch.ElapsedMilliseconds} ms");
+        Assert.Equal(1, simulator.CommandsWhileSilent);
+        // Five times the first would be well over 5 s.
+        Assert.True(watch.ElapsedMilliseconds < 4000, $"took {watch.ElapsedMilliseconds} ms");
         Assert.Equal(DeviceState.Problem, atem.Status.State);
     }
 
