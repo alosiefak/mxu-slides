@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using MxU.Slides.Core.Model;
 using MxU.Slides.Sync.Automerge;
 using MxU.Slides.Sync.Format;
 
@@ -40,6 +41,51 @@ internal static class MacSimulator
     {
         var edit = new AmEdit();
         Keyed(edit, AmPath.Root, document.Read(), MacDocuments.ToJson(model), Schema.Record(kind.RecordName));
+        document.Apply(edit, message: null, time ?? DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>
+    /// <c>TypedDocument.updateSlideList</c>: what the Mac does when slides are added, removed or
+    /// edited in the grid. Removing deletes the list elements, adding inserts new ones, and editing
+    /// slides that stay in place writes just those slides; anything else is a whole-value write.
+    /// </summary>
+    public static void UpdateSlideList(AmDocument document, Presentation next, DateTimeOffset? time = null)
+    {
+        var kind = MacKind.ForWindowsType(typeof(Presentation))!;
+        var current = Read<Presentation>(document, kind).Slides;
+        var slides = AmPath.Root.Then("slides");
+        var nextIds = next.Slides.Select(s => s.Id).ToList();
+        var currentIds = current.Select(s => s.Id).ToList();
+        var edit = new AmEdit();
+        var slideRecord = Schema.Record("Slide");
+        if (nextIds.All(currentIds.Contains) && nextIds.Count < currentIds.Count
+            && currentIds.Where(nextIds.Contains).SequenceEqual(nextIds))
+        {
+            for (var i = currentIds.Count - 1; i >= 0; i--)
+                if (!nextIds.Contains(currentIds[i])) edit.Delete(slides, i);
+        }
+        else if (currentIds.All(nextIds.Contains) && nextIds.Count > currentIds.Count
+                 && nextIds.Where(currentIds.Contains).SequenceEqual(currentIds))
+        {
+            for (var i = 0; i < next.Slides.Count; i++)
+            {
+                if (currentIds.Contains(nextIds[i])) continue;
+                edit.InsertObject(slides, i, AmObjectKind.Map);
+                Keyed(edit, slides.Then(i), null, MacDocuments.ToJson(next.Slides[i]), slideRecord);
+            }
+        }
+        else if (currentIds.SequenceEqual(nextIds))
+        {
+            var tree = (AmList)document.Read()["slides"]!;
+            for (var i = 0; i < next.Slides.Count; i++)
+                if (!Core.Json.MxuJson.StructurallyEqual(current[i], next.Slides[i]))
+                    Keyed(edit, slides.Then(i), (AmMap)tree.Items[i], MacDocuments.ToJson(next.Slides[i]), slideRecord);
+        }
+        else
+        {
+            Update(document, next, kind, time);
+            return;
+        }
         document.Apply(edit, message: null, time ?? DateTimeOffset.UtcNow);
     }
 

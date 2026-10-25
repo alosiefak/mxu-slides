@@ -212,6 +212,56 @@ public sealed class LibraryStore
         Changed?.Invoke(typeof(T), id);
     }
 
+    // MARK: Library sync (Phase 10, Sync/Engine)
+
+    /// <summary>
+    /// Library sync's save: saves <paramref name="doc"/> only if its file still holds exactly
+    /// <paramref name="expected"/> (null: there's no file yet). The check and the write happen under
+    /// the same lock as <see cref="Save{T}"/>, so a change arriving from the Mac can't overwrite an
+    /// edit saved here a moment before: sync sees the file moved on, takes that edit in, and tries
+    /// again. Returns false, saving nothing, when the file had moved on.
+    /// </summary>
+    public bool SaveIfUnchanged<T>(T doc, byte[]? expected) where T : class, ILibraryDocument
+    {
+        var path = DocumentPath(typeof(T), doc.Id);
+        var bytes = MxuJson.SerializeToUtf8(doc);
+        lock (gate)
+        {
+            if (!FileHolds(path, expected)) return false;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            AtomicWrite(path, bytes);
+            documents[typeof(T)][doc.Id] = doc;
+        }
+        Changed?.Invoke(typeof(T), doc.Id);
+        return true;
+    }
+
+    /// <summary>Library sync's delete: moves the document to Trash, as <see cref="Delete{T}"/> does, only if its file still holds exactly <paramref name="expected"/>.</summary>
+    public bool DeleteIfUnchanged<T>(string id, byte[] expected) where T : class, ILibraryDocument
+    {
+        var path = DocumentPath(typeof(T), id);
+        lock (gate)
+        {
+            if (!FileHolds(path, expected)) return false;
+            var trash = Path.Combine(TrashDirectory, FolderFor(typeof(T)));
+            Directory.CreateDirectory(trash);
+            File.Move(path, Path.Combine(trash, $"{DateTime.Now:yyyyMMdd-HHmmss}-{id}.json"), overwrite: true);
+            documents[typeof(T)].Remove(id);
+        }
+        Changed?.Invoke(typeof(T), id);
+        return true;
+    }
+
+    /// <summary>Raises <see cref="Changed"/> for a document whose media file library sync just brought in, so its tile stops saying FILE MISSING.</summary>
+    public void NotifyChanged(Type type, string id) => Changed?.Invoke(type, id);
+
+    private static bool FileHolds(string path, byte[]? expected)
+    {
+        if (expected is null) return !File.Exists(path);
+        try { return File.ReadAllBytes(path).AsSpan().SequenceEqual(expected); }
+        catch (IOException) { return false; }
+    }
+
     public string DocumentPath(Type type, string id) => Path.Combine(Root, FolderFor(type), SafeFileName(id) + ".json");
 
     private static string SafeFileName(string id)
