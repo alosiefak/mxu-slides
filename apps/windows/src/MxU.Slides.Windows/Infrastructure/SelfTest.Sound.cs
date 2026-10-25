@@ -207,8 +207,10 @@ public sealed partial class SelfTest
             model.Media.Seek(key, TimeSpan.FromSeconds(1));
             model.Media.Play(key);
             await Until(() => model.Media.SoundStatus(key), s => s?.Landings > landed, 10000);
-            var before = await InSync(key, 10000);
-            report.AppendLine($"      before recording: {before?.State} at {before?.Position:0.00} s");
+            await InSync(key, 10000);
+            // And heard again: it has just come back from its own output, and reopening the device takes a moment on a busy PC.
+            var before = await Until(() => model.Media.SoundStatus(key), s => s is { State: VideoSoundState.Playing, Output.State: AudioOutputState.Playing }, 10000);
+            report.AppendLine($"      before recording: {before?.State} at {before?.Position:0.00} s, output {before?.Output.State}");
             var preset = new StreamRecordPreset
             {
                 Name = "Self-test video sound recording", PresetKind = StreamPresetKind.RecordOnly, Width = 640, Height = 360, FrameRate = 30, VideoBitrateKbps = 1500,

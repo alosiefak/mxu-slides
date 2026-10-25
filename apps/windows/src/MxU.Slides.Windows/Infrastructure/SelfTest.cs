@@ -550,6 +550,9 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
         public byte[]? Last;
         public int Width, Height;
 
+        /// <summary>When the last frame was drawn (ShowState.HostClock), so a check can wait for one drawn after a change.</summary>
+        public double LastTime = double.NegativeInfinity;
+
         public void WriteVideo(Core.Media.VideoFrame frame)
         {
             lock (gate)
@@ -558,6 +561,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
                 Width = frame.Width;
                 Height = frame.Height;
                 Last = frame.Pixels.ToArray();
+                LastTime = frame.HostTime;
             }
         }
 
@@ -615,7 +619,8 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             Skip("live inputs over NDI", error.ToString() ?? "NDI isn't installed");
             return;
         }
-        const string source = "MxU self-test camera";
+        // Named for this run: two self-tests on one PC would otherwise send (and find) the same source.
+        var source = $"MxU self-test camera {Environment.ProcessId}";
         using var sender = new VideoIO.Ndi.NdiOutput(source);
         sender.Start();
         int w = 640, h = 360;
@@ -638,15 +643,15 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             Check("a live input appears as a tile in the Media tab", tile is not null);
             if (tile is null) return;
             model.InputClickedCommand.Execute(tile);
-            for (var i = 0; i < 100 && model.Media.LiveInputPicture(entry.EngineId) is null; i++) await Delay(100);
+            await WhenShown(() => model.Media.LiveInputPicture(entry.EngineId) is not null, 20); // finding the source and connecting take a while on a busy PC
             Check("an NDI source shows as a live input", model.Media.LiveInputPicture(entry.EngineId) is { PixelWidth: 640 });
             if (model.Program is { } feed)
             {
                 var sink = new CountingSink();
                 feed.Add(sink);
-                await Delay(1200);
+                var frame = await FrameAfter(sink, ShowState.HostClock() + 1.2); // a picture drawn 1.2 s on (a busy PC captures late)
                 feed.Remove(sink);
-                if (sink.Last is { } frame && sink.Width > 0)
+                if (frame is not null && sink.Width > 0)
                 {
                     var c = (sink.Height / 2 * sink.Width + sink.Width / 2) * 4;
                     Check("the input's picture reaches the program (under the slides)", frame[c + 2] > 180 && frame[c + 1] < 80 && frame[c] > 180);
@@ -957,7 +962,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
         }
         var config = outputs.Config;
         var screen = config.AddScreen("NDI self-test", 1280, 720)!;
-        const string source = "MxU Slides self-test";
+        var source = $"MxU Slides self-test {Environment.ProcessId}"; // named for this run, as the camera above
         try
         {
             config.AssignDevice(screen.Id, Core.Outputs.OutputDevice.Ndi(source), "NDI self-test");

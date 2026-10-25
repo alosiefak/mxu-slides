@@ -25,4 +25,15 @@ public sealed partial class SelfTest
 
     private static Task<T> Limited<T, TProgress>(IAsyncOperationWithProgress<T, TProgress> operation, CancellationToken limit) =>
         operation.AsTask(limit).WaitAsync(limit);
+
+    /// <summary>
+    /// The newest picture <paramref name="sink"/> has, once one drawn at or after <paramref name="hostTime"/>
+    /// (ShowState.HostClock) has arrived; up to 10 s, then whatever it has. A busy PC captures late, so
+    /// "wait 250 ms, then take the newest picture" could hand back one drawn before the change.
+    /// </summary>
+    private static async Task<byte[]?> FrameAfter(CountingSink sink, double hostTime)
+    {
+        await WhenShown(() => sink.LastTime >= hostTime, 10);
+        return sink.Last;
+    }
 }

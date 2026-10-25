@@ -115,7 +115,10 @@ public sealed partial class SelfTest
             if (clear is null) return;
             clear.IsSubmenuOpen = true;
             await Delay(400);
-            var popup = clear.Template?.FindName("PART_Popup", clear) as Popup;
+            // A submenu's popup is made, opened and laid out a moment later (later still on a slow PC).
+            Popup? Submenu() => clear.Template?.FindName("PART_Popup", clear) as Popup;
+            await WhenShown(() => Submenu() is { IsOpen: true, Child: FrameworkElement { ActualWidth: > 0 } }, 10);
+            var popup = Submenu();
             Check("its submenus open beside it (Clear › Clear All, the layers, Clear Music)",
                 popup is { IsOpen: true, Child: FrameworkElement { ActualWidth: > 0 } } && clear.Items.Count >= 9);
             SaveElement(menu, "30b-editor-add-action-menu");

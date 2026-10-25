@@ -99,7 +99,9 @@ public sealed partial class SelfTest
         var probe = file is null ? null : MediaFileProbe.Read(file);
         report.AppendLine($"      stage recording: {file} ({(file is null ? 0 : new FileInfo(file).Length)} bytes, {probe?.Width}x{probe?.Height}, {probe?.DurationSeconds:0.0}s)");
         Check("the stage recording is a 1280×720 MP4 that plays", probe is { IsPlayable: true, Width: 1280, Height: 720, DurationSeconds: > 1.5 });
-        if (file is null || await FrameFromAsync(file, 30) is not { } frame || program.Last is not { } programPixels) return true;
+        // Its last picture, from when the stage display was drawn for comparison: on a busy PC the screen's
+        // feed takes a moment to start, so the first second can be blank.
+        if (file is null || await FrameFromAsync(file, int.MaxValue) is not { } frame || program.Last is not { } programPixels) return true;
         Write(BitmapSource.Create(frame.Width, frame.Height, 96, 96, PixelFormats.Pbgra32, null, frame.Pixels, frame.Width * 4), "21-stage-recording-frame");
         Write(BitmapSource.Create(program.Width, program.Height, 96, 96, PixelFormats.Pbgra32, null, programPixels, program.Width * 4), "21-program-meanwhile");
         var toStage = Difference(frame.Pixels, frame.Width, frame.Height, stageNow, 1280, 720);
