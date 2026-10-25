@@ -101,6 +101,12 @@
                         <TextBlock Text="Import" />
                     </StackPanel>
                 </Button>
+                <Button DockPanel.Dock="Left" Command="{Binding OpenBibleCommand}" ToolTip="Bible: type a reference and put it on screen (Ctrl+B)" Margin="0,0,6,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE82D;" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Bible" />
+                    </StackPanel>
+                </Button>
 
                 <Button DockPanel.Dock="Right" Click="Settings_Click" ToolTip="Screens and settings">
                     <StackPanel Orientation="Horizontal">

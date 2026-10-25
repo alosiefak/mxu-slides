@@ -12,4 +12,12 @@
   <ItemGroup>
     <InternalsVisibleTo Include="MxU.Slides.Core.Tests" />
   </ItemGroup>
+
+  <!-- The Bible texts (KJV, WEB, ASV) and their manifest, built into the DLL so they travel with
+       the app and its tests. Scripture/BibleCatalog.cs reads them as "Bibles/<file>".
+       tools/bible-convert.py makes them from eBible.org's downloads. -->
+  <ItemGroup>
+    <None Remove="Scripture\Bibles\**" />
+    <EmbeddedResource Include="Scripture\Bibles\*.tsv.gz;Scripture\Bibles\bibles.json" LogicalName="Bibles/%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>
