@@ -11,7 +11,7 @@ Both build on things that already exist: the library and the lyrics-to-slides pi
 
 ### What you can do
 
-- **Connect.** Planning Center lets a church make a *Personal Access Token* for its own scripts: sign in at [api.planningcenteronline.com](https://api.planningcenteronline.com), open *Personal Access Tokens*, and make one. It's a pair of strings, an **Application ID** and a **Secret**. In **Screens & Settings › Planning Center**, paste both and press **Connect**. The app checks them with Planning Center first and shows the church's name; only a token that works is kept.
+- **Connect.** Planning Center lets a church make a *Personal Access Token* for its own scripts: sign in at [api.planningcenteronline.com/oauth/applications](https://api.planningcenteronline.com/oauth/applications) (Settings' **Make a token…** button opens it), and under *Personal Access Tokens* make one. It's a pair of strings, an **Application ID** and a **Secret**. In **Screens & Settings › Planning Center**, paste both and press **Connect**. The app checks them with Planning Center first and shows the church's name; only a token that works is kept.
 - **Import a plan.** **Service ⋯ › Import from Planning Center…** (or **Import a plan…** in Settings) opens a window with the church's service types on the left and the chosen type's plans on the right: upcoming ones first, then the last two. Pick one and press **Import**. The new service opens, and the notice bar says what came in: "10 rows · 2 songs from your library · 2 new songs made from Planning Center's lyrics · media to add: 5 Minute Countdown (Dark)".
 - **Update it.** Plans change during the week. **Service ⋯ › Update from Planning Center** (or importing the same plan again) brings the service up to date *in place*: no second copy, and nothing the operator changed is lost. The window marks a plan that's already been imported, and its button reads **Update service**.
 - **Disconnect** removes the token from this PC. Services already imported stay.
@@ -86,7 +86,7 @@ A few more rules: a row keeps the library song it plays while Planning Center's 
 - **Media files aren't downloaded.** Planning Center hands out a media file through a short-lived link from its file storage. Downloading would mean another site (so the token's rules above don't cover it), files of any size and type, and a wait during the import. So media items are listed as "Media to add", and the operator adds the file from the Media tab.
 - **Signing in with a Planning Center account** (OAuth) needs the app registered with Planning Center by its publisher; a Personal Access Token works for one church today.
 - **Nothing is written back** to Planning Center, and plan times, people and the song's planned key (it's kept on the row as `mxuSongKey`, but not applied to the song's display key) aren't used yet.
-- **Real Planning Center hasn't been tried here**, as it needs a church's token. The tests and the self-test use recorded answers written from Planning Center's documentation. To try it: make a Personal Access Token, connect in Settings, and import next Sunday's plan. If anything reads wrongly, the log (Settings › Open logs) lists each request and its status.
+- **Real Planning Center hasn't been tried here**, as it needs a church's token. The tests and the self-test use recorded answers written from Planning Center's documentation. To try it: make a Personal Access Token at api.planningcenteronline.com/oauth/applications (signed in as someone who can see Services), paste its Application ID and Secret into Screens & Settings › Planning Center and press Connect, then import next Sunday's plan from the service menu. If anything reads wrongly, the log (Settings › Open logs) lists each request and its status.
 
 ## 2. The browser remote and the stage view
 
@@ -102,7 +102,7 @@ The **remote** (`/remote`) has four tabs on a phone, and on a tablet or laptop s
 
 - **Service**: the rows, the live one outlined in red. Tap a row to see its slides; **Go** takes it live.
 - **Slides**: thumbnails of the live (or chosen) item's slides, with their groups' colours. Tap one to go live. **Follow live** keeps it on whatever is live.
-- **Timers**: start, pause and reset the church's timers; the automatic service-tracking timers are listed after them.
+- **Timers**: start, pause and reset the church's timers; the automatic service-tracking timers follow as a compact list (they run themselves, so they have no buttons).
 - **Messages**: send or take down the stage message, and send any saved alert, filling in its `{blanks}` first.
 - Always at the bottom: **Prev**, a big **Next**, and the clears (Slide, Media, Overlays, Alerts, Clear all). On a keyboard, → and ← (and a presenter clicker) work too.
 
@@ -136,6 +136,12 @@ flowchart LR
 - **The page's own security rule blocked its colours.** `style-src 'self'` also refuses `style="…"` attributes set from script. Group and row colours are now set through the element's `style` object (`node.style.setProperty('--group', …)`), which the rule allows.
 - **Three timers widened the stage view** past a portrait tablet's screen, and the words with it. A CSS grid column grows to fit its content unless told `minmax(0, 1fr)`.
 - **A window with a margin round its content** came out shifted in the self-test's picture: the content is drawn at its offset. A border with padding draws from the corner.
+- **The stage view's NEXT ran off an upright tablet.** The script that shrinks text to fit compared it with its box's `clientHeight`, which counts the box's padding, and NEXT keeps its label in its top padding. It now measures the room inside the padding. Only a picture of the page in a real browser showed it, which is why the self-test now takes them (below).
+
+### How it's checked
+
+- **Unit tests** (`tests/MxU.Slides.LocalApi.Tests/RemoteTests.cs`) run the real server on this PC: the pages serve with their security policy, pairing gives a key with the chosen scope, a View key can't control (over HTTP or the socket), the thumbnail route returns a PNG, and the Mac's routes and `/openapi.json` are unchanged.
+- **The self-test** opens the pages in a real browser: the PC's own Edge (or Chrome), started with no window and a throwaway profile, and driven through its *DevTools protocol*, JSON messages over a WebSocket ("open this address", "run this script", "take a picture"). That's `Infrastructure/HeadlessBrowser.cs`. At a phone's size it types the pairing code, taps through the tabs, taps a slide and Next; then a tablet's layout, and the stage view paired View only, on a TV and on an upright tablet. Pictures 67 to 74 are those pages. If the PC has neither browser, the report says so and the rest still runs.
 
 ### Things to try
 
@@ -169,7 +175,7 @@ The Mac app in this repo has neither a browser remote nor its own Planning Cente
 - Planning Center Services import: `Core/PlanningCenter/` (`PlanningCenterClient`, `PcoDocument`, `PcoModels`, `PcoCredentials`, `PlanImporter`, `PlanSongs`, `PlanLink`), `Windows/Infrastructure/PlanningCenterVault.cs`, `ViewModels/MainViewModel.PlanningCenter.cs`, `Views/PlanningCenterWindow.cs`. The plan link is a Windows extra (`Windows extras/planning-center/`).
 - The browser remote and stage view: `LocalApi/Remote/` (`RemoteSite`, `RemotePairing`, `IRemoteBridge`, `Web/*`), `ViewModels/MainViewModel.Remote.cs`, `Rendering/ScenePictures.cs`, `Views/QrCode.cs` (QRCoder, MIT). Its routes are under `/remote` and aren't part of the Mac's contract (`/openapi.json` is unchanged).
 - `Views/ConnectSettingsSection.cs` (Settings › Planning Center and Browser remote).
-- `Infrastructure/SelfTest.Connect.cs` (pictures 60–66).
+- `Infrastructure/SelfTest.Connect.cs` (pictures 60–74) and `Infrastructure/HeadlessBrowser.cs` (the self-test opens the remote's pages in the PC's own Edge or Chrome, with no window, through the DevTools protocol).
 - `MainViewModel.ApiServer.cs` → `PublishApi` pushes after the change that raised it has finished (the Mac publishes from its own observation of the model, so it doesn't have the stale-position problem).
 
 **Not ported yet / not done** (add to that list):

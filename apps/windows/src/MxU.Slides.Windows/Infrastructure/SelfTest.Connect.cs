@@ -24,9 +24,10 @@ namespace MxU.Slides.Windows.Infrastructure;
 /// operator renamed a row.</item>
 /// <item>The remote is used over real HTTP and a real WebSocket on this PC: the pages, pairing with
 /// the code Settings shows, the service, a thumbnail (saved as a picture), going live, the stage
-/// message, and a View key that can't control.</item>
+/// message, and a View key that can't control. Then its pages are opened in a real browser, at a
+/// phone's, a tablet's and a TV's size (<see cref="RemotePagesCheck"/>).</item>
 /// </list>
-/// Pictures 60-… to 66-….
+/// Pictures 60-… to 74-….
 /// </summary>
 public sealed partial class SelfTest
 {
@@ -242,6 +243,8 @@ public sealed partial class SelfTest
 
             await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
             await Task.WhenAny(reading, Task.Delay(2000));
+
+            await RemotePagesCheck(port, http, rowId);
         }
         catch (Exception ex)
         {
@@ -283,6 +286,146 @@ public sealed partial class SelfTest
             {
             }
         }
+    }
+
+    /// <summary>
+    /// The remote's pages in a real browser: the PC's own Edge or Chrome, with no window, at a phone's
+    /// size (<see cref="HeadlessBrowser"/>). It pairs by typing the code, as a phone would, then uses
+    /// the service, the slides, Next, the timers and messages, a tablet's layout, and the stage view
+    /// (paired View only). Pictures 67-… to 74-….
+    /// </summary>
+    private async Task RemotePagesCheck(int port, HttpClient control, string? rowId)
+    {
+        if (HeadlessBrowser.Find() is not { } executable)
+        {
+            report.AppendLine("NOTE  no Edge or Chrome on this PC, so the remote's pages weren't opened in a browser");
+            return;
+        }
+        HeadlessBrowser browser;
+        try
+        {
+            using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            browser = await HeadlessBrowser.StartAsync(executable, limit.Token);
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine($"NOTE  couldn't start a browser for the remote's pages: {ex.Message}");
+            return;
+        }
+        await using (browser)
+        {
+            var site = $"http://127.0.0.1:{port}";
+            async Task Picture(string name) => await File.WriteAllBytesAsync(Path.Combine(folder, name + ".png"), await browser.PictureAsync());
+            async Task<string> Text(string script) => (string?)await browser.EvaluateAsync(script) ?? "";
+            async Task Pair(string code, string name) => await browser.EvaluateAsync($$"""
+                document.getElementById('pair-code').value = '{{code}}';
+                document.getElementById('pair-name').value = '{{name}}';
+                document.querySelector('.pair-form').requestSubmit();
+                """);
+
+            // A phone: 390 × 844 (an iPhone 14's size in CSS pixels), drawn at twice that, as its screen is.
+            await browser.SizeAsync(390, 844, 2, mobile: true);
+            await browser.OpenAsync(site + "/remote");
+            Check("on a phone, the remote page asks for the pairing code", await browser.WaitForAsync("document.getElementById('pair-code')"));
+            await Picture("67-remote-phone-pairing");
+
+            var offer = model.BeginRemotePairing(ApiScope.Control);
+            await Pair(offer is null ? "" : $"{offer.Code[..3]} {offer.Code[3..]}", "Self-test phone (browser)");
+            var paired = await browser.WaitForAsync("!document.getElementById('app').hidden && document.querySelector('#service-items .item.live')");
+            var key = await Text("localStorage.getItem('mxu-slides-remote-key') ?? ''");
+            var address = await Text("location.href");
+            Check("typing the code pairs the page, and its key stays in the browser's storage, not the address",
+                paired && key.StartsWith("mxu_", StringComparison.Ordinal) && address == site + "/remote");
+            Check("the Service tab lists the service with the live row marked",
+                (await Text("document.querySelector('#service-items .item.live')?.textContent ?? ''")).Contains("Amazing Grace"));
+            await Picture("68-remote-phone-service");
+
+            await browser.EvaluateAsync("document.querySelector('.tabs [data-tab=slides]').click()");
+            var pictures = await browser.WaitForAsync("""
+                (() => {
+                  const tiles = document.querySelectorAll('#slides .slide');
+                  const images = [...document.querySelectorAll('#slides .slide img')];
+                  return tiles.length >= 5 && images.length === tiles.length && images.every(i => i.complete && i.naturalWidth > 0)
+                    && document.querySelector('#slides .slide.live');
+                })()
+                """, 15_000);
+            Check("the Slides tab shows the live song's slides as pictures, the live one marked", pictures);
+            await Picture("69-remote-phone-slides");
+
+            // Tap the fourth slide: it goes live, and the page hears so over its socket and moves its mark.
+            await browser.EvaluateAsync("document.querySelectorAll('#slides .slide')[3].click()");
+            var marked = await browser.WaitForAsync("document.querySelectorAll('#slides .slide')[3].classList.contains('live')");
+            Check("tapping a slide on the page puts it live, and the page marks it", marked && model.Live is { Occurrence: 3 } && model.Live.ItemId == rowId);
+            var before = (model.Live?.Occurrence, model.Show.SlideAnimationStep);
+            await browser.EvaluateAsync("document.getElementById('next').click()");
+            var stepped = false;
+            for (var waited = 0; waited < 3000 && !stepped; waited += 100)
+            {
+                await Delay(100);
+                stepped = (model.Live?.Occurrence, model.Show.SlideAnimationStep) != before;
+            }
+            Check("Next on the page steps the show", stepped);
+
+            await browser.EvaluateAsync("document.querySelector('.tabs [data-tab=timers]').click()");
+            Check("the Timers tab shows the running timer with its buttons",
+                await browser.WaitForAsync("[...document.querySelectorAll('#timers .timer')].some(t => t.textContent.includes('Self-test sermon') && t.querySelector('.clock.running'))"));
+            await Picture("70-remote-phone-timers");
+
+            await control.PostAsync("/remote/stage-message", new StringContent("""{"text":"Two minutes"}""", Encoding.UTF8, "application/json"));
+            await browser.EvaluateAsync("document.querySelector('.tabs [data-tab=messages]').click()");
+            Check("the Messages tab shows the stage message that's up",
+                await browser.WaitForAsync("!document.getElementById('alert-live').hidden && document.getElementById('alert-live').textContent.includes('Two minutes')"));
+            await Picture("71-remote-phone-messages");
+
+            // A tablet on its side: the service, the slides and the messages side by side.
+            await browser.SizeAsync(1180, 820, 1, mobile: true);
+            await Delay(400);
+            Check("on a tablet the remote shows the service and the slides side by side",
+                await browser.WaitForAsync("getComputedStyle(document.querySelector('.tabs')).display === 'none'"
+                    + " && document.getElementById('tab-service').offsetWidth > 0 && document.getElementById('tab-slides').offsetWidth > 0"));
+            await Picture("72-remote-tablet");
+
+            // The stage view, paired View only, as a TV by the stage would be.
+            await browser.EvaluateAsync("localStorage.clear()");
+            await browser.SizeAsync(1280, 720, 1, mobile: false);
+            await browser.OpenAsync(site + "/remote/stage");
+            await browser.WaitForAsync("document.getElementById('pair-code')");
+            var viewOffer = model.BeginRemotePairing(ApiScope.View);
+            await Pair(viewOffer?.Code ?? "", "Self-test stage");
+            var current = AudienceText();
+            var shown = await browser.WaitForAsync("!document.getElementById('stage').hidden && document.getElementById('current').textContent.trim().length > 0"
+                + " && !document.getElementById('message').hidden && document.getElementById('timers').textContent.includes('Self-test sermon')");
+            var stageCurrent = await Text("document.getElementById('current').textContent");
+            Check("the stage view shows the slide, the next one, the clock, the timer and the stage message",
+                shown && Words(current).Take(3).All(w => stageCurrent.Contains(w, StringComparison.OrdinalIgnoreCase))
+                && (await Text("document.getElementById('next').textContent")).Length > 0
+                && (await Text("document.getElementById('clock').textContent")).Length > 0
+                && (await Text("document.getElementById('message').textContent")) == "Two minutes");
+            await Picture("73-stage-tv");
+
+            // The show moves on: the stage view follows over its socket, without being reloaded.
+            await control.PostAsync("/v1/show/slide", new StringContent($$"""{"serviceItemId":"{{rowId}}","occurrence":5}""", Encoding.UTF8, "application/json"));
+            await Delay(500);
+            var moved = AudienceText();
+            Check("the stage view follows the show live",
+                moved != current && await browser.WaitForAsync(
+                    $"document.getElementById('current').textContent.toLowerCase().includes({System.Text.Json.JsonSerializer.Serialize(Words(moved).FirstOrDefault()?.ToLowerInvariant() ?? "")})"));
+            // A pastor's tablet, upright.
+            await browser.SizeAsync(820, 1180, 1, mobile: true);
+            await Delay(400);
+            await Picture("74-stage-tablet");
+
+            // The same View key on the remote page: everything shows, the buttons are off.
+            await browser.SizeAsync(390, 844, 2, mobile: true);
+            await browser.OpenAsync(site + "/remote");
+            Check("with a View key, the remote page shows the show with its buttons switched off",
+                await browser.WaitForAsync("!document.getElementById('app').hidden && !document.getElementById('scope').hidden"
+                    + " && document.getElementById('next').disabled && document.querySelector('[data-clear=all]').disabled"));
+            await control.PostAsync("/remote/stage-message", new StringContent("""{"text":""}""", Encoding.UTF8, "application/json"));
+        }
+
+        static IEnumerable<string> Words(string text) =>
+            text.Split([' ', '\n', '\r', ',', '.', ';', '!', '?', '\''], StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length > 3);
     }
 
     /// <summary>A picture of part of a window, even one scrolled out of view (drawn through a VisualBrush).</summary>
