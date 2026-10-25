@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Library sync with the Mac (Phase 10). The Mac keeps its library as Automerge documents;
+       this project reads and writes them, through automerge.dll (Automerge's Rust core, built
+       from source by tools/build-automerge.ps1), and keeps the Windows JSON library and a
+       shared Mac library folder in step. No WPF: the Settings page and the self-test are in the
+       app. See docs/phase10/sync.md. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MxU.Slides.Sync</RootNamespace>
+    <!-- The source-generated P/Invoke stubs (LibraryImport) need it. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MxU.Slides.Sync.Tests" />
+  </ItemGroup>
+
+  <!-- The shared document schema, the same file the Mac's Swift models and our C# models are
+       generated from. The decoder and the checks read field types and enum cases from it. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\..\packages\schema\documents.json" LogicalName="documents.json" Link="Format\documents.json" />
+  </ItemGroup>
+
+  <!-- Automerge's core, our own build of MIT code (committed, so building the app needs no Rust),
+       and its licence notices. Both land next to the app, and next to any project that uses this one. -->
+  <ItemGroup>
+    <None Include="Native\automerge.dll" Link="automerge.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Native\AUTOMERGE-NOTICES.txt" Link="AUTOMERGE-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

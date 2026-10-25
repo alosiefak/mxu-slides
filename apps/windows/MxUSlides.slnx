@@ -7,6 +7,7 @@
     <Project Path="src/MxU.Slides.PptxImport/MxU.Slides.PptxImport.csproj" />
     <Project Path="src/MxU.Slides.ProImport/MxU.Slides.ProImport.csproj" />
     <Project Path="src/MxU.Slides.Production/MxU.Slides.Production.csproj" />
+    <Project Path="src/MxU.Slides.Sync/MxU.Slides.Sync.csproj" />
     <Project Path="src/MxU.Slides.VideoIO/MxU.Slides.VideoIO.csproj" />
     <Project Path="src/MxU.Slides.Windows/MxU.Slides.Windows.csproj" />
   </Folder>
@@ -18,6 +19,7 @@
     <Project Path="tests/MxU.Slides.PptxImport.Tests/MxU.Slides.PptxImport.Tests.csproj" />
     <Project Path="tests/MxU.Slides.ProImport.Tests/MxU.Slides.ProImport.Tests.csproj" />
     <Project Path="tests/MxU.Slides.Production.Tests/MxU.Slides.Production.Tests.csproj" />
+    <Project Path="tests/MxU.Slides.Sync.Tests/MxU.Slides.Sync.Tests.csproj" />
     <Project Path="tests/MxU.Slides.VideoIO.Tests/MxU.Slides.VideoIO.Tests.csproj" />
     <Project Path="tests/MxU.Slides.Windows.Tests/MxU.Slides.Windows.Tests.csproj" />
   </Folder>

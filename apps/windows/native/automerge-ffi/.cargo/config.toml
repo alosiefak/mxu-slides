@@ -1,0 +1,4 @@
+# Link Microsoft's C runtime into the DLL, so it loads on a PC that hasn't got the Visual C++
+# Redistributable installed (a self-contained .NET app doesn't bring it).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
