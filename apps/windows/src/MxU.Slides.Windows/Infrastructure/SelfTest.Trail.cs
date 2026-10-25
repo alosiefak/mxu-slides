@@ -10,9 +10,10 @@ public sealed partial class SelfTest
 
     /// <summary>
     /// A trail for a run that never finishes, such as a hang on a test machine. Every two
-    /// seconds the report so far is written to report.partial.txt, and if the UI thread (where
-    /// every check runs) stops answering for 20 seconds, that's logged with the last line of the
-    /// report, so the check that hung is known. All of this runs on its own background thread,
+    /// seconds the report so far is written to report.partial.txt. If the UI thread (where
+    /// every check runs) stops answering for 20 seconds, or still answers but no check has
+    /// finished for 45 (something it awaits never comes), that's logged with the last line of
+    /// the report and every thread's call stack. All of this runs on its own background thread,
     /// because a stuck UI thread can't report on itself.
     /// </summary>
     private sealed class Trail : IDisposable
@@ -42,6 +43,10 @@ public sealed partial class SelfTest
             var stuckSince = (DateTime?)null;
             var stacks = "";
             var lastWrite = DateTime.MinValue;
+            var grownTo = -1;
+            var lastGrowth = DateTime.Now;
+            var stalled = false;
+            var stallNote = "";
             while (!done)
             {
                 // Is the UI thread answering? (A check awaiting a delay still lets it answer.)
@@ -64,6 +69,26 @@ public sealed partial class SelfTest
                 else
                 {
                     stuckSince = null;
+                    // The UI thread answers but the report hasn't grown: a check is awaiting something that
+                    // never comes (a timer starved of threads, say). Once per stall, show what every thread is doing.
+                    if (text.Length != grownTo)
+                    {
+                        grownTo = text.Length;
+                        lastGrowth = DateTime.Now;
+                        stalled = false;
+                    }
+                    else if (!stalled && DateTime.Now - lastGrowth > TimeSpan.FromSeconds(45))
+                    {
+                        stalled = true;
+                        System.Threading.ThreadPool.GetAvailableThreads(out var workers, out _);
+                        System.Threading.ThreadPool.GetMaxThreads(out var maxWorkers, out _);
+                        stacks = ThreadStacks.Describe(uiThreadId);
+                        var line = $"STALLED no new report line for 45 s, though the UI thread answers (the last line: {LastLine(text)}); "
+                            + $"thread pool: {ThreadPool.ThreadCount} threads, {maxWorkers - workers} busy, {ThreadPool.PendingWorkItemCount} jobs waiting";
+                        Log.Warn($"Self-test: {line}{Environment.NewLine}{stacks}");
+                        stallNote = line + Environment.NewLine + stacks;
+                    }
+                    if (stalled) text += stallNote;
                 }
                 if (!answered || DateTime.Now - lastWrite > TimeSpan.FromSeconds(2))
                 {
