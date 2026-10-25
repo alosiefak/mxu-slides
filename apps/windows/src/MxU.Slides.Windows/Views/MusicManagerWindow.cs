@@ -120,6 +120,7 @@ public sealed class MusicManagerWindow : Window
 
         model.Library.Changed += OnLibraryChanged;
         model.Audio.TransportChanged += OnTransport;
+        Infrastructure.UndoWindows.AttachEditor(this, model.Library, "Music manager");
         Closed += (_, _) =>
         {
             model.Library.Changed -= OnLibraryChanged;

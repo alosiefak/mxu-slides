@@ -81,6 +81,7 @@
                         <TextBlock Text="Edit" />
                     </StackPanel>
                 </ToggleButton>
+                <v:EditBar DockPanel.Dock="Left" Margin="0,0,16,0" />
 
                 <Button DockPanel.Dock="Left" Click="NewSong_Click" ToolTip="New song from lyrics (Ctrl+N)" Margin="0,0,6,0">
                     <StackPanel Orientation="Horizontal">

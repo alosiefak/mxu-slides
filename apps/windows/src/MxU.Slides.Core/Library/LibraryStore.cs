@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using MxU.Slides.Core.Json;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Undo;
 
 namespace MxU.Slides.Core.Library;
 
@@ -11,7 +12,7 @@ namespace MxU.Slides.Core.Library;
 /// deletes move files to Trash; a file that fails to read is quarantined
 /// rather than crashing the app.
 /// </summary>
-public sealed class LibraryStore
+public sealed partial class LibraryStore
 {
     public const string ManifestFileName = "library.json";
 
@@ -50,6 +51,7 @@ public sealed class LibraryStore
         Root = root;
         foreach (var type in Folders.Keys) documents[type] = new(StringComparer.Ordinal);
         Blobs = new BlobStore(BlobDirectory);
+        Undo = new UndoHistory(this);
     }
 
     public string Root { get; }
@@ -64,7 +66,7 @@ public sealed class LibraryStore
     public string TrashDirectory => Path.Combine(Root, "Trash");
 
     /// <summary>Windows-only additions to this library's documents, kept where the Mac never looks (WindowsExtras.cs).</summary>
-    public WindowsExtras Extras => extras ??= new WindowsExtras(Root);
+    public WindowsExtras Extras => extras ??= new WindowsExtras(Root) { Undo = Undo };
 
     private WindowsExtras? extras;
     public string QuarantineDirectory => Path.Combine(Root, "Quarantine");
@@ -186,30 +188,39 @@ public sealed class LibraryStore
         if (string.IsNullOrEmpty(doc.Id)) doc.Id = NewId();
         var path = DocumentPath(typeof(T), doc.Id);
         var bytes = MxuJson.SerializeToUtf8(doc);
+        UndoCapture? undoing;
         lock (gate)
         {
+            // What the file held, when an undo scope is recording this save (Undo/UndoHistory.cs).
+            undoing = Undo.Capture(new UndoTarget.Document(typeof(T), doc.Id), path, typeof(T));
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             AtomicWrite(path, bytes);
             documents[typeof(T)][doc.Id] = doc;
         }
+        UndoHistory.Record(undoing, bytes);
         Changed?.Invoke(typeof(T), doc.Id);
     }
 
     /// <summary>Moves the document to Trash (never a permanent delete).</summary>
-    public void Delete<T>(string id) where T : class, ILibraryDocument
+    public void Delete<T>(string id) where T : class, ILibraryDocument => DeleteDocument(typeof(T), id);
+
+    private void DeleteDocument(Type type, string id)
     {
-        var path = DocumentPath(typeof(T), id);
+        var path = DocumentPath(type, id);
+        UndoCapture? undoing;
         lock (gate)
         {
+            undoing = Undo.Capture(new UndoTarget.Document(type, id), path, type);
             if (File.Exists(path))
             {
-                var trash = Path.Combine(TrashDirectory, FolderFor(typeof(T)));
+                var trash = Path.Combine(TrashDirectory, FolderFor(type));
                 Directory.CreateDirectory(trash);
                 File.Move(path, Path.Combine(trash, $"{DateTime.Now:yyyyMMdd-HHmmss}-{id}.json"), overwrite: true);
             }
-            documents[typeof(T)].Remove(id);
+            documents[type].Remove(id);
         }
-        Changed?.Invoke(typeof(T), id);
+        UndoHistory.Record(undoing, null);
+        Changed?.Invoke(type, id);
     }
 
     public string DocumentPath(Type type, string id) => Path.Combine(Root, FolderFor(type), SafeFileName(id) + ".json");

@@ -158,6 +158,7 @@ public sealed class SchedulerWindow : Window
         // The "until 10:30" and "today/tomorrow" texts move on with the clock (this is display only, not show timing).
         tick.Tick += (_, _) => RefreshSoon();
         tick.Start();
+        Infrastructure.UndoWindows.AttachEditor(this, model.Library, "Scheduler");
         Closed += (_, _) =>
         {
             tick.Stop();

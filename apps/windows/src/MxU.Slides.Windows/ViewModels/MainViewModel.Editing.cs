@@ -123,6 +123,8 @@ public sealed partial class MainViewModel
     private void SlideEdited()
     {
         if (CurrentPresentation is not { } p || SelectedSlide is not { } tile) return;
+        // Words typed in the Lyrics box show on the canvas as they're typed.
+        if (IsEditing) canvas?.Refresh();
         tile.Scene = SlideSceneBuilder.Scene(tile.Slide, ThemeFor(tile.Slide, p), p, SelectedArrangement?.Id, pager: Rendering.TextLayout.Pager);
         foreach (var other in Slides.Where(t => t != tile && t.Slide.Id == tile.Slide.Id))
             other.Scene = SlideSceneBuilder.Scene(other.Slide, ThemeFor(other.Slide, p), p, SelectedArrangement?.Id, pager: Rendering.TextLayout.Pager);
@@ -142,7 +144,8 @@ public sealed partial class MainViewModel
         saveTimer?.Stop();
         if (pendingSave is not { } p) return;
         pendingSave = null;
-        Library.Save(p);
+        // The edit was made here, even if another window has the keyboard by the time it's saved.
+        using (UndoScope.Use()) Library.Save(p);
     }
 
     // MARK: Slides

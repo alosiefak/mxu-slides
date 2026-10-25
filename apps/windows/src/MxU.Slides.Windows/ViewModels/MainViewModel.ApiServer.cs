@@ -46,7 +46,14 @@ public sealed partial class MainViewModel
         if (api.IsRunning && api.Port == Settings.LocalApiPort) return;
         api.Stop();
         ApiTokens.EnsureDefaultKey();
-        if (api.Start(Settings.LocalApiPort, this, ApiTokens))
+        // Requests run on the context Start is called on. Wrapped, so a remote's edits are never
+        // something the operator's Ctrl+Z takes back (Infrastructure/UndoWindows.cs).
+        var ui = SynchronizationContext.Current;
+        if (ui is not null) SynchronizationContext.SetSynchronizationContext(new UnrecordedContext(ui, Library.Undo));
+        bool started;
+        try { started = api.Start(Settings.LocalApiPort, this, ApiTokens); }
+        finally { SynchronizationContext.SetSynchronizationContext(ui); }
+        if (started)
         {
             ApiStatus = $"On — {ApiAddress}";
             Log.Info($"Local API listening on port {api.Port}");
@@ -120,4 +127,20 @@ public sealed partial class MainViewModel
             try { File.Delete(path); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         });
+}
+
+/// <summary>Runs posted work on <paramref name="inner"/> with undo recording off (a remote's edits).</summary>
+internal sealed class UnrecordedContext(SynchronizationContext inner, Core.Undo.UndoHistory undo) : SynchronizationContext
+{
+    public override void Post(SendOrPostCallback d, object? state) => inner.Post(s =>
+    {
+        using (undo.Unrecorded()) d(s);
+    }, state);
+
+    public override void Send(SendOrPostCallback d, object? state) => inner.Send(s =>
+    {
+        using (undo.Unrecorded()) d(s);
+    }, state);
+
+    public override SynchronizationContext CreateCopy() => this;
 }

@@ -42,6 +42,7 @@ public partial class MainWindow : Window
         Closing += OnClosing;
         PreviewKeyDown += OnPreviewKeyDown;
         Transitions.TransitionMenus.Attach(this, model);
+        AttachEditing();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -222,6 +223,9 @@ public partial class MainWindow : Window
             case Key.F5: model.ClearAudioCommand.Execute(null); e.Handled = true; return;
             case Key.F6: model.ClearAlertsCommand.Execute(null); e.Handled = true; return;
         }
+
+        // Undo, redo, the clipboard, find and replace (MainWindow.Editing.cs).
+        if (HandleEditKeys(e)) return;
 
         if (ctrl)
         {

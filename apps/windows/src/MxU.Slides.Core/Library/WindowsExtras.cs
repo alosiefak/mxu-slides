@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using MxU.Slides.Core.Json;
+using MxU.Slides.Core.Undo;
 
 namespace MxU.Slides.Core.Library;
 
@@ -34,6 +35,9 @@ public sealed class WindowsExtras
     /// <summary>The folder the extras are kept in.</summary>
     public string Root { get; }
 
+    /// <summary>The library's undo history: an extra saved with its document undoes with it (set by LibraryStore).</summary>
+    internal UndoHistory? Undo { get; init; }
+
     /// <summary>An extra was saved or deleted: its kind and owner id.</summary>
     public event Action<string, string>? Changed;
 
@@ -61,21 +65,62 @@ public sealed class WindowsExtras
     public void Save<T>(string kind, string ownerId, T value, string? basis = null)
     {
         var path = PathOf(kind, ownerId);
+        var bytes = MxuJson.SerializeToUtf8(new WindowsExtra<T>(value, basis));
+        UndoCapture? undoing;
         lock (gate)
         {
+            undoing = Undo?.Capture(new UndoTarget.Extra(kind, ownerId), path, documentType: null);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            LibraryStore.AtomicWrite(path, MxuJson.SerializeToUtf8(new WindowsExtra<T>(value, basis)));
+            LibraryStore.AtomicWrite(path, bytes);
         }
+        UndoHistory.Record(undoing, bytes);
         Changed?.Invoke(kind, ownerId);
     }
 
     public void Delete(string kind, string ownerId)
     {
         var path = PathOf(kind, ownerId);
+        UndoCapture? undoing;
         lock (gate)
         {
             if (!File.Exists(path)) return;
+            undoing = Undo?.Capture(new UndoTarget.Extra(kind, ownerId), path, documentType: null);
             File.Delete(path);
+        }
+        UndoHistory.Record(undoing, null);
+        Changed?.Invoke(kind, ownerId);
+    }
+
+    /// <summary>An extra's file as it is now, or null when there's none (for undo).</summary>
+    internal byte[]? FileJson(string kind, string ownerId)
+    {
+        var path = PathOf(kind, ownerId);
+        try
+        {
+            return File.Exists(path) ? File.ReadAllBytes(path) : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Puts an extra back as <paramref name="json"/> says (null: removes it), for undo.</summary>
+    internal void Restore(string kind, string ownerId, byte[]? json)
+    {
+        var path = PathOf(kind, ownerId);
+        lock (gate)
+        {
+            if (json is null)
+            {
+                if (!File.Exists(path)) return;
+                File.Delete(path);
+            }
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                LibraryStore.AtomicWrite(path, json);
+            }
         }
         Changed?.Invoke(kind, ownerId);
     }

@@ -35,6 +35,8 @@ public partial class OverlayEditorWindow : Window
             if (e.PropertyName == nameof(OverlayEditorViewModel.StepEditor) && Model.StepEditor is not null)
                 Dispatcher.BeginInvoke(() => StepEditorPanel.BringIntoView(), DispatcherPriority.Loaded);
         };
+        // Its own undo, as each Mac editor window has (Infrastructure/UndoWindows.cs).
+        Infrastructure.UndoWindows.AttachEditor(this, main.Library, "Overlay editor", main.FlushOverlayEdits);
         Closed += (_, _) =>
         {
             Model.Dispose();
