@@ -1,7 +1,11 @@
 """Converts eBible.org VPL zips (verse per line: 'GEN 1:1 text') into the app's compact form:
 one gzip'd TSV per translation (book code, chapter, verse, text) plus a manifest with the source.
 
-Usage: python -I bible_convert.py <download-dir> <output-dir>
+Usage (from the repository root; see apps/windows/docs/phase6/scripture.md):
+  python -I apps/windows/tools/bible-convert.py <download-dir> apps/windows/src/MxU.Slides.Core/Scripture/Bibles
+
+<download-dir> holds eng-kjv2006_vpl.zip, engwebp_vpl.zip and eng-asv_vpl.zip, downloaded from
+the "source" URLs in bibles.json. The app embeds what this writes (MxU.Slides.Core.csproj).
 """
 import gzip
 import hashlib
