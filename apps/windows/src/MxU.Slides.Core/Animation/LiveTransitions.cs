@@ -1,3 +1,4 @@
+using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
 
@@ -14,18 +15,42 @@ public sealed record RoomTransitions(Transition? Slide, Transition? Media)
 {
     /// <summary>The Mac's out-of-the-box defaults: slides cut, media dissolve over 0.7 s.</summary>
     public static readonly RoomTransitions MacDefault = new(null, new Transition { TransitionKind = TransitionKind.Dissolve, DurationSeconds = 0.7 });
+
+    /// <summary>The slide layer's default when it's a kind only Windows has (a room default is this PC's own setting, so it can be).</summary>
+    public WindowsTransition? SlideWindows { get; init; }
+
+    /// <summary>The media layers' default when it's a kind only Windows has.</summary>
+    public WindowsTransition? MediaWindows { get; init; }
+
+    /// <summary>Room defaults as the Windows app holds them: any kind; null or a cut means that layer cuts.</summary>
+    public static RoomTransitions Of(WindowsTransition? slide, WindowsTransition? media) => new(slide?.ToShared(), media?.ToShared())
+    {
+        SlideWindows = slide is { IsShared: false } ? slide : null,
+        MediaWindows = media is { IsShared: false } ? media : null,
+    };
 }
 
-/// <summary>What is live, as far as choosing transitions goes: the slide (and the transitions it carries) and each media layer's cue.</summary>
+/// <summary>
+/// What is live, as far as choosing transitions goes: the slide (and the transitions it carries) and each
+/// media layer's cue. <see cref="SlideWindows"/> and <see cref="PresentationWindows"/> are the Windows-only
+/// transitions kept beside the library for them, when they still go with the shared ones (<see cref="TransitionExtras"/>).
+/// </summary>
 public sealed record LiveCues(string? SlideId, Transition? SlideTransition, Transition? PresentationTransition, IReadOnlyDictionary<LayerKind, string> Media)
 {
     public static readonly LiveCues Nothing = new(null, null, null, new Dictionary<LayerKind, string>());
 
-    public static LiveCues Of(ShowState show) => new(
+    public WindowsTransition? SlideWindows { get; init; }
+    public WindowsTransition? PresentationWindows { get; init; }
+
+    public static LiveCues Of(ShowState show, TransitionExtras? extras = null) => new(
         show.Live?.Slide.Id,
         show.Live?.Slide.Transition,
         show.Live?.Presentation?.Transition,
-        show.LiveMedia.ToDictionary(pair => pair.Key, pair => pair.Value.MediaId));
+        show.LiveMedia.ToDictionary(pair => pair.Key, pair => pair.Value.MediaId))
+    {
+        SlideWindows = show.Live?.Slide is { } slide ? extras?.ForSlide(slide) : null,
+        PresentationWindows = show.Live?.Presentation is { } presentation ? extras?.ForPresentation(presentation) : null,
+    };
 }
 
 /// <summary>
@@ -63,29 +88,61 @@ public static class LiveTransitions
         };
     }
 
+    /// <summary>A Windows transition as the renderer plays it: one of the Mac's kinds exactly as the Mac draws it, else a picture transition.</summary>
+    public static SceneTransition? FromWindows(WindowsTransition? transition)
+    {
+        if (transition is null) return null;
+        if (transition.IsShared) return From(transition.ToShared());
+        return transition.DurationSeconds < 0.05 ? SceneTransition.Cut : SceneTransition.Of(transition);
+    }
+
+    /// <summary>
+    /// What a view that can't draw picture transitions (no pixel shaders at all) plays instead: the
+    /// nearest of the Mac's kinds, at the same length. Anything else plays as it is.
+    /// </summary>
+    public static SceneTransition? Fallback(SceneTransition? transition) =>
+        transition is { Kind: SceneTransitionKind.Picture, Picture: { } picture } ? From(picture.ToShared()) : transition;
+
+    /// <summary>
+    /// What a view drawn by WPF's software drawing plays instead of a picture transition (a feed on
+    /// the software copy, a PC without a graphics card): a plain Dissolve at the same length, the
+    /// cheapest transition to draw there. Not the nearest kind: a Blur Dissolve's blur costs software
+    /// drawing several seconds a 1080p frame. Anything else plays as it is.
+    /// </summary>
+    public static SceneTransition? InSoftware(SceneTransition? transition) =>
+        transition is { Kind: SceneTransitionKind.Picture } ? new SceneTransition(SceneTransitionKind.Dissolve, transition.Duration) : transition;
+
+    /// <summary>A cue's own transition: the Windows one kept beside the library when there is one, else the shared one.</summary>
+    private static SceneTransition? Own(Transition? shared, WindowsTransition? windows) => windows is not null ? FromWindows(windows) : From(shared);
+
     /// <summary>What a layer does when nothing it shows names a transition. Port of RenderContext.roomDefault(for:).</summary>
     public static SceneTransition? RoomDefault(LayerKind layer, RoomTransitions room) => layer switch
     {
-        LayerKind.Slide => From(room.Slide),
+        LayerKind.Slide => Own(room.Slide, room.SlideWindows),
         LayerKind.LoopingVideos or LayerKind.StillGraphics or LayerKind.Videos
-            when room.Media is { TransitionKind: not TransitionKind.Cut } media => From(media),
+            when room.MediaWindows is not null || room.Media is { TransitionKind: not TransitionKind.Cut } => Own(room.Media, room.MediaWindows),
         _ => null,
     };
 
     /// <summary>
     /// The transition for each layer when the outputs go from showing <paramref name="before"/> to
     /// <paramref name="after"/>. <paramref name="mediaTransition"/> looks up a media item's own
-    /// transition by id. <paramref name="clearAll"/> is Clear All (F1), which leaves every layer to
-    /// the room default as on the Mac.
+    /// transition by id, and <paramref name="mediaWindows"/> the Windows-only one kept beside it.
+    /// <paramref name="clearAll"/> is Clear All (F1), which leaves every layer to the room default as on the Mac.
     /// </summary>
     public static Func<LayerKind, SceneTransition?> For(
-        LiveCues before, LiveCues after, Func<string, Transition?> mediaTransition, RoomTransitions room, bool clearAll = false)
+        LiveCues before, LiveCues after, Func<string, Transition?> mediaTransition, RoomTransitions room, bool clearAll = false,
+        Func<string, WindowsTransition?>? mediaWindows = null)
     {
         var chosen = new Dictionary<LayerKind, SceneTransition>();
         var slideFired = after.SlideId is not null && after.SlideId != before.SlideId;
+        // A cue's own transition wins (even a cut), else its presentation's: TransitionEdit.Entrance, with the Windows kinds.
+        SceneTransition? Entrance(Transition? own, WindowsTransition? ownWindows) =>
+            own is not null || ownWindows is not null ? Own(own, ownWindows) : Own(after.PresentationTransition, after.PresentationWindows);
+        SceneTransition? MediaOwn(string id) => Own(mediaTransition(id), mediaWindows?.Invoke(id));
         if (!clearAll)
         {
-            if (slideFired && From(TransitionEdit.Entrance(after.SlideTransition, after.PresentationTransition)) is { } entrance)
+            if (slideFired && Entrance(after.SlideTransition, after.SlideWindows) is { } entrance)
                 chosen[LayerKind.Slide] = entrance;
             foreach (var layer in before.Media.Keys.Union(after.Media.Keys))
             {
@@ -93,19 +150,18 @@ public static class LiveTransitions
                 var old = before.Media.GetValueOrDefault(layer);
                 var now = after.Media.GetValueOrDefault(layer);
                 if (old == now) continue;
-                Transition? stored = null;
+                SceneTransition? stored = null;
                 if (now is not null)
                 {
                     // Arriving: its own transition; one a slide brings falls back to the presentation's.
-                    var own = mediaTransition(now);
-                    stored = slideFired ? TransitionEdit.Entrance(own, after.PresentationTransition) : own;
+                    stored = slideFired ? Entrance(mediaTransition(now), mediaWindows?.Invoke(now)) : MediaOwn(now);
                 }
                 else if (!slideFired && old is not null)
                 {
                     // Cleared off: the leaving media's own transition (a slide sweeping it uses the room default).
-                    stored = mediaTransition(old);
+                    stored = MediaOwn(old);
                 }
-                if (From(stored) is { } transition) chosen[layer] = transition;
+                if (stored is { } transition) chosen[layer] = transition;
             }
         }
         return layer => chosen.TryGetValue(layer, out var transition) ? transition : RoomDefault(layer, room);

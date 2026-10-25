@@ -19,5 +19,6 @@
     <Project Path="tests/MxU.Slides.ProImport.Tests/MxU.Slides.ProImport.Tests.csproj" />
     <Project Path="tests/MxU.Slides.Production.Tests/MxU.Slides.Production.Tests.csproj" />
     <Project Path="tests/MxU.Slides.VideoIO.Tests/MxU.Slides.VideoIO.Tests.csproj" />
+    <Project Path="tests/MxU.Slides.Windows.Tests/MxU.Slides.Windows.Tests.csproj" />
   </Folder>
 </Solution>

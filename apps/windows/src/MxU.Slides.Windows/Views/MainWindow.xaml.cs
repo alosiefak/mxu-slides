@@ -41,6 +41,7 @@ public partial class MainWindow : Window
         Loaded += OnLoaded;
         Closing += OnClosing;
         PreviewKeyDown += OnPreviewKeyDown;
+        Transitions.TransitionMenus.Attach(this, model);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

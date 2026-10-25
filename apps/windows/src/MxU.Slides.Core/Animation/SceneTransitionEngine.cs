@@ -2,9 +2,16 @@ using MxU.Slides.Core.Scene;
 
 namespace MxU.Slides.Core.Animation;
 
-public enum SceneTransitionKind { Cut, Dissolve, Fade, BlurDissolve, FilmBurn }
+/// <summary>
+/// How a layer changes. <see cref="Picture"/> is the Windows-only kinds (Phase 6): the layer's whole
+/// old and new pictures, which the view mixes on the graphics card (<see cref="PictureTransitions"/>).
+/// </summary>
+public enum SceneTransitionKind { Cut, Dissolve, Fade, BlurDissolve, FilmBurn, Picture }
 
-/// <summary>How a layer changes between scenes. <see cref="Plate"/> is the colour a Fade passes through.</summary>
+/// <summary>
+/// How a layer changes between scenes. <see cref="Plate"/> is the colour a Fade passes through;
+/// <see cref="Picture"/> is the Windows-only transition a <see cref="SceneTransitionKind.Picture"/> plays.
+/// </summary>
 public sealed record SceneTransition
 {
     public SceneTransition(SceneTransitionKind kind, double duration = 0.5, SceneColor? plate = null)
@@ -17,10 +24,15 @@ public sealed record SceneTransition
     public SceneTransitionKind Kind { get; }
     public double Duration { get; }
     public SceneColor Plate { get; }
+    public WindowsTransition? Picture { get; init; }
 
     public static readonly SceneTransition Cut = new(SceneTransitionKind.Cut, 0.05);
 
     public static SceneTransition Fade(SceneColor plate, double duration = 0.5) => new(SceneTransitionKind.Fade, duration, plate);
+
+    /// <summary>A Windows-only transition, drawn by the view from the layer's two pictures.</summary>
+    public static SceneTransition Of(WindowsTransition picture) =>
+        new(SceneTransitionKind.Picture, picture.DurationSeconds) { Picture = picture };
 }
 
 /// <summary>
@@ -140,14 +152,30 @@ public sealed class SceneTransitionEngine
         foreach (var layer in scene.Layers)
         {
             if (!transitions.TryGetValue(layer.Kind, out var transition)) continue;
-            var oldItems = previous[layer.Kind].Items;
+            var oldLayer = previous[layer.Kind];
+            if (transition.Kind == SceneTransitionKind.Picture && transition.Picture is { } picture)
+            {
+                // The whole old picture and the whole new one, for the view's shader to mix: every item
+                // the layer showed comes along as a ::leaving copy (staying ones too, so each picture is
+                // complete). If the old picture was itself mid-transition, it is drawn as it was then.
+                layer.Items.Clear();
+                layer.Items.AddRange([.. oldLayer.Items.Select(Leaving), .. target[layer.Kind].Items]);
+                // A light leak on a layer lower down already lights the screen: this one lights only its own pixels.
+                var litBelow = picture.Kind == WindowsTransitionKind.LightLeak
+                    && transitions.Any(other => other.Key < layer.Kind && other.Value.Picture?.Kind == WindowsTransitionKind.LightLeak);
+                layer.Mix = new LayerMix(picture, progress, progress * transition.Duration, oldLayer.Mix, litBelow);
+                continue;
+            }
+            // A picture transition that was interrupted by one of the Mac's kinds: its two pictures
+            // can't be mixed by an item fade, so they're cross-faded where they had got to.
+            var oldItems = oldLayer.Mix is { } interrupted ? Flattened(oldLayer.Items, interrupted) : oldLayer.Items;
             var newItems = layer.Items.ToList();
             var oldKeys = oldItems.Select(MembershipKey).ToHashSet();
             var newKeys = newItems.Select(MembershipKey).ToHashSet();
 
             var leaving = oldItems
                 .Where(item => !newKeys.Contains(MembershipKey(item)))
-                .Select(item => item with { Render = item.Render with { Id = item.Id + "::leaving" } })
+                .Select(Leaving)
                 .ToList();
             List<AnimatedItem> ArrivingFaded(IEnumerable<AnimatedItem> items, double opacity) => items
                 .Select(item => oldKeys.Contains(MembershipKey(item)) ? item : Faded(item, opacity))
@@ -190,6 +218,20 @@ public sealed class SceneTransitionEngine
             layer.Items.AddRange(items);
         }
         return scene;
+    }
+
+    internal const string LeavingSuffix = "::leaving";
+
+    private static AnimatedItem Leaving(AnimatedItem item) => item with { Render = item.Render with { Id = item.Id + LeavingSuffix } };
+
+    /// <summary>
+    /// A mixed layer's items as a plain cross-fade at the point the mix had reached: the new
+    /// picture's items (no ::leaving) faded in by how far it had got, the old picture's faded out.
+    /// </summary>
+    internal static List<AnimatedItem> Flattened(IReadOnlyList<AnimatedItem> items, LayerMix mix)
+    {
+        var shown = TransitionCurves.Eased(mix.Transition.Kind, mix.Progress);
+        return [.. items.Select(item => Faded(item, item.Id.EndsWith(LeavingSuffix, StringComparison.Ordinal) ? 1 - shown : shown))];
     }
 
     private static AnimatedItem Plate(LayerKind layer, SceneSize canvas, SceneColor color) => new RenderItem

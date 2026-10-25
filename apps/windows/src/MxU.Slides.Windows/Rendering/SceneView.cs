@@ -45,7 +45,7 @@ public readonly record struct SceneTransition(TransitionStyle Style, double Seco
 /// item's trail (<see cref="TrailStore"/>). A single bad item is skipped and
 /// logged rather than taking the frame down.
 /// </summary>
-public sealed class SceneView : FrameworkElement
+public sealed partial class SceneView : FrameworkElement
 {
     private sealed class ItemVisual : DrawingVisual
     {
@@ -153,6 +153,9 @@ public sealed class SceneView : FrameworkElement
         public HashSet<string> Keys { get; } = new(StringComparer.Ordinal);
         public HashSet<string> Failed { get; } = new(StringComparer.Ordinal);
         public bool Animating;
+
+        /// <summary>The layers a Windows-only transition is mixing right now (SceneView.Transitions.cs).</summary>
+        public Dictionary<LayerKind, MixPass> Mixes { get; } = [];
     }
 
     private readonly VisualCollection children;
@@ -177,6 +180,8 @@ public sealed class SceneView : FrameworkElement
         ClipToBounds = true;
         if (DefaultMedia is not null) Media = DefaultMedia;
         Unloaded += (_, _) => ReleaseAll();
+        // The first view made (a thumbnail, at start-up) sets the transition shaders compiling on a thread of their own.
+        TransitionShaders.WarmUp();
     }
 
     /// <summary>The hub views created in XAML (thumbnails, previews) use unless given their own.</summary>
@@ -310,7 +315,8 @@ public sealed class SceneView : FrameworkElement
         // A view no one can see cuts, as with whole-view transitions.
         var cut = !IsVisible && !Offscreen;
         layered ??= new SceneTransitionEngine(current?.Scene ?? new AnimatedScene(scene.CanvasSize, scene.Background));
-        layered.Push(scene, cut ? LiveTransitions.AllCut : transitionFor, now);
+        layered.Push(scene, cut ? LiveTransitions.AllCut : Drawable(transitionFor), now);
+        WarmGraphicsCard();
         var shown = layered.Scene(now);
         if (current is null)
         {
@@ -481,9 +487,12 @@ public sealed class SceneView : FrameworkElement
 
         var order = new List<Visual> { root.Background };
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var mixing = root.Mixes.Values.ToList();
         foreach (var layer in resolved.Layers)
         {
             if (layer.IsHidden) continue;
+            // A layer under a Windows-only transition: its items go into its two pictures, and one mix pass stands in for them.
+            var mix = BeginMix(root, layer.Kind);
             // Mattes are never drawn; they only clip the items masked by them.
             var mattes = new Dictionary<string, Geometry>(StringComparer.Ordinal);
             foreach (var matte in layer.Items.Where(r => r.Item.Render.MatteGroup is not null && !r.Item.Id.EndsWith("::text", StringComparison.Ordinal)))
@@ -497,7 +506,8 @@ public sealed class SceneView : FrameworkElement
                 {
                     if (!root.Slots.TryGetValue(id, out var slot)) root.Slots[id] = slot = new Slot();
                     Apply(slot, resolvedItem, root, ppd, mattes, canvasRect, now);
-                    order.Add(slot.Outer);
+                    if (mix is not null) mix.Place(resolvedItem.Item.Id, slot.Outer);
+                    else order.Add(slot.Outer);
                 }
                 catch (Exception ex)
                 {
@@ -505,16 +515,17 @@ public sealed class SceneView : FrameworkElement
                     if (root.Failed.Add(id)) Log.Error($"Skipped an item that failed to draw ({id})", ex);
                 }
             }
+            if (mix is not null)
+            {
+                FinishMix(mix, scene[layer.Kind].Mix!, canvasRect);
+                order.Add(mix.Layer);
+            }
         }
+        // A hidden layer isn't drawn, so it isn't mixed either.
+        foreach (var layer in resolved.Layers.Where(l => l.IsHidden)) root.Mixes.Remove(layer.Kind);
         foreach (var gone in root.Slots.Keys.Where(k => !seen.Contains(k)).ToList()) root.Slots.Remove(gone);
         ReleaseUnusedPlayers(root);
-
-        var kids = root.Visual.Children;
-        if (kids.Count != order.Count || order.Where((visual, i) => !ReferenceEquals(kids[i], visual)).Any())
-        {
-            kids.Clear();
-            foreach (var visual in order) kids.Add(visual);
-        }
+        Reparent(root, order, mixing.Where(pass => !root.Mixes.ContainsValue(pass)));
         root.Animating = AnimationTimeline.IsAnimating(scene, now, tickers: PlaysVideo);
     }
 
@@ -1221,9 +1232,15 @@ public sealed class SceneView : FrameworkElement
         }
     }
 
-    /// <summary>The item id a video plays under: a leaving copy (<c>id::leaving</c>, from a layer transition) shares its player.</summary>
-    private static string PlaybackId(string itemId) =>
-        itemId.EndsWith(LeavingSuffix, StringComparison.Ordinal) ? itemId[..^LeavingSuffix.Length] : itemId;
+    /// <summary>
+    /// The item id a video plays under: a leaving copy (<c>id::leaving</c>, from a layer transition)
+    /// shares its player, and so does a copy of a copy (a transition caught mid-way by another).
+    /// </summary>
+    private static string PlaybackId(string itemId)
+    {
+        while (itemId.EndsWith(LeavingSuffix, StringComparison.Ordinal)) itemId = itemId[..^LeavingSuffix.Length];
+        return itemId;
+    }
 
     private const string LeavingSuffix = "::leaving";
 

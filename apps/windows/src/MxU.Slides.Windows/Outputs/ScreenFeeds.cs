@@ -171,7 +171,7 @@ public sealed class ScreenFeeds : IDisposable
                 sinks.Add(sink);
                 if (sinks.Count > 1) return;
             }
-            View = new SceneView { Media = owner.media, PlaysVideo = true, PlaybackScope = owner.ScopeFor(Target) };
+            View = new SceneView { Media = owner.media, PlaysVideo = true, PlaybackScope = owner.ScopeFor(Target), CopiedInSoftware = () => capture?.UsesSoftwareCopy == true };
             capture = new HiddenCapture(View, width, height, frameRate, Sinks, $"MxU Slides screen feed {Target}");
             View.Present(owner.SceneFor(Target), SceneTransition.Cut);
             Log.Info($"Screen feed started: {Target} at {width}x{height}@{frameRate}" + (capture.Problem is { } problem ? $" ({problem})" : ""));

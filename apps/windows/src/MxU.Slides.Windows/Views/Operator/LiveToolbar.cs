@@ -107,10 +107,11 @@ public sealed class LiveToolbar : UserControl
         preset.ToolTip = OutputPresetMenu.ChipHelp(model.ActiveOutputPresetName);
         foreach (var (chip, isMedia) in new[] { (media, true), (slides, false) })
         {
-            var (kind, seconds) = model.RoomTransitionSetting(isMedia);
-            var text = TransitionChips.Caption(MainViewModel.KindOf(kind), seconds);
+            // Any kind the Windows app plays, since Phase 6 (Views/Transitions).
+            var choice = model.RoomTransitionChoice(isMedia);
+            var text = WindowsTransitions.ChipCaption(choice);
             OperatorKit.SetChipText(chip, text);
-            chip.ToolTip = $"{(isMedia ? "Backgrounds and videos" : "Slides")}: {TransitionChips.Help(MainViewModel.KindOf(kind), seconds)}";
+            chip.ToolTip = $"{(isMedia ? "Backgrounds and videos" : "Slides")}: {text}: this layer's default; items with their own always win";
             if (isMedia) MediaText = text;
             else SlidesText = text;
         }
@@ -169,38 +170,9 @@ public sealed class LiveToolbar : UserControl
         return menu;
     }
 
-    /// <summary>The chip's popover: the kinds, and the length for any but a cut. Each change saves at once.</summary>
-    private Popup? OpenTransition(Button chip, bool media)
-    {
-        if (model is null) return null;
-        var (kind, seconds) = model.RoomTransitionSetting(media);
-        var content = new StackPanel();
-        content.Children.Add(new TextBlock
-        {
-            Text = media ? "Backgrounds and videos" : "Slides", FontWeight = FontWeights.Medium, Margin = new Thickness(0, 0, 0, 6),
-        });
-        var length = new Slider { Minimum = 0.1, Maximum = TransitionEdit.SliderMaximum, TickFrequency = TransitionEdit.DurationStep, IsSnapToTickEnabled = true, Value = seconds, Width = 150 };
-        var label = new TextBlock { Text = TransitionEdit.Label(seconds), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = EditorKit.Res<Brush>("MutedText") };
-        var lengthRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0), Children = { length, label } };
-        var chosen = MainViewModel.KindOf(kind);
-        foreach (var choice in TransitionChips.Choices)
-        {
-            var radio = new RadioButton { Content = TransitionEdit.MenuName(choice), IsChecked = choice == chosen, GroupName = media ? "media" : "slides" };
-            radio.Checked += (_, _) =>
-            {
-                chosen = choice;
-                lengthRow.Visibility = TransitionChips.ShowsDuration(choice) ? Visibility.Visible : Visibility.Collapsed;
-                model.SetRoomTransition(media, MainViewModel.RoomTransitionOf(choice), length.Value);
-            };
-            content.Children.Add(radio);
-        }
-        lengthRow.Visibility = TransitionChips.ShowsDuration(chosen) ? Visibility.Visible : Visibility.Collapsed;
-        length.ValueChanged += (_, e) => label.Text = TransitionEdit.Label(TransitionChips.Snapped(e.NewValue));
-        // Saved when the drag ends (or a click lands), as the Mac stores it.
-        length.LostMouseCapture += (_, _) => model.SetRoomTransition(media, MainViewModel.RoomTransitionOf(chosen), TransitionChips.Snapped(length.Value));
-        length.PreviewKeyUp += (_, _) => model.SetRoomTransition(media, MainViewModel.RoomTransitionOf(chosen), TransitionChips.Snapped(length.Value));
-        content.Children.Add(lengthRow);
-        content.Children.Add(EditorKit.Faint("Items with their own transition always win."));
-        return OperatorKit.Popover(chip, content, 230);
-    }
+    /// <summary>
+    /// The chip's popover: every kind as a playing tile, the length for any but a cut, and the
+    /// direction, softness or colour where the kind has one. Each change saves at once.
+    /// </summary>
+    private Popup? OpenTransition(Button chip, bool media) => Transitions.RoomTransitionPopover.Open(chip, model, media);
 }

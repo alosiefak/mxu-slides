@@ -11,6 +11,8 @@ public sealed partial class MainViewModel
     /// <summary>Saves a song from the editor, keeps services and the live output in step, and opens it.</summary>
     public void SaveSong(Presentation song, bool isNew)
     {
+        // Rebuilt slides get new ids: their Windows-only transitions follow them (MainViewModel.Transitions.cs).
+        if (!isNew && Library.Get<Presentation>(song.Id) is { } before && !ReferenceEquals(before, song)) TransitionExtras.CarryOver(before, song);
         Library.Save(song);
         Show.PresentationEdited(song);
         foreach (var service in Library.All<Service>())
