@@ -142,8 +142,15 @@ public class PictureTransitionEngineTests
             var plain = LiveTransitions.InSoftware(LiveTransitions.FromWindows(new WindowsTransition { Kind = kind, DurationSeconds = 1.25 }))!;
             Assert.Equal((SceneTransitionKind.Dissolve, 1.25, (WindowsTransition?)null), (plain.Kind, plain.Duration, plain.Picture));
         }
-        var blur = new SceneTransition(SceneTransitionKind.BlurDissolve, 1);
-        Assert.Same(blur, LiveTransitions.InSoftware(blur)); // the Mac's kinds play exactly as they always have
+        // The Mac's Blur Dissolve too: its blur would hold the UI thread for seconds a frame.
+        var blur = LiveTransitions.InSoftware(new SceneTransition(SceneTransitionKind.BlurDissolve, 1))!;
+        Assert.Equal((SceneTransitionKind.Dissolve, 1.0), (blur.Kind, blur.Duration));
+        // The Mac's other kinds play exactly as they always have.
+        foreach (var kind in new[] { SceneTransitionKind.Cut, SceneTransitionKind.Dissolve, SceneTransitionKind.Fade, SceneTransitionKind.FilmBurn })
+        {
+            var mac = new SceneTransition(kind, 1);
+            Assert.Same(mac, LiveTransitions.InSoftware(mac));
+        }
         Assert.Null(LiveTransitions.InSoftware(null));
     }
 

@@ -109,8 +109,9 @@ public class TransitionSoftwareDrawingTests(ITestOutputHelper output)
             Assert.Null(copied[LayerKind.StillGraphics].Mix);
             Assert.Contains(copied[LayerKind.Slide].Items, item => item.Id.EndsWith("::leaving", StringComparison.Ordinal));
             Assert.False(Blurred(copied));
-            // The Mac's own Blur Dissolve still plays as it always has, even there.
-            Assert.True(Blurred(MidWay(() => true, macBlur)));
+            // The Mac's own Blur Dissolve blurs on the graphics card, but dissolves when copied in software.
+            Assert.True(Blurred(MidWay(() => false, macBlur)));
+            Assert.False(Blurred(MidWay(() => true, macBlur)));
         });
     }
 }

@@ -199,6 +199,9 @@ Two places would draw live pictures in software:
 
 Why a plain Dissolve and not the nearest Mac kind? The nearest kind of the blurred transitions is
 Blur Dissolve, and its blur is the most expensive thing of all to draw in software (see the table).
+For the same reason the Mac's own Blur Dissolve plays as a plain Dissolve in those two places too:
+at 9 s a frame on the UI thread it would freeze the operator's screen for the whole transition. The
+projectors, drawn by the graphics card, still blur; the shared document still says Blur Dissolve.
 
 On a PC that has a graphics card but can't run pixel shaders at all, a Windows-only transition plays
 its nearest Mac kind, at the same length (`SceneView.Drawable`, `LiveTransitions.Fallback`).
@@ -267,7 +270,8 @@ go with each (`LiveCues.SlideWindows`, `PresentationWindows`, the `mediaWindows`
 - `tests/MxU.Slides.Windows.Tests` (a new test project, for code that needs WPF):
   `Rendering/TransitionShaderTests.cs`, every shader compiles as ps_2_0 with the compiler in Windows;
   `Rendering/TransitionSoftwareDrawingTests.cs`, every kind draws half-way in software, and a view
-  copied in software plays a plain Dissolve (not even the Mac's Blur Dissolve for a Zoom Through).
+  copied in software plays a plain Dissolve, with no blur, for a Zoom Through and for the Mac's own
+  Blur Dissolve.
 - The self-test:
   - all eighteen kinds pictured half-way in software (`60-…`; `60-00-all-transitions-half-way.png`
     shows them together);
@@ -290,9 +294,6 @@ go with each (`LiveCues.SlideWindows`, `PresentationWindows`, the `mediaWindows`
 - Moving a presentation to another PC with a `.mxuslides` file carries the shared transition only:
   the Windows kind isn't in the file (a Mac must be able to read it), so the other PC plays the
   Dissolve until it's chosen again.
-- The Mac's own Blur Dissolve is very slow to draw in software (9 s a 1080p frame, the table in
-  section 3), so a recording from a PC on the software copy stalls through one. That's older than
-  Phase 6 and was left as it is (the Mac's seven kinds draw exactly as before).
 - Overlays, alerts and live cameras still cut, as on the Mac (overlays play their own In and Out
   animations). The engine and the view would mix those layers too, if something chose a transition
   for them.

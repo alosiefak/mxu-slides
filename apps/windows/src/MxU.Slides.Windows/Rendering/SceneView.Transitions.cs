@@ -204,8 +204,8 @@ public sealed partial class SceneView
     /// is copied in software (<see cref="CopiedInSoftware"/>), or when it's a live view (one that plays
     /// video) and WPF draws everything in software on this PC (no graphics card, or some remote desktop
     /// sessions: "rendering tier 0"), where each frame of one would cost too much to keep the screens
-    /// moving. Thumbnails and the picker's small previews still play them there: they're small enough
-    /// to draw quickly.</item>
+    /// moving. The Mac's Blur Dissolve does the same there: its blur is dearer still. Thumbnails and
+    /// the picker's small previews still play them there: they're small enough to draw quickly.</item>
     /// <item>the nearest of the Mac's kinds, at the same length (<see cref="LiveTransitions.Fallback"/>),
     /// when this PC can't run its shader at all.</item>
     /// </list>
@@ -216,8 +216,8 @@ public sealed partial class SceneView
         return layer =>
         {
             var transition = transitionFor(layer);
-            if (transition is not { Kind: SceneTransitionKind.Picture, Picture: { } picture }) return transition;
             if (software) return LiveTransitions.InSoftware(transition);
+            if (transition is not { Kind: SceneTransitionKind.Picture, Picture: { } picture }) return transition;
             return TransitionShaders.CanDraw(picture.Kind) ? transition : LiveTransitions.Fallback(transition);
         };
     }
