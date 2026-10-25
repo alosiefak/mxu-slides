@@ -17,7 +17,8 @@ its tile), and the two room defaults (the live header's transition chips, or Set
 Transitions). Each place shows every kind as a small tile that plays itself.
 
 This note explains how it works, for someone learning the code. The self-test checks all of it
-(`Infrastructure/SelfTest.Transitions.cs`, pictures `60-…` to `62-…`).
+(`Infrastructure/SelfTest.Transitions.cs`, pictures `60-…` to `62-…`). The picture to look at first
+is `60-00-all-transitions-half-way.png`: all eighteen, half-way.
 
 ## 1. The problem: the Mac must still read our documents
 
@@ -150,10 +151,9 @@ The seven shaders are in `Rendering/TransitionShaders.cs`, as readable HLSL that
 Windows turns into code when the app starts (`Rendering/ShaderCompiler.cs`, HOW-IT-WORKS section 18).
 
 They are all **ps_2_0**, the oldest and smallest kind, on purpose. WPF can run ps_2_0 shaders
-without a graphics card, in software. So the new transitions also draw in thumbnails, in the
-self-test's pictures, and in the program feed's **software copy** (HOW-IT-WORKS section 17: a PC that
-can't capture on the graphics card copies the program in software, which skips ps_3_0 effects).
-Recordings and streams from such a PC show the real transition, not a cut.
+without a graphics card, in software (it skips ps_3_0 ones there). So the new transitions also draw
+in thumbnails, in the picker's previews on a PC without a graphics card, and in the self-test's
+`60-…` pictures, which are drawn that way on purpose.
 
 ps_2_0 allows 64 sums and 32 texture reads per pixel, which shaped the shaders:
 
@@ -165,9 +165,45 @@ ps_2_0 allows 64 sums and 32 texture reads per pixel, which shaped the shaders:
 - Pictures are premultiplied (colour already times alpha), so mixing them is plain arithmetic and a
   transparent part of a layer stays transparent.
 
-On a PC that can't run pixel shaders at all, a Windows-only transition plays its nearest Mac kind,
-at the same length (`SceneView.Drawable`, `LiveTransitions.Fallback`). `MXU_SLIDES_TRANSITIONS=simple`
-makes any PC behave that way, to test it or on a graphics card that draws them badly.
+### Drawing in software works, but slowly
+
+Here is what one 1080p frame costs WPF's software drawing on this laptop, half-way, with a background
+and words both changing (`tests/MxU.Slides.Windows.Tests`, measured once; a busy CPU makes it about five
+times slower):
+
+| Transition | One frame |
+|---|---|
+| the Mac's Dissolve, for comparison | 0.2 s |
+| Push, Slide Over and Reveal, Zoom In and Out, Cube, Flip | 0.55 s |
+| the wipes | 0.85 s |
+| Ripple, Glitch, Light Leak | 1–1.2 s |
+| Zoom Through, Cross Zoom | 1.8 s |
+| Whip Pan | 2.3 s |
+| the Mac's Blur Dissolve, for comparison | 9 s |
+
+A graphics card draws them in step with the screen (section 4 has the self-test's frame timing).
+Two places would draw live pictures in software:
+
+1. **The software copy** (HOW-IT-WORKS section 17). On a PC that can't capture on the graphics card,
+   recordings, streams and NDI copy their picture in software, on the UI thread. A push there would
+   freeze the operator's screen and the projectors for half a second at a time. So each feed tells its
+   view when it's being copied in software (`SceneView.CopiedInSoftware`, set by `ProgramFeed`,
+   `ScreenFeeds` and `DeviceFeed`), and the view then plays a plain **Dissolve** at the same length
+   instead (`LiveTransitions.InSoftware`). The projectors, drawn by the graphics card, still push;
+   only the recording or stream shows the dissolve.
+2. **A PC with no graphics card at all** (WPF's "rendering tier 0": a virtual machine, some remote
+   desktop sessions), where WPF draws everything in software. The live views (the ones that play
+   video: the outputs, the feeds and the operator's live preview) play the Dissolve there too.
+   Thumbnails and the picker's small previews still play the real transitions: they're small enough
+   to draw quickly.
+
+Why a plain Dissolve and not the nearest Mac kind? The nearest kind of the blurred transitions is
+Blur Dissolve, and its blur is the most expensive thing of all to draw in software (see the table).
+
+On a PC that has a graphics card but can't run pixel shaders at all, a Windows-only transition plays
+its nearest Mac kind, at the same length (`SceneView.Drawable`, `LiveTransitions.Fallback`).
+`MXU_SLIDES_TRANSITIONS=simple` makes any PC behave that way, to test it or on a graphics card that
+draws them badly.
 
 ## 4. Smooth from the first frame
 
@@ -185,7 +221,11 @@ makes any PC behave that way, to test it or on a graphics card that draws them b
   so a transition between still slides costs little more than the shader itself.
 
 The self-test times every frame the screen draws during a 1.6 s push on the program feed and
-reports it (`61-…`): see the report's "Push on the program feed" line.
+reports it (`61-…`): see the report's "Push on the program feed" line. On this laptop, with four
+other self-tests running at the same time, it measured 39 frames a second, the longest frame 65 ms
+and the first one 34 ms after the slide was fired (46 a second, longest 51 ms, for the background's
+iris); the check asks for 30+, nothing over 100 ms. The shaders were compiled 156 ms after start-up.
+A full 60 a second is for a quiet PC: that's measured on the combined build.
 
 ## 5. Choosing them
 
@@ -220,14 +260,29 @@ go with each (`LiveCues.SlideWindows`, `PresentationWindows`, the `mediaWindows`
   homographies; the wipes start and end clean; blur, glow and glitch strengths.
 - `tests/…/Animation/PictureTransitionEngineTests.cs`: the engine hands over both whole pictures; a
   transition caught mid-way is drawn as it was; a Mac kind catching one cross-fades where it had got;
-  the light leak lights once; which transition wins for slides, presentations, media and the room.
+  the light leak lights once; which transition wins for slides, presentations, media and the room;
+  without shaders the nearest Mac kind plays, and drawn in software a plain Dissolve.
 - `tests/…/Library/TransitionExtrasTests.cs`: the fallback in the document; a Mac edit wins; a
   missing extra means the shared kind; duplicates and edited lyrics keep theirs.
-- `tests/MxU.Slides.Windows.Tests/Rendering/TransitionShaderTests.cs` (a new test project): every
-  shader compiles as ps_2_0 with the compiler in Windows.
-- The self-test: all eighteen kinds pictured half-way (`60-00-all-transitions-half-way.png` shows
-  them together), a push on the real program feed with its frame timing, the Mac-readable document,
-  a Mac edit winning, the no-shader fallback, and the pickers.
+- `tests/MxU.Slides.Windows.Tests` (a new test project, for code that needs WPF):
+  `Rendering/TransitionShaderTests.cs`, every shader compiles as ps_2_0 with the compiler in Windows;
+  `Rendering/TransitionSoftwareDrawingTests.cs`, every kind draws half-way in software, and a view
+  copied in software plays a plain Dissolve (not even the Mac's Blur Dissolve for a Zoom Through).
+- The self-test:
+  - all eighteen kinds pictured half-way in software (`60-…`; `60-00-all-transitions-half-way.png`
+    shows them together);
+  - a push on the real program feed, with the screen's frame timing (`61-push-on-program-…`);
+  - a slide pushed off to an empty screen (`61-push-off-to-nothing-middle.png`);
+  - the Mac-readable document, and a Mac edit winning;
+  - the no-shader fallback (`61-push-without-shaders-middle.png`);
+  - a background's own Iris (`61-media-iris-on-program-middle.png`);
+  - the pickers (`62-…`).
+
+  The program pictures are kept at half size. The half-way one is picked by what it shows (the
+  picture as far from the old one as from the new), not by when it came: on a busy PC pictures
+  arrive late, and the one that came half-way through the time can show a transition that has
+  barely begun. On a PC using the software copy (GitHub's test machine), the checks expect the
+  Dissolve the copy plays instead.
 
 ## What isn't done
 
@@ -235,6 +290,9 @@ go with each (`LiveCues.SlideWindows`, `PresentationWindows`, the `mediaWindows`
 - Moving a presentation to another PC with a `.mxuslides` file carries the shared transition only:
   the Windows kind isn't in the file (a Mac must be able to read it), so the other PC plays the
   Dissolve until it's chosen again.
+- The Mac's own Blur Dissolve is very slow to draw in software (9 s a 1080p frame, the table in
+  section 3), so a recording from a PC on the software copy stalls through one. That's older than
+  Phase 6 and was left as it is (the Mac's seven kinds draw exactly as before).
 - Overlays, alerts and live cameras still cut, as on the Mac (overlays play their own In and Out
   animations). The engine and the view would mix those layers too, if something chose a transition
   for them.
@@ -249,7 +307,7 @@ for the "Windows only" part of the map:
 | `MxU.Slides.Core/Animation/WindowsTransitions.cs` | The 25 kinds the Windows app plays (the Mac's 7 and 18 of its own), and `ToShared`: the nearest Mac kind a shared document keeps |
 | `MxU.Slides.Core/Animation/TransitionCurves.cs`, `PictureTransitions.cs` | Easing, and each Windows-only kind's geometry as shader constants |
 | `MxU.Slides.Core/Library/TransitionExtras.cs` | Slides', presentations' and media items' Windows-only transitions beside the library (`WindowsExtras`), fingerprinted so a Mac edit wins |
-| `MxU.Slides.Windows/Rendering/TransitionShaders.cs`, `TransitionEffect.cs`, `SceneView.Transitions.cs` | The ps_2_0 shaders, their effect, and the view's mix passes and warm-up |
+| `MxU.Slides.Windows/Rendering/TransitionShaders.cs`, `TransitionEffect.cs`, `SceneView.Transitions.cs` | The ps_2_0 shaders, their effect, and the view's mix passes, warm-up and plain Dissolve when drawn in software (`CopiedInSoftware`, which `ProgramFeed`, `ScreenFeeds` and `DeviceFeed` set) |
 | `MxU.Slides.Windows/Views/Transitions/*` | The picker, its previews, the transition window, the menus, the room-default popover and Settings section |
 | `MxU.Slides.Windows/ViewModels/MainViewModel.Transitions.cs`, `Infrastructure/AppSettings.Transitions.cs` | Saving the choices; the room defaults as any kind |
 
@@ -260,6 +318,6 @@ And two notes for rows that already exist:
   must keep the `Picture` case and the interrupted-mix flattening at the top of `Composite`.
 - `RenderContext.swift` (`sceneTransition`, `roomDefault`) and `ServiceControls.swift`
   (`nextLiveTransitions`) → `LiveTransitions.cs`: the C# also takes the Windows-only kinds (`Own`,
-  `FromWindows`); the rules themselves are still the Mac's.
+  `FromWindows`) and has their stand-ins (`Fallback`, `InSoftware`); the rules themselves are still the Mac's.
 
 *This is the walkthrough; see also [HOW-IT-WORKS.md](../HOW-IT-WORKS.md) sections 17, 18 and 29.*
