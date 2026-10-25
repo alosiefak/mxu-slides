@@ -129,12 +129,19 @@ textarea { resize: vertical; }
 .timer .who { color: var(--muted); font-size: 13px; grid-column: 1 / -1; }
 .timer .buttons { display: flex; gap: 6px; }
 .timer .buttons button { min-width: 44px; padding: 0 10px; }
+/* The service-tracking timers: one line each, the name then the reading. */
+.timers-group { margin: 10px 2px 0; color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.timer.auto { padding: 8px 12px; }
+.timer.auto .who { grid-column: auto; color: var(--text); font-size: 15px; }
+.timer.auto .clock { font-size: 18px; }
 
 /* Messages */
 .stack { display: grid; gap: 8px; margin-bottom: 14px; }
+/* Buttons in a row share it, and move to a line of their own rather than squeeze their words. */
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
-.row > * { flex: 1; }
-.live-alert { padding: 10px 12px; border-radius: 10px; background: #3b2a06; color: var(--warn); margin: 0 0 14px; }
+.row > * { flex: 1 1 auto; white-space: nowrap; }
+.live-alert { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 10px; background: #3b2a06; color: var(--warn); margin: 0 0 14px; }
+.live-alert button { flex: none; }
 .alert { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); display: grid; gap: 8px; }
 .alert .text { color: var(--muted); font-size: 13px; }
 

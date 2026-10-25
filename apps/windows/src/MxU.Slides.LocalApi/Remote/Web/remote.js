@@ -287,17 +287,21 @@
       return;
     }
     const viewOnly = state.session.scope === 'view';
-    // The church's own timers first; the automatic service-tracking ones after, without buttons (they run themselves).
+    // The church's own timers first, big, with their buttons. The automatic service-tracking ones
+    // run themselves, so they follow as a compact list with no buttons.
     const tracking = timer => timer.id.startsWith('service_tracking.');
-    const ordered = [...state.timers.filter(t => !tracking(t)), ...state.timers.filter(tracking)];
-    list.replaceChildren(...ordered.map(timer => el('li', { class: 'timer', 'data-id': timer.id },
+    const own = state.timers.filter(t => !tracking(t)).map(timer => el('li', { class: 'timer', 'data-id': timer.id },
       el('span', { class: 'clock' }),
-      tracking(timer) ? el('span', { class: 'muted' }, 'automatic') : el('div', { class: 'buttons' },
+      el('div', { class: 'buttons' },
         el('button', { class: 'control', disabled: viewOnly, 'aria-label': timer.running ? 'Pause' : 'Start',
           onclick: () => act(() => api('POST', `/v1/timers/${encodeURIComponent(timer.id)}/${timer.running ? 'pause' : 'play'}`)) }, timer.running ? '❚❚' : '▶'),
         el('button', { class: 'control', disabled: viewOnly, 'aria-label': 'Reset',
           onclick: () => act(() => api('POST', `/v1/timers/${encodeURIComponent(timer.id)}/reset`)) }, '↺')),
-      el('span', { class: 'who' }, timer.name))));
+      el('span', { class: 'who' }, timer.name)));
+    const automatic = state.timers.filter(tracking).map(timer => el('li', { class: 'timer auto', 'data-id': timer.id },
+      el('span', { class: 'who' }, timer.name), el('span', { class: 'clock' })));
+    if (automatic.length > 0) automatic.unshift(el('li', { class: 'timers-group' }, 'Service tracking (automatic)'));
+    list.replaceChildren(...own, ...automatic);
     tick();
   }
 

@@ -20,7 +20,12 @@
 .stage-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5vh 3vw; min-width: 0; font-variant-numeric: tabular-nums; }
 .stage-clock { font-size: clamp(22px, min(6vh, 9vw), 90px); font-weight: 600; }
 .stage-item { flex: 1; min-width: 0; color: #9ca3af; font-size: clamp(14px, 3vh, 40px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.stage-timers { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5vh 3vw; font-size: clamp(22px, min(6vh, 9vw), 90px); font-weight: 600; }
+.stage-timers { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5vh 3vw; margin-left: auto; font-size: clamp(22px, min(6vh, 9vw), 90px); font-weight: 600; }
+/* An upright screen (a pastor's tablet) has no room for the song's name between the clock and the
+   timers: it gets its own line under them. */
+@media (max-aspect-ratio: 1/1) {
+  .stage-item { order: 1; flex-basis: 100%; }
+}
 .stage-timers .timer-face small { display: block; font-size: 0.35em; color: #9ca3af; font-weight: 400; text-align: right; }
 .stage-timers .timer-face.running { color: #7ed957; }
 .stage-timers .timer-face.over { color: #ef4444; }

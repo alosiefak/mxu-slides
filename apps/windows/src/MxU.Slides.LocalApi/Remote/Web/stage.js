@@ -120,14 +120,20 @@
 
   /** Shrinks a box's text until it fits (a binary search on the font size, as the app's own text layout does). */
   function fit(box, largest) {
+    // The room inside the parent's padding: NEXT's box keeps its label in its top padding, and
+    // clientHeight counts the padding too, so measuring against it let the last line run off the screen.
     const parent = box.parentElement;
+    const style = getComputedStyle(parent);
+    const height = parent.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    const width = parent.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const fits = () => box.scrollHeight <= height && box.scrollWidth <= width;
     let low = 12, high = largest;
     box.style.fontSize = high + 'px';
-    if (box.scrollHeight <= parent.clientHeight && box.scrollWidth <= parent.clientWidth) return;
+    if (fits()) return;
     while (high - low > 1) {
       const mid = Math.floor((low + high) / 2);
       box.style.fontSize = mid + 'px';
-      if (box.scrollHeight <= parent.clientHeight && box.scrollWidth <= parent.clientWidth) low = mid; else high = mid;
+      if (fits()) low = mid; else high = mid;
     }
     box.style.fontSize = low + 'px';
   }
