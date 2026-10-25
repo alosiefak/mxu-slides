@@ -198,7 +198,12 @@ public sealed partial class SelfTest
     /// </summary>
     private async Task LayerTransitionCheck()
     {
-        if (model.Program is not { } feed || model.Library.All<Theme>().FirstOrDefault(t => t.Slides?.Any(s => s.Name == "Lyrics") == true) is not { } theme) return;
+        // One of the Mac's starter themes, picked by name: this checks the transition, not the look. The
+        // Windows worship looks' soft text shadows make each picture of the slower software copy cost
+        // several times more, so it would catch too few pictures to see the fade's white middle.
+        var theme = model.Library.Get<Theme>(Core.Library.StarterPacks.ThemeId(Core.Library.StarterPack.CleanGeometric))
+            ?? model.Library.All<Theme>().FirstOrDefault(t => t.Slides?.Any(s => s.Name == "Lyrics") == true);
+        if (model.Program is not { } feed || theme is null) return;
         var sink = new CountingSink();
         feed.Add(sink);
         try

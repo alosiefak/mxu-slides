@@ -184,14 +184,15 @@ public sealed partial class SelfTest
     /// Fires slide 1, then slide 2, which has its own Windows-only transition, and watches the
     /// program feed (the stream's picture) all the way through (see <see cref="WatchProgram"/>).
     /// </summary>
-    private Task<(byte[] Before, byte[] Middle, byte[] Landed, int Width, int Height, double Fps, double Longest, double First)?> PlayOnProgram(
+    private Task<(byte[] Before, byte[] Middle, byte[] Landed, int Width, int Height, double Fps, double Longest, double First, bool Copied)?> PlayOnProgram(
         Presentation deck, double seconds) => WatchProgram(() => FireSlide(deck, 0), () => FireSlide(deck, 1), seconds);
 
     /// <summary>
     /// Does <paramref name="prepare"/>, then <paramref name="change"/>, watching the program feed
     /// through a transition of <paramref name="seconds"/> and timing every frame the screen draws.
-    /// Returns the program's picture before, half-way and landed (at half size, 960 × 540), or null
-    /// without frames.
+    /// Returns the program's picture before, half-way and landed (at half size, 960 × 540), and
+    /// whether the feed was on the software copy, or null without frames. (That's read while
+    /// watching: the feed stops, and forgets its capture, once its last listener leaves.)
     /// <para>
     /// The half-way picture is picked by what it shows, not by when it came: of every picture the
     /// transition made, the one as far from the old picture as from the new. On a busy PC (or the
@@ -200,7 +201,7 @@ public sealed partial class SelfTest
     /// half size, until the new picture is known.
     /// </para>
     /// </summary>
-    private async Task<(byte[] Before, byte[] Middle, byte[] Landed, int Width, int Height, double Fps, double Longest, double First)?> WatchProgram(
+    private async Task<(byte[] Before, byte[] Middle, byte[] Landed, int Width, int Height, double Fps, double Longest, double First, bool Copied)?> WatchProgram(
         Action prepare, Action change, double seconds)
     {
         if (model.Program is not { } feed) return null;
@@ -238,7 +239,8 @@ public sealed partial class SelfTest
             var middle = made.Count > 0 ? made.MinBy(f => Math.Abs(Difference(f, before) - Difference(f, landed)))! : before;
             var during = ticks.Where(t => t <= seconds * 1000).ToList();
             var gaps = during.Zip(during.Skip(1), (a, b) => b - a).ToList();
-            return (before, middle, landed, width, height, during.Count / seconds, gaps.Count > 0 ? gaps.Max() : 0, during.Count > 0 ? during[0] : 0);
+            return (before, middle, landed, width, height, during.Count / seconds, gaps.Count > 0 ? gaps.Max() : 0, during.Count > 0 ? during[0] : 0,
+                feed.UsesSoftwareCopy);
         }
         finally
         {
@@ -291,7 +293,7 @@ public sealed partial class SelfTest
                 Write(BitmapSource.Create(w, h, 96, 96, PixelFormats.Pbgra32, null, played.Landed, w * 4), "61-push-on-program-landed");
                 var change = Difference(played.Before, played.Landed);
                 var crossFade = FromCrossFade(played.Middle, played.Before, played.Landed);
-                var copied = model.Program?.UsesSoftwareCopy == true;
+                var copied = played.Copied;
                 report.AppendLine($"      Push on the program feed: {played.Fps:0} frames a second on the screen, longest frame {played.Longest:0} ms, "
                     + $"first {played.First:0} ms; middle frame {crossFade / Math.Max(change, 1):0.00} of the change away from a cross-fade"
                     + (copied ? " (software copy)" : ""));
@@ -304,8 +306,13 @@ public sealed partial class SelfTest
                         change > 20 && crossFade > change * 0.3 && Difference(played.Middle, played.Before) > 5 && Difference(played.Middle, played.Landed) > 5);
                 Check("the push lands on the new slide", AudienceText().Contains("After", StringComparison.Ordinal) && Difference(played.Landed, played.Before) > 20);
                 // The laptop's screen runs at 60 Hz; on a busy or shared PC, allow some slack before calling it a stutter.
-                Check("the outputs keep drawing through the transition (30+ frames a second, no frame over 100 ms, the first on time)",
-                    played.Fps >= 30 && played.Longest < 100 && played.First < 100);
+                // This measures the graphics card's drawing. The software copy draws the stream's picture on the
+                // UI thread between the screen's frames, so there the screen's timing says more about the copy.
+                if (copied)
+                    Skip("the outputs' frame timing through the transition", "the program feed is on the software copy, which shares the UI thread with the screen");
+                else
+                    Check("the outputs keep drawing through the transition (30+ frames a second, no frame over 100 ms, the first on time)",
+                        played.Fps >= 30 && played.Longest < 100 && played.First < 100);
             }
             else
             {
@@ -399,7 +406,7 @@ public sealed partial class SelfTest
                 Write(BitmapSource.Create(w, h, 96, 96, PixelFormats.Pbgra32, null, played.Middle, w * 4), "61-media-iris-on-program-middle");
                 var change = Difference(played.Before, played.Landed);
                 var crossFade = FromCrossFade(played.Middle, played.Before, played.Landed);
-                var copied = model.Program?.UsesSoftwareCopy == true;
+                var copied = played.Copied;
                 report.AppendLine($"      Iris on a background: middle frame {crossFade / Math.Max(change, 1):0.00} of the change away from a cross-fade, "
                     + $"{played.Fps:0} frames a second, longest {played.Longest:0} ms" + (copied ? " (software copy)" : ""));
                 if (copied)

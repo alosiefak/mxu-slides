@@ -116,11 +116,14 @@ public sealed partial class SelfTest
             clear.IsSubmenuOpen = true;
             await Delay(400);
             // A submenu's popup is made, opened and laid out a moment later (later still on a slow PC).
+            // It counts once it has been seen open and laid out: the menu opens under the real mouse
+            // pointer, wherever that happens to be, and hovering another item (Action Combo, say)
+            // rightly opens that item's submenu instead a moment later.
             Popup? Submenu() => clear.Template?.FindName("PART_Popup", clear) as Popup;
-            await WhenShown(() => Submenu() is { IsOpen: true, Child: FrameworkElement { ActualWidth: > 0 } }, 10);
+            var seenOpen = false;
+            await WhenShown(() => seenOpen |= Submenu() is { IsOpen: true, Child: FrameworkElement { ActualWidth: > 0 } }, 10);
             var popup = Submenu();
-            Check("its submenus open beside it (Clear › Clear All, the layers, Clear Music)",
-                popup is { IsOpen: true, Child: FrameworkElement { ActualWidth: > 0 } } && clear.Items.Count >= 9);
+            Check("its submenus open beside it (Clear › Clear All, the layers, Clear Music)", seenOpen && clear.Items.Count >= 9);
             SaveElement(menu, "30b-editor-add-action-menu");
             if (popup?.Child is FrameworkElement submenu) SaveElement(submenu, "30c-editor-add-action-submenu");
         }
