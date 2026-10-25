@@ -128,7 +128,8 @@ public sealed class ConnectSettingsSection : UserControl
         planningCenter.Children.Add(row);
         planningCenter.Children.Add(result);
         planningCenter.Children.Add(EditorKit.Muted(
-            "At api.planningcenteronline.com, sign in and make a Personal Access Token, then paste its Application ID and Secret here. "
+            "Make a token… opens api.planningcenteronline.com/oauth/applications: sign in, and under Personal Access Tokens make a new one, "
+            + "then paste its Application ID and Secret here. "
             + "They're kept encrypted for your Windows account on this computer: never in the library, a backup or a log."));
     }
 
