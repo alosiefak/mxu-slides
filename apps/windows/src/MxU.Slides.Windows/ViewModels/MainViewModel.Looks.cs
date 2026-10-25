@@ -14,4 +14,20 @@ public sealed partial class MainViewModel
 
     /// <summary>The same, with its animations (the frames the outputs draw as it moves).</summary>
     public Core.Animation.AnimatedScene ProgramAnimatedScene() => Show.AnimatedScene(resolveLinkedText: ResolveLinkedText);
+
+    /// <summary>
+    /// An overlay with its linked text filled in as the outputs would show it now (a countdown's
+    /// digits from its timer, the clock), for previews; when nothing would show (no timer yet),
+    /// the box keeps its sample digits so the design still reads.
+    /// </summary>
+    public Core.Model.Overlay WithLiveText(Core.Model.Overlay overlay)
+    {
+        if (!overlay.Objects.Any(o => o.TextLink is not null)) return overlay;
+        var copy = Core.Json.MxuJson.Clone(overlay);
+        var resolved = ResolveLinkedText(copy.Objects);
+        for (var i = 0; i < resolved.Count; i++)
+            if (resolved[i].TextLink is not null && resolved[i].Text.Length == 0) resolved[i].Text = copy.Objects[i].Text;
+        copy.Objects = resolved;
+        return copy;
+    }
 }

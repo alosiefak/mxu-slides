@@ -68,13 +68,14 @@ public static class KineticText
     /// template for the first piece, then for the second, and so on. The first piece's lead step
     /// keeps the template's trigger and delay (so the build starts when the design says); each
     /// later piece's lead starts <paramref name="stagger"/> after the one before (With Previous),
-    /// and the steps that go with it keep their own timing relative to it. A text with nothing to
-    /// split (one word, or an empty box) plays the templates once, as a whole.
+    /// and the steps that go with it keep their own timing relative to it. Even a single word
+    /// gets its own ranged step, so typing more words later can split it (<see cref="Reflow"/>);
+    /// an empty box plays the templates once, as a whole.
     /// </summary>
     public static List<AnimationStep> Expand(IReadOnlyList<AnimationStep> inTemplates, string text, KineticSplit split, double stagger, Func<string> makeId)
     {
         var pieces = Pieces(text, split);
-        if (pieces.Count <= 1) pieces = [null];
+        if (pieces.Count == 0) pieces = [null];
         // "With Previous" counts from the step just before in the play order, which for a later
         // piece is the previous piece's last step, not its lead. So each lead's delay takes off how
         // far that last step started after its own lead, and the leads stay a stagger apart.
@@ -97,6 +98,83 @@ public static class KineticText
         }
         return steps;
     }
+
+    /// <summary>
+    /// Keeps word-by-word and line-by-line builds in step with their words. Such a build is one
+    /// ranged step (or a few) per word or line, and a range names characters: when someone types a
+    /// new name into a lower third's field, the ranges still point at the old words, and the new
+    /// ones would appear all at once, or half of a word with the rest. So for each text object
+    /// whose build no longer covers exactly its words (or lines), the build is made again over the
+    /// words it has now: the same steps, the same stagger, the same start, the old steps' ids kept
+    /// for the pieces that are still there. A build counts if it starts at the text's first word and
+    /// every piece plays the same steps; anything else (steps on a few chosen words) is left alone.
+    /// Returns true when something changed. The Mac re-anchors ranges as you edit in its editor, and
+    /// drops them when the whole text is typed over; this is Windows' own, so fields stay animated.
+    /// </summary>
+    public static bool Reflow(IAnimatedComposition composition, Func<string>? makeId = null)
+    {
+        makeId ??= () => Guid.NewGuid().ToString().ToUpperInvariant();
+        var changed = false;
+        foreach (var o in composition.Objects.Where(o => o.ObjectKind == SlideObjectKind.Text && o.AnimationSteps is { Count: > 0 }))
+        {
+            var steps = o.AnimationSteps!;
+            static bool Ranged(AnimationStep s) => s.Ranges is { Count: 1 } && s.Kind is AnimationKind.In or AnimationKind.Emphasis;
+            var first = steps.FindIndex(Ranged);
+            if (first < 0) continue;
+            var end = first;
+            while (end < steps.Count && Ranged(steps[end])) end++;
+            var block = steps.GetRange(first, end - first);
+
+            // The pieces: runs of steps on the same range.
+            var pieces = new List<List<AnimationStep>>();
+            foreach (var step in block)
+            {
+                if (pieces.Count > 0 && SameRange(pieces[^1][0].Ranges![0], step.Ranges![0])) pieces[^1].Add(step);
+                else pieces.Add([step]);
+            }
+            var shape = pieces[0].Select(s => (s.Kind, s.Animation)).ToList();
+            if (pieces.Any(p => !p.Select(s => (s.Kind, s.Animation)).SequenceEqual(shape))) continue;
+            var lead = pieces[0][0].Ranges![0];
+            if (lead.Line != 0 || lead.Column != 0) continue;
+
+            var split = pieces.All(p => p[0].Ranges![0].Column == 0) && pieces.Select(p => p[0].Ranges![0].Line).Distinct().Count() == pieces.Count
+                && pieces.Count > 1 ? KineticSplit.Lines : KineticSplit.Words;
+            var now = Pieces(o.Text, split).OfType<AnimationRange>().ToList();
+            if (now.Count == 0) continue;
+            if (now.Count == pieces.Count && now.Zip(pieces).All(pair => SameRange(pair.First, pair.Second[0].Ranges![0]))) continue;
+
+            var templates = pieces[0].Select(s =>
+            {
+                var t = MxuJson.Clone(s);
+                t.Ranges = null;
+                return t;
+            }).ToList();
+            var stagger = pieces.Count > 1
+                ? (pieces[1][0].DelaySeconds ?? 0) + LastStartOffset(templates)
+                : split == KineticSplit.Lines ? 0.2 : 0.08;
+            // The old pieces' ids for the pieces still there, fresh ones after.
+            var oldIds = pieces.SelectMany(p => p.Select(s => s.Id)).ToList();
+            var index = 0;
+            var rebuilt = Expand(templates, o.Text, split, Math.Round(stagger, 4), () => index < oldIds.Count ? oldIds[index++] : makeId());
+            steps.RemoveRange(first, block.Count);
+            steps.InsertRange(first, rebuilt);
+
+            if (composition.AnimationOrder is { Count: > 0 } order)
+            {
+                var keep = rebuilt.Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+                var dropped = oldIds.Where(id => !keep.Contains(id)).ToHashSet(StringComparer.Ordinal);
+                var list = order.Where(id => !dropped.Contains(id)).ToList();
+                var added = rebuilt.Select(s => s.Id).Where(id => !list.Contains(id)).ToList();
+                var after = list.FindLastIndex(id => keep.Contains(id));
+                list.InsertRange(after < 0 ? list.Count : after + 1, added);
+                composition.AnimationOrder = list;
+            }
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static bool SameRange(AnimationRange a, AnimationRange b) => a.Line == b.Line && a.Column == b.Column && a.Length == b.Length;
 
     /// <summary>When the last template starts, in seconds after the first (as AnimationSequence times them).</summary>
     private static double LastStartOffset(IReadOnlyList<AnimationStep> templates)

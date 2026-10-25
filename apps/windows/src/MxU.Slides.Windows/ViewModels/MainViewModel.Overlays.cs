@@ -200,6 +200,8 @@ public sealed partial class MainViewModel
     /// </summary>
     public void OverlayChanged(Overlay overlay)
     {
+        // A word-by-word build follows the words just typed into its field (Core/Animation/KineticText.cs).
+        KineticText.Reflow(overlay);
         foreach (var tile in Overlays.Where(t => t.Overlay.Id == overlay.Id))
             tile.Preview = OverlayTileViewModel.PreviewScene(overlay);
         OverlayContentChanged?.Invoke(overlay);

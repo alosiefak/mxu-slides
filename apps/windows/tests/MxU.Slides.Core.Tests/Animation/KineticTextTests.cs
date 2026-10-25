@@ -104,7 +104,78 @@ public class KineticTextTests
 
         var single = new Overlay { Id = "o2", Name = "O", Objects = [Text("t", "Hallelujah")] };
         KineticText.ApplyTo(single, ["t"], Preset("kinetic.wordRise"), AnimationPresetApplication.Mode.Replace);
-        Assert.Null(single.Objects[0].AnimationSteps![0].Ranges); // one word: nothing to split, so it moves as a whole
+        // One word still gets its own ranged step, so typing more words later splits it (Reflow).
+        Assert.Equal(10, single.Objects[0].AnimationSteps![0].Ranges!.Single().Length);
+        var empty = new Overlay { Id = "o3", Name = "O", Objects = [Text("t", "")] };
+        KineticText.ApplyTo(empty, ["t"], Preset("kinetic.wordRise"), AnimationPresetApplication.Mode.Replace);
+        Assert.Null(empty.Objects[0].AnimationSteps![0].Ranges); // nothing to split: the whole box
+    }
+
+    [Fact]
+    public void ABuildFollowsNewWordsTypedIntoItsField()
+    {
+        var overlay = new Overlay
+        {
+            Id = "ov", Name = "O",
+            Objects = [new SlideObject { Id = "plate", ObjectKind = SlideObjectKind.Shape, Name = "Plate", Text = "", AnimationSteps = [Step("plate.in", AnimationTrigger.WithPrevious)] }, Text("t", "Full Name")],
+        };
+        var ids = KineticText.ApplyTo(overlay, ["t"], Preset("kinetic.wordRise"), AnimationPresetApplication.Mode.Add);
+        overlay.AnimationOrder = ["plate.in", .. ids];
+        OverlaySteps.File(overlay, ids);
+        var before = AnimationSequence.Schedule(overlay.Objects, overlay.AnimationOrder);
+        var text = overlay.Objects[1];
+        Assert.False(KineticText.Reflow(overlay)); // nothing to do while the words match
+
+        text.Text = "Pastor Grace Okafor";
+        var counter = 0;
+        Assert.True(KineticText.Reflow(overlay, () => $"new{++counter}"));
+        var ins = text.AnimationSteps!.Where(s => s.Kind == AnimationKind.In).ToList();
+        Assert.Equal(["Pastor", "Grace", "Okafor"], ins.Select(s => AnimationRanges.Text(s.Ranges!.Single(), text.Text)));
+        Assert.Equal([ids[0], ids[1], "new1"], ins.Select(s => s.Id)); // the old pieces keep their ids
+        var after = AnimationSequence.Schedule(overlay.Objects, overlay.AnimationOrder);
+        Assert.Equal(before[ids[0]].Start, after[ids[0]].Start, 6); // same start
+        Assert.Equal(after[ids[1]].Start + 0.08, after["new1"].Start, 6); // same stagger
+        Assert.Empty(AnimationEditing.OverlayWarnings(overlay));
+        Assert.Contains("new1", overlay.AnimationOrder!);
+        Assert.Equal(overlay.AnimationOrder!.Count, overlay.AnimationOrder.Distinct().Count());
+        Assert.Single(text.AnimationSteps!, s => s.Kind == AnimationKind.Out); // the Out stays
+
+        text.Text = "Grace";
+        Assert.True(KineticText.Reflow(overlay));
+        Assert.Equal("Grace", AnimationRanges.Text(text.AnimationSteps!.First(s => s.Kind == AnimationKind.In).Ranges!.Single(), "Grace"));
+        Assert.DoesNotContain(ids[1], overlay.AnimationOrder!);
+        Assert.Equal(1, text.AnimationSteps!.Count(s => s.Kind == AnimationKind.In));
+    }
+
+    [Fact]
+    public void ALineBuildWithTwoStepsAPieceReflowsWhole()
+    {
+        var overlay = new Overlay { Id = "ov", Name = "O", Objects = [Text("t", "one\ntwo")] };
+        KineticText.ApplyTo(overlay, ["t"], Preset("kinetic.lineRise"), AnimationPresetApplication.Mode.Replace);
+        overlay.Objects[0].Text = "one\ntwo\nthree";
+        Assert.True(KineticText.Reflow(overlay));
+        Assert.Equal([0, 1, 2], overlay.Objects[0].AnimationSteps!.Where(s => s.Kind == AnimationKind.In).Select(s => s.Ranges!.Single().Line));
+
+        var sweep = new Overlay { Id = "o2", Name = "O", Objects = [Text("t", "a b")] };
+        KineticText.ApplyTo(sweep, ["t"], Preset("kinetic.lightSweep"), AnimationPresetApplication.Mode.Replace);
+        sweep.Objects[0].Text = "a b c";
+        Assert.True(KineticText.Reflow(sweep));
+        var steps = sweep.Objects[0].AnimationSteps!;
+        Assert.Equal(7, steps.Count); // three words × (fade + flash), and the Out
+        var starts = AnimationSequence.Schedule(sweep.Objects, sweep.AnimationOrder);
+        var fades = steps.Where(s => s.Kind == AnimationKind.In).Select(s => Math.Round(starts[s.Id].Start, 6)).ToList();
+        Assert.Equal([0, 0.06, 0.12], fades);
+    }
+
+    [Fact]
+    public void StepsOnAFewChosenWordsAreLeftAlone()
+    {
+        // The Mac's "one step per word" on a selection that starts mid-text: not a whole-text build.
+        var o = Text("t", "Grace upon grace", [Step("w", AnimationTrigger.OnClick, ranges: [Range(0, 6, 4)])]);
+        var overlay = new Overlay { Id = "ov", Name = "O", Objects = [o] };
+        o.Text = "Something else entirely";
+        Assert.False(KineticText.Reflow(overlay));
+        Assert.Equal(6, o.AnimationSteps![0].Ranges![0].Column);
     }
 
     [Fact]
@@ -162,7 +233,9 @@ public class KineticTextTests
     {
         var build = new KineticBuild(KineticSplit.Lines, 0.2, [Step("tpl", AnimationTrigger.OnClick, animation: StepAnimation.Move)]);
         var (steps, _) = KineticText.Donate(build, "One line only", [Step("x::in", AnimationTrigger.WithPrevious)], ["in"]);
-        Assert.Null(steps.Single().Ranges);
+        Assert.Equal(13, steps.Single().Ranges!.Single().Length); // one line, all of it
+        var (blank, _) = KineticText.Donate(build, "", [Step("x::in", AnimationTrigger.WithPrevious)], ["in"]);
+        Assert.Null(blank.Single().Ranges);
         var (outs, outIds) = KineticText.Donate(build, "a\nb", [Step("x::out", AnimationTrigger.OnDismiss, AnimationKind.Out)], ["out"]);
         Assert.Equal("x::out", outs.Single().Id); // no In to replace: the steps are as they were
         Assert.Equal(["x::out"], outIds["out"]);

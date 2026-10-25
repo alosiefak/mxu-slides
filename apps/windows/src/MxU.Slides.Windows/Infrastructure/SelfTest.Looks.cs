@@ -26,6 +26,7 @@ public sealed partial class SelfTest
             var (worship, camera) = await LooksBackdrops();
             await WorshipLooksCheck(worship, camera);
             await CountdownCheck(worship);
+            await GalleryDesignsCheck(worship, camera);
         }
         catch (Exception ex)
         {
@@ -257,6 +258,41 @@ public sealed partial class SelfTest
         foreach (var t in new[] { 0.2, 0.5, 0.9 })
             await SnapshotAt($"61-look-ModernSerif-kinetic-{t:0.00}s", model.Show.AnimatedScene(), t);
         model.ClearAllCommand.Execute(null);
+    }
+
+    // MARK: The lower-thirds gallery's designs
+
+    /// <summary>The designs that fill the screen (titles, countdowns) go over the worship background; the rest over the camera.</summary>
+    private static bool FullScreen(LowerThirdTemplate template) =>
+        template.Id is "gallery.welcome.editorial" or "gallery.soon.full" or "gallery.countdown.center";
+
+    /// <summary>
+    /// Every gallery design as the program draws it: part-way in, settled, and on its way out,
+    /// over a stand-in camera shot (or the worship background for full-screen titles).
+    /// </summary>
+    private async Task GalleryDesignsCheck(MediaItem worship, MediaItem camera)
+    {
+        foreach (var template in LowerThirdGallery.All)
+        {
+            var overlay = model.WithLiveText(template.Make());
+            var backdrop = Over(new RenderScene(SceneSize.Hd), FullScreen(template) ? worship : camera);
+            var timeline = AnimationSequence.PreviewTimeline(overlay.Objects, overlay.AnimationOrder);
+            var name = $"63-gallery-{Safe(template.Category)}-{Safe(template.StyleName)}-{Safe(template.Name)}";
+            Task Frame(string suffix, double t) => Snapshot(suffix.Length == 0 ? name : $"{name}-{suffix}",
+                OverlayPreview.PlayThrough(overlay, SceneSize.Hd, 0, t, Copy(backdrop)));
+            await Frame("in-0.25s", 0.25);
+            await Frame("in-0.60s", 0.6);
+            await Frame("", Math.Max(0, timeline.DismissAt - 0.05));
+            await Frame("out", timeline.DismissAt + 0.18);
+        }
+    }
+
+    private static RenderScene Copy(RenderScene scene)
+    {
+        var copy = new RenderScene(scene.CanvasSize, scene.Background);
+        foreach (var layer in scene.Layers)
+            foreach (var item in layer.Items) copy.AddItem(item, layer.Kind);
+        return copy;
     }
 
     // MARK: Countdown
