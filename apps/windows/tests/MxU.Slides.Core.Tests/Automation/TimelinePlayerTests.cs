@@ -33,6 +33,16 @@ internal sealed class TimelineHost : ITimelineHost
 
     public void FireServiceItem(ServiceItem item) => Fired.Add($"item:{item.Id}");
     public void RunActions(IReadOnlyList<SlideAction> actions) => Fired.Add($"actions:{string.Join(",", actions.Select(a => a.Id))}");
+
+    /// <summary>The actions cues that ran, by id (Windows: their production steps run beside them).</summary>
+    public List<string> RanCues { get; } = [];
+
+    public void RunActions(string cueId, IReadOnlyList<SlideAction> actions)
+    {
+        RanCues.Add(cueId);
+        if (actions.Count > 0) RunActions(actions);
+    }
+
     public IReadOnlySet<string> Live => Up;
     public string? LiveAlertId => Alert;
     public LayerKind? LayerShowing(string contentId, bool liveInput) => Up.Contains(contentId) ? LayerKind.Videos : null;

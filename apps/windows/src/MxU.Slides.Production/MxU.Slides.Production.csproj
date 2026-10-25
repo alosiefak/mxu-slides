@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Production control (Windows only, Phase 6): Blackmagic ATEM switchers over UDP,
+       OBS Studio over obs-websocket v5, vMix over its HTTP API, and DMX lighting over
+       Art-Net and sACN, with the lighting looks, the DMX engine and the production steps
+       that slides, combos, triggers and timeline cues run. Every protocol is written here
+       in plain managed code (no third-party libraries). The Mac app has no twin: these
+       steps live beside the library in "Windows extras", where the Mac never looks. No WPF. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>MxU.Slides.Production</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- DPAPI, to keep OBS and vMix passwords encrypted for the Windows user (as stream keys are). -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MxU.Slides.Production.Tests" />
+  </ItemGroup>
+</Project>
