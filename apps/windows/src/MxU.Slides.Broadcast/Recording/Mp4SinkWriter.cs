@@ -54,10 +54,13 @@ internal sealed class Mp4SinkWriter : IDisposable
     /// <summary>
     /// A writer that packs already-encoded H.264 (with these parameter sets) and AAC described by
     /// <paramref name="audioType"/> — the AAC encoder's own output type, which the MP4 sink accepts
-    /// as it is (null for no audio).
+    /// as it is (null for no audio). <paramref name="crashSafe"/> false makes a plain MP4 straight
+    /// away: for a file that's only used once it's finished (a rendered motion background), whose
+    /// header then states its exact length (a fragmented file's can leave out the last fragment).
     /// </summary>
-    public static Mp4SinkWriter CreateForEncoded(string path, Mp4Settings settings, AvcParameterSets parameterSets, IMFMediaType? audioType) =>
-        Create(path, fragmented => Open(path, fragmented, hardware: false, writer =>
+    public static Mp4SinkWriter CreateForEncoded(string path, Mp4Settings settings, AvcParameterSets parameterSets, IMFMediaType? audioType,
+        bool crashSafe = true) =>
+        Create(path, crashSafe, fragmented => Open(path, fragmented, hardware: false, writer =>
         {
             var video = AddEncodedVideo(writer, settings, parameterSets);
             uint? sound = audioType is null ? null : AddEncodedAudio(writer, audioType);
@@ -66,7 +69,7 @@ internal sealed class Mp4SinkWriter : IDisposable
 
     /// <summary>A writer that encodes NV12 and 16-bit PCM itself (HEVC, or H.264 if <paramref name="hevc"/> is false).</summary>
     public static Mp4SinkWriter CreateEncoding(string path, Mp4Settings settings, bool hevc, bool allowHardware) =>
-        Create(path, fragmented =>
+        Create(path, crashSafe: true, fragmented =>
         {
             var failures = new List<Exception>();
             foreach (var hardware in allowHardware ? new[] { true, false } : [false])
@@ -89,11 +92,11 @@ internal sealed class Mp4SinkWriter : IDisposable
             throw failures[^1];
         });
 
-    private static Mp4SinkWriter Create(string path, Func<bool, Mp4SinkWriter> open)
+    private static Mp4SinkWriter Create(string path, bool crashSafe, Func<bool, Mp4SinkWriter> open)
     {
         MediaFoundation.EnsureStarted();
         var failures = new List<string>();
-        foreach (var fragmented in new[] { true, false })
+        foreach (var fragmented in crashSafe ? new[] { true, false } : [false])
         {
             try
             {
