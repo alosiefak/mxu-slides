@@ -127,6 +127,53 @@ public sealed class TransitionExtrasTests : IDisposable
     }
 
     [Fact]
+    public void ADuplicateKeepsItsWindowsTransition()
+    {
+        var extras = Extras();
+        var slide = NewSlide();
+        extras.Choose(slide, Push);
+        var copy = MxuJson.Clone(slide);
+        copy.Id = "slide-2";
+        extras.Copied(slide, copy);
+        Assert.Equal(Push, extras.ForSlide(copy));
+
+        var cube = new WindowsTransition { Kind = WindowsTransitionKind.Cube };
+        var deck = new Presentation { Id = "deck", Name = "Song", Slides = [slide] };
+        extras.Choose(deck, cube);
+        var deckCopy = MxuJson.Clone(deck);
+        deckCopy.Id = "deck-copy";
+        deckCopy.Slides[0].Id = "slide-3";
+        extras.Copied(deck, deckCopy);
+        Assert.Equal(cube, extras.ForPresentation(deckCopy));
+        Assert.Equal(Push, extras.ForSlide(deckCopy.Slides[0]));
+    }
+
+    [Fact]
+    public void EditedLyricsKeepTheirSlidesWindowsTransitions()
+    {
+        var extras = Extras();
+        var iris = new WindowsTransition { Kind = WindowsTransitionKind.Iris, DurationSeconds = 1.2 };
+        var before = new Presentation { Id = "song", Name = "Song", Slides = [NewSlide("v1"), NewSlide("v2"), NewSlide("c1")] };
+        extras.Choose(before.Slides[0], Push);
+        extras.Choose(before.Slides[2], iris);
+        // The editor rebuilds the slides with new ids, carrying each one's transition by section (SongEditing.CarryOver).
+        var after = new Presentation
+        {
+            Id = "song", Name = "Song",
+            Slides =
+            [
+                new Slide { Id = "n1", Transition = before.Slides[0].Transition },
+                new Slide { Id = "n2" },
+                new Slide { Id = "n3", Transition = before.Slides[2].Transition },
+            ],
+        };
+        extras.CarryOver(before, after);
+        Assert.Equal(Push, extras.ForSlide(after.Slides[0]));
+        Assert.Null(extras.ForSlide(after.Slides[1]));
+        Assert.Equal(iris, extras.ForSlide(after.Slides[2]));
+    }
+
+    [Fact]
     public void AnExtraNamingAKindThisBuildDoesntKnowIsIgnored()
     {
         var extras = Extras();

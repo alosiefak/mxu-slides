@@ -69,6 +69,42 @@ public sealed class TransitionExtras
     /// <summary>Gives a media item <paramref name="choice"/> (null = the default). The caller saves it.</summary>
     public void Choose(MediaItem item, WindowsTransition? choice) => item.Transition = Choose(MediaKind, item.Id, choice);
 
+    // MARK: Copies
+
+    /// <summary>A duplicated slide keeps its Windows-only transition (the copy has a new id, so the extra is copied too).</summary>
+    public void Copied(Slide original, Slide copy)
+    {
+        if (ForSlide(original) is { } windows && copy.Transition is { } shared) Store.Save(SlideKind, copy.Id, windows, WindowsExtras.Fingerprint(shared));
+    }
+
+    /// <summary>A duplicated presentation keeps its Windows-only transition, and its slides theirs (by position, where their ids changed).</summary>
+    public void Copied(Presentation original, Presentation copy)
+    {
+        if (ForPresentation(original) is { } windows && copy.Transition is { } shared)
+            Store.Save(PresentationKind, copy.Id, windows, WindowsExtras.Fingerprint(shared));
+        foreach (var (from, to) in original.Slides.Zip(copy.Slides).Where(pair => pair.First.Id != pair.Second.Id))
+            Copied(from, to);
+    }
+
+    /// <summary>
+    /// When a song's slides are rebuilt (its lyrics edited), the new slides get new ids; those that
+    /// took over an old slide's transition (SongEditing carries it by section) take over its Windows
+    /// kind too, matched in order among the slides with the same shared transition.
+    /// </summary>
+    public void CarryOver(Presentation before, Presentation after)
+    {
+        var waiting = before.Slides.Select(slide => (Slide: slide, Windows: ForSlide(slide))).Where(p => p.Windows is not null).ToList();
+        foreach (var slide in after.Slides)
+        {
+            if (slide.Transition is not { } shared || before.Slides.Any(s => s.Id == slide.Id)) continue;
+            var basis = WindowsExtras.Fingerprint(shared);
+            var match = waiting.FindIndex(p => WindowsExtras.Fingerprint(p.Slide.Transition) == basis);
+            if (match < 0) continue;
+            Store.Save(SlideKind, slide.Id, waiting[match].Windows!, basis);
+            waiting.RemoveAt(match);
+        }
+    }
+
     private static WindowsTransition? Chosen(Transition? shared, WindowsTransition? windows) =>
         windows ?? (shared is null ? null : WindowsTransitions.FromShared(shared));
 

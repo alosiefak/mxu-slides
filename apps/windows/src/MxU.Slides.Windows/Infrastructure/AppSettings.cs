@@ -4,8 +4,19 @@ using MxU.Slides.Core.Library;
 
 namespace MxU.Slides.Windows.Infrastructure;
 
-/// <summary>A room default transition. Fade Through White and Blur Dissolve are the header chips' other two choices, as on the Mac.</summary>
-public enum OutputTransition { Cut, Dissolve, FadeThroughBlack, FadeThroughWhite, BlurDissolve }
+/// <summary>
+/// A room default transition. Fade Through White and Blur Dissolve are the header chips' other two
+/// choices, as on the Mac. The rest (Phase 6) are every other kind the Windows app plays, named as
+/// in <see cref="Core.Animation.WindowsTransitionKind"/>: a room default is this PC's own setting,
+/// never in a shared document, so it can hold the Windows-only kinds (AppSettings.Transitions.cs).
+/// </summary>
+public enum OutputTransition
+{
+    Cut, Dissolve, FadeThroughBlack, FadeThroughWhite, BlurDissolve,
+    FadeThroughColor, FilmBurn,
+    Push, SlideOver, SlideReveal, WhipPan, ZoomIn, ZoomOut, ZoomThrough, CrossZoom,
+    Iris, Diamond, Clock, SoftWipe, LumaWipe, Cube, Flip, LightLeak, Glitch, Ripple,
+}
 
 /// <summary>Per-computer preferences, saved as settings.json next to the library.</summary>
 public sealed partial class AppSettings

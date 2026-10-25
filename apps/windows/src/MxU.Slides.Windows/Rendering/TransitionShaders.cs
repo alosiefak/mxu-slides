@@ -303,9 +303,16 @@ public static class TransitionShaders
     public static PixelShader? Shader(PictureShader shader) =>
         PixelShadersSupported ? ShaderCompiler.Compile(Name(shader), Source(shader), target: Target) : null;
 
-    /// <summary>True when this view can draw <paramref name="kind"/> with its shader; otherwise it plays the nearest of the Mac's kinds.</summary>
+    /// <summary>
+    /// True when this view can draw <paramref name="kind"/> with its shader; otherwise it plays the
+    /// nearest of the Mac's kinds. <c>MXU_SLIDES_TRANSITIONS=simple</c> makes every PC behave as one
+    /// without shaders (to test that, or on a graphics card that draws them badly); it's read each
+    /// time, so the self-test can turn it on and off.
+    /// </summary>
     public static bool CanDraw(WindowsTransitionKind kind) =>
-        WindowsTransitions.IsShared(kind) || Shader(PictureTransitions.ShaderFor(kind)) is not null;
+        WindowsTransitions.IsShared(kind)
+        || !string.Equals(Environment.GetEnvironmentVariable("MXU_SLIDES_TRANSITIONS"), "simple", StringComparison.OrdinalIgnoreCase)
+            && Shader(PictureTransitions.ShaderFor(kind)) is not null;
 
     private static int warmed;
 

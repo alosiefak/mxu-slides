@@ -20,11 +20,6 @@ public partial class SettingsWindow : Window
         public override string ToString() => Label;
     }
 
-    private sealed record TransitionChoice(OutputTransition Value, string Label)
-    {
-        public override string ToString() => Label;
-    }
-
     private sealed record TimecodeChoice(TimecodeFollower.Input Input, string Label)
     {
         public override string ToString() => Label;
@@ -64,20 +59,7 @@ public partial class SettingsWindow : Window
         LoadDisplays();
         OutputsAtLaunch.IsChecked = s.OutputsOnAtLaunch;
         PreventSleep.IsChecked = s.PreventSleep;
-
-        TransitionCombo.ItemsSource = new[]
-        {
-            new TransitionChoice(OutputTransition.Dissolve, "Dissolve"),
-            new TransitionChoice(OutputTransition.FadeThroughBlack, "Fade through black"),
-            new TransitionChoice(OutputTransition.FadeThroughWhite, "Fade through white"),
-            new TransitionChoice(OutputTransition.BlurDissolve, "Blur dissolve"),
-            new TransitionChoice(OutputTransition.Cut, "Cut (instant)"),
-        };
-        TransitionCombo.SelectedItem = ((TransitionChoice[])TransitionCombo.ItemsSource).First(c => c.Value == s.Transition);
-        TransitionSeconds.Value = s.TransitionSeconds;
-        MediaTransitionCombo.ItemsSource = TransitionCombo.ItemsSource;
-        MediaTransitionCombo.SelectedItem = ((TransitionChoice[])TransitionCombo.ItemsSource).First(c => c.Value == s.MediaTransition);
-        MediaTransitionSeconds.Value = s.MediaTransitionSeconds;
+        // The transitions are their own section (Views/Transitions/TransitionSettingsSection.cs), which saves as it changes.
 
         var themes = model.Library.All<Core.Model.Theme>();
         ThemeCombo.ItemsSource = themes;
@@ -286,14 +268,6 @@ public partial class SettingsWindow : Window
         LoadDisplays();
     }
 
-    // The sliders report a change while the window is still loading (setting their Minimum moves their
-    // value), before the labels under them exist: that threw, and the window never opened.
-    private void TransitionSeconds_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) =>
-        TransitionLabel?.Text = $"{e.NewValue:0.0} seconds";
-
-    private void MediaTransitionSeconds_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) =>
-        MediaTransitionLabel?.Text = $"{e.NewValue:0.0} seconds";
-
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         var s = model.Settings;
@@ -314,10 +288,6 @@ public partial class SettingsWindow : Window
         outputs.AssignDisplay(OutputRole.Stage, stage?.DeviceName, stage?.DeviceName is null ? null : stage.Label);
         s.OutputsOnAtLaunch = OutputsAtLaunch.IsChecked == true;
         s.PreventSleep = PreventSleep.IsChecked == true;
-        s.Transition = (TransitionCombo.SelectedItem as TransitionChoice)?.Value ?? OutputTransition.Dissolve;
-        s.TransitionSeconds = Math.Round(TransitionSeconds.Value, 1);
-        s.MediaTransition = (MediaTransitionCombo.SelectedItem as TransitionChoice)?.Value ?? OutputTransition.Dissolve;
-        s.MediaTransitionSeconds = Math.Round(MediaTransitionSeconds.Value, 1);
         if (ThemeCombo.SelectedItem is Core.Model.Theme theme) s.DefaultThemeId = theme.Id;
         if (LinesCombo.SelectedItem is int lines) s.LinesPerSlide = lines;
         s.VideoVolume = Volume.Value;

@@ -41,7 +41,15 @@ public sealed partial class SceneView
         public MixPass? Inner { get; }
         public Rect Canvas = Rect.Empty;
 
-        /// <summary>What each picture holds this frame (applied in <see cref="Arrange"/>).</summary>
+        /// <summary>
+        /// A clear rectangle the size of the canvas at the bottom of each picture. A picture can be
+        /// empty (a slide pushed off to nothing, or onto a clear screen), and WPF draws nothing for a
+        /// brush of nothing, and skips an effect on nothing: the slide would just vanish. With these,
+        /// each picture always covers the canvas, even when it's all clear.
+        /// </summary>
+        private readonly DrawingVisual fromFrame = new(), toFrame = new();
+
+        /// <summary>What each picture holds this frame (applied in <see cref="Reparent"/>).</summary>
         public List<Visual> FromItems { get; } = [];
         public List<Visual> ToItems { get; } = [];
 
@@ -53,13 +61,15 @@ public sealed partial class SceneView
             for (var pass = this; pass is not null; pass = pass.Inner) yield return pass;
         }
 
-        /// <summary>Starts a frame: empty item lists, with the inner pass standing in for the whole old picture.</summary>
+        /// <summary>Starts a frame: each picture just its clear frame, with the inner pass standing in for the whole old picture.</summary>
         public void Begin()
         {
             foreach (var pass in Chain())
             {
                 pass.FromItems.Clear();
                 pass.ToItems.Clear();
+                pass.FromItems.Add(pass.fromFrame);
+                pass.ToItems.Add(pass.toFrame);
                 if (pass.Inner is { } inner) pass.FromItems.Add(inner.Layer);
             }
         }
@@ -81,6 +91,8 @@ public sealed partial class SceneView
         public void Fit(Rect canvas)
         {
             if (Canvas == canvas) return;
+            foreach (var frame in new[] { fromFrame, toFrame })
+                using (var dc = frame.RenderOpen()) dc.DrawRectangle(Brushes.Transparent, null, canvas);
             using (var dc = Face.RenderOpen()) dc.DrawRectangle(Picture(To, canvas), null, canvas);
             Effect.Previous = Picture(From, canvas);
             Canvas = canvas;
@@ -151,7 +163,7 @@ public sealed partial class SceneView
     /// before any is filled, because an item moving between a picture and the root (a transition
     /// starting or landing) can only have one parent at a time.
     /// </summary>
-    private static void Arrange(Root root, List<Visual> order, IEnumerable<MixPass> dropped)
+    private static void Reparent(Root root, List<Visual> order, IEnumerable<MixPass> dropped)
     {
         var wanted = new List<(ContainerVisual Container, List<Visual> Children)> { (root.Visual, order) };
         foreach (var pass in dropped.SelectMany(p => p.Chain()))

@@ -175,6 +175,7 @@ public sealed partial class MainViewModel
         var copy = MxuJson.Clone(source);
         copy.Id = LibraryStore.NewId();
         foreach (var o in copy.Objects) o.Id = LibraryStore.NewId();
+        TransitionExtras.Copied(source, copy);
         p.Slides.Insert(p.Slides.IndexOf(source) + 1, copy);
         SavePresentation(p);
         RebuildSlides();
@@ -271,6 +272,7 @@ public sealed partial class MainViewModel
         copy.Id = LibraryStore.NewId();
         copy.Name = $"{p.Name} (copy)";
         copy.Origin = new PresentationOrigin { Source = PresentationOriginSource.Duplicate, Detail = p.Id, CreatedAt = DateTimeOffset.Now.ToString("O") };
+        TransitionExtras.Copied(p, copy);
         Library.Save(copy);
         Open(copy, null, null);
     }

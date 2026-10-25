@@ -346,22 +346,9 @@ public sealed partial class MainViewModel
     /// </summary>
     private static SceneTransition DefaultTransition() => SceneTransition.Automatic;
 
-    /// <summary>
-    /// The room defaults from Settings › Transitions, as on the Mac: what a slide does when
-    /// neither it nor its presentation names a transition, and what a background or video does
-    /// when it doesn't name one.
-    /// </summary>
-    private RoomTransitions RoomDefaults() =>
-        new(RoomTransition(Settings.Transition, Settings.TransitionSeconds), RoomTransition(Settings.MediaTransition, Settings.MediaTransitionSeconds));
-
-    private static Transition? RoomTransition(OutputTransition kind, double seconds) => kind switch
-    {
-        OutputTransition.Cut => null,
-        OutputTransition.FadeThroughBlack => new Transition { TransitionKind = TransitionKind.FadeBlack, DurationSeconds = seconds * 2 },
-        OutputTransition.FadeThroughWhite => new Transition { TransitionKind = TransitionKind.FadeWhite, DurationSeconds = seconds * 2 },
-        OutputTransition.BlurDissolve => new Transition { TransitionKind = TransitionKind.BlurDissolve, DurationSeconds = seconds },
-        _ => new Transition { TransitionKind = TransitionKind.Dissolve, DurationSeconds = seconds },
-    };
+    // The room defaults from Settings › Transitions (what a slide does when neither it nor its
+    // presentation names a transition, and what a background or video does when it doesn't) are
+    // RoomTransitionDefaults, in MainViewModel.Transitions.cs: since Phase 6 they can be any kind.
 
     /// <summary>Long text turns its pages the way slides change (ServiceControls.apply on the Mac).</summary>
     private Paging.Turn PageTurn() => Settings.Transition switch
@@ -384,13 +371,13 @@ public sealed partial class MainViewModel
     private SceneTransition LayerTransitions(SceneTransition requested, bool refreshOnly)
     {
         var before = renderedCues;
-        var after = LiveCues.Of(Show);
+        var after = LiveCuesNow();
         renderedCues = after;
         var clearAll = nextRenderClearsAll;
         nextRenderClearsAll = false;
         if (requested.Layers is not null) return requested;
         if (requested.Style == TransitionStyle.Cut && !refreshOnly) return SceneTransition.PerLayer(LiveTransitions.AllCut);
-        return SceneTransition.PerLayer(LiveTransitions.For(before, after, id => Library.Get<MediaItem>(id)?.Transition, RoomDefaults(), clearAll));
+        return CueTransitions(before, after, clearAll);
     }
 
     /// <summary>

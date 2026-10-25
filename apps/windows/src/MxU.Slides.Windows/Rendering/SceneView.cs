@@ -525,7 +525,7 @@ public sealed partial class SceneView : FrameworkElement
         foreach (var layer in resolved.Layers.Where(l => l.IsHidden)) root.Mixes.Remove(layer.Kind);
         foreach (var gone in root.Slots.Keys.Where(k => !seen.Contains(k)).ToList()) root.Slots.Remove(gone);
         ReleaseUnusedPlayers(root);
-        Arrange(root, order, mixing.Where(pass => !root.Mixes.ContainsValue(pass)));
+        Reparent(root, order, mixing.Where(pass => !root.Mixes.ContainsValue(pass)));
         root.Animating = AnimationTimeline.IsAnimating(scene, now, tickers: PlaysVideo);
     }
 
