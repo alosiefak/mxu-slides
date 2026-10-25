@@ -487,8 +487,12 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await http.PostAsync("/v1/show/clear-all", null);
             Check("POST /v1/show/clear-all clears everything", model.Show.IsEmpty);
 
-            await Delay(500);
-            lock (frames) Check("the WebSocket pushes show changes", frames.Any(f => f.Contains("\"topic\":\"show\"") && f.Contains(song.Id)));
+            bool Pushed()
+            {
+                lock (frames) return frames.Any(f => f.Contains("\"topic\":\"show\"") && f.Contains(song.Id));
+            }
+            await WhenShown(Pushed, 10); // the frames arrive on the socket's own time
+            Check("the WebSocket pushes show changes", Pushed());
             await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
             await Task.WhenAny(reading, Task.Delay(2000));
 
@@ -794,7 +798,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             Check("the timeline plays", model.TimelinePlaying);
             var seen = new List<string>();
             var pictured = false;
-            var deadline = DateTime.Now.AddSeconds(4);
+            var deadline = DateTime.Now.AddSeconds(15); // the take lasts 1.2 s; the picture taken on the way can be slow
             while (DateTime.Now < deadline && !seen.Contains(third))
             {
                 if (model.Show.Live?.Slide.Id is { } live && (seen.Count == 0 || seen[^1] != live)) seen.Add(live);

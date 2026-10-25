@@ -112,7 +112,7 @@ public sealed partial class SelfTest
             var heardMusic = false;
             var pictured = false;
             var third = model.Slides[2].Slide.Id;
-            var deadline = DateTime.Now.AddSeconds(6);
+            var deadline = DateTime.Now.AddSeconds(15); // the cues are at 1 s and 3.5 s; the picture taken on the way can be slow
             while (DateTime.Now < deadline && !fired.Any(f => f.SlideId == third))
             {
                 if (model.Show.Live?.Slide.Id is { } live && (fired.Count == 0 || fired[^1].SlideId != live)) fired.Add((live, vm.Playhead));

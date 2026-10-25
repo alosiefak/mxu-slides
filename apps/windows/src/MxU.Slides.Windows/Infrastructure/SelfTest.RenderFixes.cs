@@ -397,7 +397,13 @@ public sealed partial class SelfTest
         {
             if (playbackKey == key) ends.Add(ShowState.HostClock());
         }
+        double? opened = null; // when the player opened (it can play a whole pass before the test looks again)
+        void Ready(string mediaId)
+        {
+            if (mediaId == video.Id && model.Media.Transport(key) is not null) opened ??= ShowState.HostClock();
+        }
         model.Media.VideoEnded += Ended;
+        model.Media.MediaReady += Ready;
         try
         {
             video.Classification = MediaClassification.Foreground;
@@ -411,9 +417,14 @@ public sealed partial class SelfTest
             for (var i = 0; i < 150 && model.Media.Transport(key) is null && !model.Media.IsVideoFailed(key); i++) await Delay(100);
             var transport = model.Media.Transport(key);
             Check("a trimmed video reports its window's length", transport is { Duration.TotalSeconds: > 1.1 and < 1.3 });
-            for (var i = 0; i < 40 && ends.Count == 0; i++) await Delay(100);
-            Check("a trimmed video's pass ends at its out point, at its play rate",
-                ends.Count == 1 && ends[0] - fired < 2.5 && model.Media.Transport(key) is { Playing: false });
+            // A slow PC can take seconds to open the file and get the picture moving: each pass is timed
+            // from when it leaves the in point, not from the fire.
+            var (started, trace) = await WatchPass(key, ends, passes: 1, opened ?? ShowState.HostClock());
+            var pass = ends.Count > 0 ? ends[0] - started : double.NaN;
+            var ended = ends.Count == 1 && pass < 2 && model.Media.Transport(key) is { Playing: false };
+            report.AppendLine($"      trimmed pass: started moving {started - fired:0.00} s after the fire, ended {pass:0.00} s later (0.6 s at double speed)");
+            if (!ended) report.AppendLine($"      trimmed player: {model.Media.DescribeVideo(key)}; seen {trace}");
+            Check("a trimmed video's pass ends at its out point, at its play rate", ended);
             await Delay(600);
             Check("a pass that ended is reported once", ends.Count == 1);
             model.ClearMediaCommand.Execute(null);
@@ -422,22 +433,52 @@ public sealed partial class SelfTest
             video.Loops = true;
             model.Library.Save(video);
             ends.Clear();
+            opened = null;
             model.FireMedia(video);
             for (var i = 0; i < 150 && model.Media.Transport(key) is null && !model.Media.IsVideoFailed(key); i++) await Delay(100);
-            await Delay(2600);
+            (started, trace) = await WatchPass(key, ends, passes: 2, opened ?? ShowState.HostClock());
+            // Two passes within 2.6 s of starting to move (at double speed a pass takes 0.6 s).
+            var twoPasses = ends.Count >= 2 ? ends[1] - started : double.NaN;
             var looping = model.Media.Transport(key);
-            report.AppendLine($"      looping trim: {ends.Count} passes in 2.6 s, at {looping?.Position.TotalSeconds:0.00} s of {looping?.Duration?.TotalSeconds:0.00} s");
-            if (ends.Count < 2) report.AppendLine($"      looping trim player: {model.Media.DescribeVideo(key)}");
-            Check("a looping trimmed video loops inside its trim (a pass each 0.6 s at double speed)",
-                ends.Count >= 2 && looping is { Playing: true } && looping.Value.Position.TotalSeconds <= 1.25);
+            report.AppendLine($"      looping trim: {ends.Count} passes, the second {twoPasses:0.00} s after it started, now at {looping?.Position.TotalSeconds:0.00} s of {looping?.Duration?.TotalSeconds:0.00} s");
+            var loops = twoPasses <= 2.6 && looping is { Playing: true } && looping.Value.Position.TotalSeconds <= 1.25;
+            if (!loops) report.AppendLine($"      looping trim player: {model.Media.DescribeVideo(key)}; seen {trace}");
+            Check("a looping trimmed video loops inside its trim (a pass each 0.6 s at double speed)", loops);
             await Step("56-trimmed-video", () => { }, settle: 300);
         }
         finally
         {
             model.Media.VideoEnded -= Ended;
+            model.Media.MediaReady -= Ready;
             model.ClearMediaCommand.Execute(null);
             (video.InPoint, video.OutPoint, video.PlayRate, video.Loops, video.Classification) = original;
             model.Library.Save(video);
         }
+    }
+
+    /// <summary>
+    /// Watches a trimmed video until <paramref name="passes"/> of its passes have ended (or 20 s): returns
+    /// when it left its in point (the last moment it was seen still there, or when it <paramref name="opened"/>;
+    /// on the show clock, like <paramref name="ends"/>) and the positions seen on the way.
+    /// </summary>
+    private async Task<(double Started, string Trace)> WatchPass(string key, List<double> ends, int passes, double opened)
+    {
+        var watching = ShowState.HostClock();
+        var started = opened;
+        var seen = new List<string>();
+        var last = double.NaN;
+        while (ends.Count < passes && ShowState.HostClock() - watching < 20)
+        {
+            var now = ShowState.HostClock();
+            if (model.Media.Transport(key) is { } transport)
+            {
+                var position = transport.Position.TotalSeconds;
+                if (ends.Count == 0 && position < 0.05) started = now; // still at the in point
+                if (Math.Abs(position - last) > 0.01 && seen.Count < 30) seen.Add($"{position:0.00}@{now - watching:0.00}s");
+                last = position;
+            }
+            await Delay(20);
+        }
+        return (started, seen.Count == 0 ? "nothing" : string.Join(" ", seen));
     }
 }

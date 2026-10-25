@@ -58,19 +58,21 @@ public sealed partial class SelfTest
         routing.Outputs.SetDelay(output.Id, 25);
         routing.SetMusicOutput(output.Id);
         model.Audio.Play(tone);
-        var bus = await Until(() => model.Audio.PlayerForAudioItem(tone.Id), p => p is { IsPlaying: true }, 4000);
+        // Routing changes reach the engine on the sound-routing thread: each wait is for the result, with room for a slow PC.
+        var bus = await Until(() => model.Audio.PlayerForAudioItem(tone.Id), p => p is { IsPlaying: true, Engine.OutputDelayMilliseconds: 25d }, 15000);
         Check("music plays on the output chosen for it (its 25 ms delay applied)", bus is { TargetKey: AudioMixInventory.MainId } && bus.Engine.OutputDelayMilliseconds == 25);
         if (hasDevice)
-            Check("the music's output reached a device", await Until(() => bus?.Engine.OutputStatus.State, s => s == AudioOutputState.Playing, 4000) == AudioOutputState.Playing);
+            Check("the music's output reached a device", await Until(() => bus?.Engine.OutputStatus.State, s => s == AudioOutputState.Playing, 15000) == AudioOutputState.Playing);
         else
             Skip("the music's output reached a device", "this PC has no sound output; the engine keeps time without one");
 
         routing.SetMusicOutput(AudioMixInventory.NoOutputId);
         Check("“No device” takes the music off the speakers (streams and recordings still get it)",
-            await Until(() => bus?.Engine.HardwareOutputEnabled, on => on == false, 3000) == false && bus?.IsPlaying == true);
+            await Until(() => bus?.Engine.HardwareOutputEnabled, on => on == false, 15000) == false && bus?.IsPlaying == true);
         routing.SetMusicOutput(AudioMixInventory.DefaultOutputId);
-        Check("back on the default device", await Until(() => bus?.Engine.HardwareOutputEnabled, on => on == true, 3000) == true
-            && bus?.Engine.OutputDelayMilliseconds == 0);
+        var back = await Until(() => (On: bus?.Engine.HardwareOutputEnabled, Delay: bus?.Engine.OutputDelayMilliseconds), s => s is { On: true, Delay: 0d }, 15000);
+        if (back is not { On: true, Delay: 0d }) report.AppendLine($"      back on the default: hardware output {back.On}, delay {back.Delay} ms");
+        Check("back on the default device", back is { On: true, Delay: 0d });
         report.AppendLine($"      music now: {model.SoundTokenTitle(routing.MusicOutputToken)}");
         model.Audio.Stop();
         routing.Outputs.Remove(output.Id);
@@ -159,7 +161,7 @@ public sealed partial class SelfTest
         if (playing is not { State: VideoSoundState.Playing }) return;
         LogVideoClock(key);
 
-        var settled = await InSync(key, 5000);
+        var settled = await InSync(key, 15000);
         report.AppendLine($"      video sound vs picture: {Ms(settled?.SyncError)}, landed {settled?.Landings}x, output: {settled?.Output.Message}");
         Check("the video's sound stays with the picture (within 50 ms)", settled?.SyncError is { } error && Math.Abs(error) < 0.05);
         if (hasDevice) Check("the video's sound reaches a device", settled?.Output.State == AudioOutputState.Playing);
@@ -167,18 +169,18 @@ public sealed partial class SelfTest
         await Step("40-video-sound", () => { }, settle: 300);
 
         model.Media.Pause(key);
-        var paused = await Until(() => model.Media.SoundStatus(key), s => s?.State == VideoSoundState.Paused, 2000);
+        var paused = await Until(() => model.Media.SoundStatus(key), s => s?.State == VideoSoundState.Paused, 10000);
         var heldAt = paused?.Position;
         await Delay(500);
         Check("pausing the video pauses its sound", paused?.State == VideoSoundState.Paused && model.Media.SoundStatus(key)?.Position == heldAt);
         model.Media.Play(key);
-        var resumed = await InSync(key, 4000);
+        var resumed = await InSync(key, 10000);
         Check("playing again picks the sound up in step", resumed is { State: VideoSoundState.Playing, SyncError: { } afterPause } && Math.Abs(afterPause) < 0.06);
 
         var landings = resumed?.Landings ?? 0;
         model.Media.Seek(key, TimeSpan.FromSeconds(6));
-        await Until(() => model.Media.SoundStatus(key), s => s?.Landings > landings, 3000);
-        var sought = await InSync(key, 4000);
+        await Until(() => model.Media.SoundStatus(key), s => s?.Landings > landings, 10000);
+        var sought = await InSync(key, 10000);
         report.AppendLine($"      after a seek to 6 s: sound at {sought?.Position:0.00} s, {Ms(sought?.SyncError)} from the picture");
         Check("a seek moves the sound with the picture", sought is { State: VideoSoundState.Playing, Position: > 5.9, SyncError: { } afterSeek } && Math.Abs(afterSeek) < 0.06);
 
@@ -187,9 +189,10 @@ public sealed partial class SelfTest
         var late = routing.Outputs.Create("Self-test projector speakers");
         routing.Outputs.SetDelay(late.Id, 100);
         routing.SetVideoOutput(late.Id);
-        await Delay(600);
-        Check("video sound can play on its own output, with its delay", model.VideoSound.Routing.DelayMs == 100 && routing.MediaMixId != AudioMixInventory.MainId
-            && routing.MusicRouting(null).DelayMs == 0 && model.Media.SoundStatus(key)?.State == VideoSoundState.Playing);
+        bool OwnOutput() => model.VideoSound.Routing.DelayMs == 100 && routing.MediaMixId != AudioMixInventory.MainId
+            && routing.MusicRouting(null).DelayMs == 0 && model.Media.SoundStatus(key)?.State == VideoSoundState.Playing;
+        await WhenShown(OwnOutput, 10); // the sound moves to its new output on its own thread
+        Check("video sound can play on its own output, with its delay", OwnOutput());
         routing.SetVideoOutput(null);
         routing.Outputs.Remove(late.Id);
 
@@ -203,8 +206,8 @@ public sealed partial class SelfTest
             var landed = model.Media.SoundStatus(key)?.Landings ?? 0;
             model.Media.Seek(key, TimeSpan.FromSeconds(1));
             model.Media.Play(key);
-            await Until(() => model.Media.SoundStatus(key), s => s?.Landings > landed, 3000);
-            var before = await InSync(key, 4000);
+            await Until(() => model.Media.SoundStatus(key), s => s?.Landings > landed, 10000);
+            var before = await InSync(key, 10000);
             report.AppendLine($"      before recording: {before?.State} at {before?.Position:0.00} s");
             var preset = new StreamRecordPreset
             {
@@ -223,7 +226,7 @@ public sealed partial class SelfTest
             }
         }
         model.ClearMediaCommand.Execute(null);
-        await Until(() => model.Media.SoundStatus(key), s => s is null, 4000);
+        await Until(() => model.Media.SoundStatus(key), s => s is null, 10000);
         Check("clearing the video lets its sound go", model.Media.SoundStatus(key) is null);
     }
 
@@ -267,10 +270,14 @@ public sealed partial class SelfTest
         settings.SoundPanel.Expand(foldback.Id);
         settings.SoundPanel.BringIntoView();
         await Delay(500);
+        bool Lists()
+        {
+            var shown = Descendants<TextBlock>(settings.SoundPanel).Select(t => t.Text).ToList();
+            return shown.Contains("Self-test foldback") && shown.Any(t => t.Contains("40 ms delay")) && shown.Contains("Music plays on") && shown.Contains("Video sound on");
+        }
+        await WhenShown(Lists, 10); // a slow PC takes a while to lay the window out
         Save(settings, "43-sound-settings");
-        var shown = Descendants<TextBlock>(settings.SoundPanel).Select(t => t.Text).ToList();
-        Check("Settings › Sound lists the outputs and where music and video sound play",
-            shown.Contains("Self-test foldback") && shown.Any(t => t.Contains("40 ms delay")) && shown.Contains("Music plays on") && shown.Contains("Video sound on"));
+        Check("Settings › Sound lists the outputs and where music and video sound play", Lists());
         settings.Close();
         routing.Outputs.Remove(foldback.Id);
     }
