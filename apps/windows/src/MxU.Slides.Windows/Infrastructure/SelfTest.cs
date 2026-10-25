@@ -1084,23 +1084,31 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
     private async Task VideoCheck()
     {
         string? path = null;
+        using var limit = new CancellationTokenSource(TestVideoTimeLimit); // the encoder can hang on a slow PC (SelfTest.Slow.cs)
         try
         {
             var still = model.MediaItems.FirstOrDefault(m => !m.IsVideo);
             if (still is null || model.Library.BlobPath(still.Item) is not { } image) return;
             path = Path.Combine(Path.GetTempPath(), $"MxU self-test video {Guid.NewGuid():N}.mp4");
-            var file = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(image);
+            var file = await Limited(global::Windows.Storage.StorageFile.GetFileFromPathAsync(image), limit.Token);
             var composition = new global::Windows.Media.Editing.MediaComposition();
-            composition.Clips.Add(await global::Windows.Media.Editing.MediaClip.CreateFromImageFileAsync(file, TimeSpan.FromSeconds(3)));
-            var folder = await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(path)!);
-            var target = await folder.CreateFileAsync(Path.GetFileName(path), global::Windows.Storage.CreationCollisionOption.ReplaceExisting);
+            // 10 s: long enough that a slow PC can't reach its end before the show-flow checks pause it on the transport strip.
+            composition.Clips.Add(await Limited(global::Windows.Media.Editing.MediaClip.CreateFromImageFileAsync(file, TimeSpan.FromSeconds(10)), limit.Token));
+            var folder = await Limited(global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(path)!), limit.Token);
+            var target = await Limited(folder.CreateFileAsync(Path.GetFileName(path), global::Windows.Storage.CreationCollisionOption.ReplaceExisting), limit.Token);
             var profile = global::Windows.Media.MediaProperties.MediaEncodingProfile.CreateMp4(global::Windows.Media.MediaProperties.VideoEncodingQuality.HD720p);
-            var result = await composition.RenderToFileAsync(target, global::Windows.Media.Editing.MediaTrimmingPreference.Fast, profile);
+            var result = await Limited(composition.RenderToFileAsync(target, global::Windows.Media.Editing.MediaTrimmingPreference.Fast, profile), limit.Token);
             if (result != global::Windows.Media.Transcoding.TranscodeFailureReason.None)
             {
                 report.AppendLine($"NOTE  couldn't make a test video ({result}); video playback not checked");
                 return;
             }
+        }
+        catch (OperationCanceledException) when (limit.IsCancellationRequested)
+        {
+            report.AppendLine($"NOTE  couldn't make a test video in {TestVideoTimeLimit.TotalSeconds:0} s; video playback not checked");
+            Skip("video playback", TestVideoTimedOut);
+            return;
         }
         catch (Exception ex)
         {

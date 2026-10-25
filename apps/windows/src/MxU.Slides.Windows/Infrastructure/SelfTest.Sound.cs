@@ -305,6 +305,8 @@ public sealed partial class SelfTest
     private async Task<MediaItem?> VideoWithSound(List<string> made, double seconds)
     {
         string path;
+        // On GitHub's test machine the encoder can start and never finish: give it a time limit.
+        using var limit = new CancellationTokenSource(TestVideoTimeLimit);
         try
         {
             var still = model.MediaItems.FirstOrDefault(m => !m.IsVideo);
@@ -315,19 +317,25 @@ public sealed partial class SelfTest
             path = Path.Combine(Path.GetTempPath(), $"MxU self-test video with sound {Guid.NewGuid():N}.mp4");
             made.Add(path);
             var composition = new global::Windows.Media.Editing.MediaComposition();
-            composition.Clips.Add(await global::Windows.Media.Editing.MediaClip.CreateFromImageFileAsync(
-                await global::Windows.Storage.StorageFile.GetFileFromPathAsync(image), TimeSpan.FromSeconds(seconds)));
-            composition.BackgroundAudioTracks.Add(await global::Windows.Media.Editing.BackgroundAudioTrack.CreateFromFileAsync(
-                await global::Windows.Storage.StorageFile.GetFileFromPathAsync(tone)));
-            var folder = await global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(path)!);
-            var target = await folder.CreateFileAsync(Path.GetFileName(path), global::Windows.Storage.CreationCollisionOption.ReplaceExisting);
+            composition.Clips.Add(await Limited(global::Windows.Media.Editing.MediaClip.CreateFromImageFileAsync(
+                await Limited(global::Windows.Storage.StorageFile.GetFileFromPathAsync(image), limit.Token), TimeSpan.FromSeconds(seconds)), limit.Token));
+            composition.BackgroundAudioTracks.Add(await Limited(global::Windows.Media.Editing.BackgroundAudioTrack.CreateFromFileAsync(
+                await Limited(global::Windows.Storage.StorageFile.GetFileFromPathAsync(tone), limit.Token)), limit.Token));
+            var folder = await Limited(global::Windows.Storage.StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(path)!), limit.Token);
+            var target = await Limited(folder.CreateFileAsync(Path.GetFileName(path), global::Windows.Storage.CreationCollisionOption.ReplaceExisting), limit.Token);
             var profile = global::Windows.Media.MediaProperties.MediaEncodingProfile.CreateMp4(global::Windows.Media.MediaProperties.VideoEncodingQuality.HD720p);
-            var result = await composition.RenderToFileAsync(target, global::Windows.Media.Editing.MediaTrimmingPreference.Fast, profile);
+            var result = await Limited(composition.RenderToFileAsync(target, global::Windows.Media.Editing.MediaTrimmingPreference.Fast, profile), limit.Token);
             if (result != global::Windows.Media.Transcoding.TranscodeFailureReason.None)
             {
                 report.AppendLine($"NOTE  couldn't make a test video with sound ({result}); video sound not checked");
                 return null;
             }
+        }
+        catch (OperationCanceledException) when (limit.IsCancellationRequested)
+        {
+            report.AppendLine($"NOTE  couldn't make a test video with sound in {TestVideoTimeLimit.TotalSeconds:0} s; video sound not checked");
+            Skip("a video's sound through the app's own engine (in step with the picture, through a pause, a seek and an output change)", TestVideoTimedOut);
+            return null;
         }
         catch (Exception ex)
         {
