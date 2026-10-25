@@ -82,11 +82,24 @@ public sealed class EditBar : StackPanel
         var menu = new ContextMenu();
         menu.Items.Add(Item(model.UndoMenuText, "Ctrl+Z", model.CanUndoEdit, () => model.UndoEditCommand.Execute(null)));
         menu.Items.Add(Item(model.RedoMenuText, "Ctrl+Y", model.CanRedoEdit, () => model.RedoEditCommand.Execute(null)));
+        menu.Items.Add(new Separator());
+
+        // The clipboard works on the canvas's objects while some are selected in Edit mode, else on the picked slides.
+        var target = model.MenuTarget;
+        var what = target == EditTarget.Objects
+            ? (model.Canvas?.Selection.Count ?? 0) is var n && n > 1 ? $" {n} Objects" : " Object"
+            : model.PickedSlideIds.Count is var s && s > 1 ? $" {s} Slides" : " Slide";
+        var any = target == EditTarget.Objects ? model.HasCanvasSelection : model.PickedSlideIds.Count > 0;
+        menu.Items.Add(Item("Cut" + what, "Ctrl+X", any, () => model.Cut(target)));
+        menu.Items.Add(Item("Copy" + what, "Ctrl+C", any, () => model.Copy(target)));
+        menu.Items.Add(Item("Paste", "Ctrl+V", model.HasPresentation && Infrastructure.AppClipboard.HasAnything(), () => _ = model.Paste(target)));
+        menu.Items.Add(Item("Duplicate" + what, "Ctrl+D", any, () => model.Duplicate(target)));
+        menu.Items.Add(Item("Select All Slides", "Ctrl+A", model.IsEditing && model.HasPresentation, () => model.SelectAllSlidesCommand.Execute(null)));
         foreach (var extra in MenuSections) extra(model, menu);
         return menu;
     }
 
-    /// <summary>More of the Edit menu, added by the clipboard, arranging and text tools.</summary>
+    /// <summary>More of the Edit menu (arranging, text tools), added by their own files.</summary>
     internal static readonly List<Action<MainViewModel, ContextMenu>> MenuSections = [];
 
     private void OpenMenu(Button anchor)

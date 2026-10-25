@@ -290,7 +290,8 @@ public partial class MainWindow : Window
 
     private void SlideTile_Click(object sender, MouseButtonEventArgs e)
     {
-        if (ContextOf<SlideTileViewModel>(sender) is { } tile) model.SlideClickedCommand.Execute(tile);
+        // Ctrl or Shift picks several instead (MainWindow.Editing.cs).
+        if (ContextOf<SlideTileViewModel>(sender) is { } tile && !PickTile(tile)) model.SlideClickedCommand.Execute(tile);
         Keyboard.ClearFocus();
         Focus();
     }
@@ -298,14 +299,14 @@ public partial class MainWindow : Window
     private void SlideTile_RightClick(object sender, MouseButtonEventArgs e)
     {
         if (ContextOf<SlideTileViewModel>(sender) is not { } tile) return;
-        model.SelectedSlide = tile;
+        // Right-clicking one of several picked slides keeps them all picked, for "Copy 3 Slides".
+        if (!model.PickedSlideIds.Contains(tile.Slide.Id)) model.SelectedSlide = tile;
         var menu = new ContextMenu();
         menu.Items.Add(Item("Go live", () => model.GoLiveCommand.Execute(tile)));
         menu.Items.Add(Item("Edit this slide", () => { model.IsEditing = true; model.SelectedSlide = tile; }));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("Add a slide after", () => model.AddSlideCommand.Execute(null)));
-        menu.Items.Add(Item("Duplicate", () => model.DuplicateSlideCommand.Execute(null)));
-        menu.Items.Add(Item("Delete", () => model.DeleteSlideCommand.Execute(null)));
+        AddSlideEditItems(menu); // Cut, Copy, Paste, Duplicate, Delete (MainWindow.Editing.cs)
         if (model.SelectedMedia is { } media)
         {
             menu.Items.Add(new Separator());

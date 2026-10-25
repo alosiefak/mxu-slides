@@ -160,24 +160,19 @@ public sealed partial class MainViewModel
         AfterStructureChange([]);
     }
 
+    /// <summary>
+    /// Copies of the selection, 24 points down and right, grouped objects in a new group of their
+    /// own (the Mac's duplicateSelectedObjects). Their Windows extras come too.
+    /// </summary>
     [RelayCommand]
     private void DuplicateSelectedObjects()
     {
-        if (EditedSlide is not { } slide || SelectedObjects() is not { Count: > 0 } selected || canvas is null) return;
-        var copies = new List<SlideObject>();
-        foreach (var o in selected)
-        {
-            var frame = canvas.FrameOf(o);
-            var copy = MxuJson.Clone(o);
-            copy.Id = LibraryStore.NewId();
-            copy.X = frame.X + 40;
-            copy.Y = frame.Y + 40;
-            copy.Width = frame.Width;
-            copy.Height = frame.Height;
-            copies.Add(copy);
-        }
-        slide.Objects.AddRange(copies);
+        if (EditedSlide is not { } slide || canvas is not { Selection.Count: > 0 } editor) return;
+        var clip = Core.Editing.EditorClipboard.CopyObjects(slide, editor.Selection);
+        var copies = Core.Editing.EditorClipboard.PasteObjects(slide, clip, cascade: 1, editor.FrameOf);
+        for (var i = 0; i < copies.Count; i++) Library.Extras.CopyOwner(clip.Objects[i].Id, copies[i].Id);
         AfterStructureChange(copies.Select(c => c.Id));
+        FlushPendingSave();
     }
 
     [RelayCommand]

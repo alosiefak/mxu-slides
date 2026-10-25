@@ -65,6 +65,7 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(SlideNotes));
         OnPropertyChanged(nameof(SlideHasBackground));
         OnPropertyChanged(nameof(SlideBackgroundColor));
+        SelectionPicks(newValue);
     }
 
     public DesignChoice? SelectedDesign
@@ -171,30 +172,13 @@ public sealed partial class MainViewModel
         SelectedSlide = Slides.FirstOrDefault(t => t.Slide.Id == slide.Id);
     }
 
+    /// <summary>Duplicates the picked slides (new ids, Windows extras copied: MainViewModel.Clipboard.cs).</summary>
     [RelayCommand]
-    private void DuplicateSlide()
-    {
-        if (CurrentPresentation is not { } p || EditedSlide is not { } source) return;
-        var copy = MxuJson.Clone(source);
-        copy.Id = LibraryStore.NewId();
-        foreach (var o in copy.Objects) o.Id = LibraryStore.NewId();
-        TransitionExtras.Copied(source, copy);
-        p.Slides.Insert(p.Slides.IndexOf(source) + 1, copy);
-        SavePresentation(p);
-        RebuildSlides();
-        SelectedSlide = Slides.FirstOrDefault(t => t.Slide.Id == copy.Id);
-    }
+    private void DuplicateSlide() => DuplicatePickedSlides();
 
+    /// <summary>Deletes the picked slides; a presentation keeps at least one.</summary>
     [RelayCommand]
-    private void DeleteSlide()
-    {
-        if (CurrentPresentation is not { } p || EditedSlide is not { } slide || p.Slides.Count <= 1) return;
-        var index = p.Slides.IndexOf(slide);
-        p.Slides.Remove(slide);
-        SavePresentation(p);
-        RebuildSlides();
-        SelectedSlide = Slides.ElementAtOrDefault(Math.Min(index, Slides.Count - 1));
-    }
+    private void DeleteSlide() => DeletePickedSlides();
 
     [RelayCommand]
     private void MoveSlideEarlier() => MoveSlide(-1);

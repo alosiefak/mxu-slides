@@ -125,6 +125,34 @@ public sealed class WindowsExtras
         Changed?.Invoke(kind, ownerId);
     }
 
+    /// <summary>
+    /// Gives <paramref name="toOwner"/> a copy of every extra <paramref name="fromOwner"/> has, of every
+    /// kind: a pasted or duplicated slide keeps its Windows-only transition and its production steps,
+    /// a pasted object its kinetic build. The copy keeps its fingerprint, which still matches, as the
+    /// copy's shared part is the same. Returns how many were copied.
+    /// </summary>
+    public int CopyOwner(string fromOwner, string toOwner)
+    {
+        if (fromOwner == toOwner || !Directory.Exists(Root)) return 0;
+        var copied = 0;
+        foreach (var folder in Directory.EnumerateDirectories(Root))
+        {
+            var kind = Unsafe(Path.GetFileName(folder));
+            if (FileJson(kind, fromOwner) is not { } json) continue;
+            var path = PathOf(kind, toOwner);
+            UndoCapture? undoing;
+            lock (gate)
+            {
+                undoing = Undo?.Capture(new UndoTarget.Extra(kind, toOwner), path, documentType: null);
+                LibraryStore.AtomicWrite(path, json);
+            }
+            UndoHistory.Record(undoing, json);
+            Changed?.Invoke(kind, toOwner);
+            copied++;
+        }
+        return copied;
+    }
+
     /// <summary>The owner ids that have an extra of <paramref name="kind"/>.</summary>
     public IReadOnlyList<string> Owners(string kind)
     {
