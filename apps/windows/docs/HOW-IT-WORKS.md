@@ -667,6 +667,7 @@ As on the Mac, a finished recording is filed into the media library, so it appea
 2. When it's finished, `Broadcast/Library/RecordingLibrary.Adopt` fingerprints it, saves a `MediaItem` (folder "Recordings" unless the preset says otherwise, with when and by which preset it was recorded) and moves the file into the library's Blobs folder. This runs on its own thread (`BroadcastController.FileRecordingsIntoLibrary`), so the screen never waits for a long recording.
 3. **Also copy to** puts a copy in an ordinary folder too, such as Videos\MxU Slides, OneDrive or Dropbox.
 4. If the app stops before a recording is filed, the file is still in the spool. The next launch files it. The item is saved before the file moves, so this never makes two items.
+5. Saving the item makes the Media tab add its tile at once, a moment *before* the file has moved. On a busy PC the tile could be drawn in that moment and stay marked "FILE MISSING". So when filing finishes (`RecordingFiled`), the Media tab checks its files again.
 
 **Something learnt the hard way:** in a COM interface, .NET sends a `byte[]` as a SAFEARRAY unless told otherwise. Media Foundation expects a plain pointer. So reading a blob overwrote memory and crashed the app, and the MP4 writer had been giving Windows a garbage H.264 header; recordings only played because the decoder found the real one inside the video. Every blob in `MediaFoundationInterop.cs` is now marked `LPArray`, and `MediaFoundationBlobTests` checks a blob round-trips byte for byte.
 

@@ -227,8 +227,8 @@ public sealed partial class SelfTest
         var live = model.Broadcast.Streaming.Live;
         Check("a stream preset replays the newest recording", problem is null && live?.FileSource is not null && live.MediaDurationSeconds > 1);
         Check("replaying doesn't record the replay again", model.Broadcast.Recording.Sessions.All(s => s.PresetId != preset.Id));
-        // Up to 6 seconds: opening the file and starting Windows' decoders can take a while on a slow PC.
-        for (var i = 0; i < 60 && live?.FileSource?.FramesDelivered is not > 20; i++) await Delay(100);
+        // Up to 20 seconds: opening the file and starting Windows' decoders can take a while on a slow PC.
+        await WhenShown(() => live?.FileSource?.FramesDelivered > 20, 20);
         report.AppendLine($"      replay: {live?.FileSource?.FramesDelivered} pictures decoded, {live?.FileSource?.FramesDropped} dropped, toolbar \"{model.BroadcastButtonText}\"");
         Check("the replayed file is decoded as it streams", live?.FileSource?.FramesDelivered > 20);
         model.StopBroadcast(preset.Id);
@@ -273,6 +273,8 @@ public sealed partial class SelfTest
             if (model.Library.All<MediaItem>().FirstOrDefault(m => m.RecordedAt is not null && m.Name == name) is { } item
                 && model.Library.BlobPath(item) is { } blob)
             {
+                // The library files it on a background thread; the Media tab's list follows on the UI thread a moment later.
+                await WhenShown(() => model.MediaItems.Any(m => m.Item.Id == item.Id), 10);
                 Check($"a finished recording appears in the Media tab ({item.Folder}, recorded by its preset)",
                     model.MediaItems.Any(m => m.Item.Id == item.Id) && item.RecordedByPresetId is { Length: > 0 } by && by == session.PresetId);
                 return blob;
