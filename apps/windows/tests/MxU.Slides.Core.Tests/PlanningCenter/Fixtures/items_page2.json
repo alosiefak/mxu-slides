@@ -1,0 +1,437 @@
+{
+  "links": {
+    "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items?include=song,arrangement,key,media,item_notes&per_page=100&offset=6"
+  },
+  "data": [
+    {
+      "type": "Item",
+      "id": "500000007",
+      "attributes": {
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-24T19:31:08Z",
+        "title": "Faithful Still",
+        "sequence": 7,
+        "length": 260,
+        "item_type": "song",
+        "html_details": null,
+        "service_position": "during",
+        "description": null,
+        "key_name": "D",
+        "custom_arrangement_sequence": null,
+        "custom_arrangement_sequence_short": null,
+        "custom_arrangement_sequence_full": null
+      },
+      "relationships": {
+        "plan": {
+          "data": {
+            "type": "Plan",
+            "id": "80000001"
+          }
+        },
+        "song": {
+          "data": {
+            "type": "Song",
+            "id": "30000003"
+          }
+        },
+        "arrangement": {
+          "data": {
+            "type": "Arrangement",
+            "id": "40000003"
+          }
+        },
+        "key": {
+          "data": null
+        },
+        "selected_layout": {
+          "data": null
+        },
+        "selected_background": {
+          "data": null
+        },
+        "media": {
+          "data": []
+        },
+        "item_notes": {
+          "data": []
+        }
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items/500000007"
+      }
+    },
+    {
+      "type": "Item",
+      "id": "500000008",
+      "attributes": {
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-24T19:31:08Z",
+        "title": "Open Skies",
+        "sequence": 8,
+        "length": 240,
+        "item_type": "song",
+        "html_details": null,
+        "service_position": "during",
+        "description": null,
+        "key_name": null,
+        "custom_arrangement_sequence": null,
+        "custom_arrangement_sequence_short": null,
+        "custom_arrangement_sequence_full": null
+      },
+      "relationships": {
+        "plan": {
+          "data": {
+            "type": "Plan",
+            "id": "80000001"
+          }
+        },
+        "song": {
+          "data": {
+            "type": "Song",
+            "id": "30000004"
+          }
+        },
+        "arrangement": {
+          "data": {
+            "type": "Arrangement",
+            "id": "40000004"
+          }
+        },
+        "key": {
+          "data": null
+        },
+        "selected_layout": {
+          "data": null
+        },
+        "selected_background": {
+          "data": null
+        },
+        "media": {
+          "data": []
+        },
+        "item_notes": {
+          "data": []
+        }
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items/500000008"
+      }
+    },
+    {
+      "type": "Item",
+      "id": "500000009",
+      "attributes": {
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-24T19:31:08Z",
+        "title": "Message: Grace That Holds",
+        "sequence": 9,
+        "length": 1800,
+        "item_type": "item",
+        "html_details": null,
+        "service_position": "during",
+        "description": "Romans 5:1-11",
+        "key_name": null,
+        "custom_arrangement_sequence": null,
+        "custom_arrangement_sequence_short": null,
+        "custom_arrangement_sequence_full": null
+      },
+      "relationships": {
+        "plan": {
+          "data": {
+            "type": "Plan",
+            "id": "80000001"
+          }
+        },
+        "song": {
+          "data": null
+        },
+        "arrangement": {
+          "data": null
+        },
+        "key": {
+          "data": null
+        },
+        "selected_layout": {
+          "data": null
+        },
+        "selected_background": {
+          "data": null
+        },
+        "media": {
+          "data": []
+        },
+        "item_notes": {
+          "data": []
+        }
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items/500000009"
+      }
+    },
+    {
+      "type": "Item",
+      "id": "500000010",
+      "attributes": {
+        "created_at": "2026-10-19T16:22:04Z",
+        "updated_at": "2026-10-24T19:31:08Z",
+        "title": "Steady Ground",
+        "sequence": 10,
+        "length": 275,
+        "item_type": "song",
+        "html_details": null,
+        "service_position": "post",
+        "description": null,
+        "key_name": "G",
+        "custom_arrangement_sequence": null,
+        "custom_arrangement_sequence_short": null,
+        "custom_arrangement_sequence_full": null
+      },
+      "relationships": {
+        "plan": {
+          "data": {
+            "type": "Plan",
+            "id": "80000001"
+          }
+        },
+        "song": {
+          "data": {
+            "type": "Song",
+            "id": "30000005"
+          }
+        },
+        "arrangement": {
+          "data": {
+            "type": "Arrangement",
+            "id": "40000005"
+          }
+        },
+        "key": {
+          "data": null
+        },
+        "selected_layout": {
+          "data": null
+        },
+        "selected_background": {
+          "data": null
+        },
+        "media": {
+          "data": []
+        },
+        "item_notes": {
+          "data": []
+        }
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/service_types/1100001/plans/80000001/items/500000010"
+      }
+    }
+  ],
+  "included": [
+    {
+      "type": "Song",
+      "id": "30000003",
+      "attributes": {
+        "admin": "Grace Community Music",
+        "author": "Ruth Lane",
+        "ccli_number": null,
+        "copyright": null,
+        "created_at": "2020-01-12T18:00:00Z",
+        "hidden": false,
+        "last_scheduled_at": "2026-10-25T14:00:00Z",
+        "last_scheduled_short_dates": "Oct 25",
+        "notes": null,
+        "themes": "Hope, Morning",
+        "title": "Faithful Still",
+        "updated_at": "2026-09-01T12:00:00Z"
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/songs/30000003"
+      }
+    },
+    {
+      "type": "Arrangement",
+      "id": "40000003",
+      "attributes": {
+        "archived_at": null,
+        "bpm": null,
+        "chord_chart": null,
+        "chord_chart_chord_color": 3,
+        "chord_chart_columns": 2,
+        "chord_chart_font": "Helvetica",
+        "chord_chart_font_size": 11,
+        "chord_chart_key": null,
+        "created_at": "2020-01-12T18:00:00Z",
+        "has_chord_chart": false,
+        "has_chords": false,
+        "length": null,
+        "lyrics": "Verse 1\nFaithful still\nFaithful still",
+        "lyrics_enabled": true,
+        "meter": null,
+        "name": "Default Arrangement",
+        "notes": null,
+        "number_chart_enabled": false,
+        "numeral_chart_enabled": false,
+        "print_margin": "0.5in",
+        "print_orientation": "Portrait",
+        "print_page_size": "Letter",
+        "sequence": [
+          "Verse 1"
+        ],
+        "sequence_full": [
+          {
+            "label": "Verse 1",
+            "number": null
+          }
+        ],
+        "sequence_short": [
+          "V1"
+        ],
+        "updated_at": "2026-09-01T12:00:00Z"
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/songs/0/arrangements/40000003"
+      }
+    },
+    {
+      "type": "Song",
+      "id": "30000004",
+      "attributes": {
+        "admin": "Grace Community Music",
+        "author": "Ken Ward",
+        "ccli_number": 9000404,
+        "copyright": null,
+        "created_at": "2020-01-12T18:00:00Z",
+        "hidden": false,
+        "last_scheduled_at": "2026-10-25T14:00:00Z",
+        "last_scheduled_short_dates": "Oct 25",
+        "notes": null,
+        "themes": "Hope, Morning",
+        "title": "Open Skies",
+        "updated_at": "2026-09-01T12:00:00Z"
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/songs/30000004"
+      }
+    },
+    {
+      "type": "Arrangement",
+      "id": "40000004",
+      "attributes": {
+        "archived_at": null,
+        "bpm": null,
+        "chord_chart": null,
+        "chord_chart_chord_color": 3,
+        "chord_chart_columns": 2,
+        "chord_chart_font": "Helvetica",
+        "chord_chart_font_size": 11,
+        "chord_chart_key": null,
+        "created_at": "2020-01-12T18:00:00Z",
+        "has_chord_chart": false,
+        "has_chords": false,
+        "length": null,
+        "lyrics": null,
+        "lyrics_enabled": true,
+        "meter": null,
+        "name": "Default Arrangement",
+        "notes": null,
+        "number_chart_enabled": false,
+        "numeral_chart_enabled": false,
+        "print_margin": "0.5in",
+        "print_orientation": "Portrait",
+        "print_page_size": "Letter",
+        "sequence": [],
+        "sequence_full": [],
+        "sequence_short": [],
+        "updated_at": "2026-09-01T12:00:00Z"
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/songs/0/arrangements/40000004"
+      }
+    },
+    {
+      "type": "Song",
+      "id": "30000005",
+      "attributes": {
+        "admin": "Grace Community Music",
+        "author": "Mia Stone",
+        "ccli_number": 9000505,
+        "copyright": "2025 Example Music Co.",
+        "created_at": "2020-01-12T18:00:00Z",
+        "hidden": false,
+        "last_scheduled_at": "2026-10-25T14:00:00Z",
+        "last_scheduled_short_dates": "Oct 25",
+        "notes": null,
+        "themes": "Hope, Morning",
+        "title": "Steady Ground",
+        "updated_at": "2026-09-01T12:00:00Z"
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/songs/30000005"
+      }
+    },
+    {
+      "type": "Arrangement",
+      "id": "40000005",
+      "attributes": {
+        "archived_at": null,
+        "bpm": 120.0,
+        "chord_chart": "VERSE 1\n[G]Feet on steady [C]ground\n[Em]You will hold me [D]now\n[G]Storms may rage a[C]round\n[Em]Still I will not [D]drown\nCOLUMN_BREAK\nCHORUS\n[C]Steady, [G]steady\n[D]You are steady [G]ground\n[C]Steady, [G]steady\n[D]Never let me [G]down",
+        "chord_chart_chord_color": 3,
+        "chord_chart_columns": 2,
+        "chord_chart_font": "Helvetica",
+        "chord_chart_font_size": 11,
+        "chord_chart_key": "G",
+        "created_at": "2020-01-12T18:00:00Z",
+        "has_chord_chart": true,
+        "has_chords": true,
+        "length": 275,
+        "lyrics": null,
+        "lyrics_enabled": true,
+        "meter": "4/4",
+        "name": "Band",
+        "notes": null,
+        "number_chart_enabled": false,
+        "numeral_chart_enabled": false,
+        "print_margin": "0.5in",
+        "print_orientation": "Portrait",
+        "print_page_size": "Letter",
+        "sequence": [],
+        "sequence_full": [],
+        "sequence_short": [
+          "V1",
+          "C",
+          "V1",
+          "C"
+        ],
+        "updated_at": "2026-09-01T12:00:00Z"
+      },
+      "links": {
+        "self": "https://api.planningcenteronline.com/services/v2/songs/0/arrangements/40000005"
+      }
+    }
+  ],
+  "meta": {
+    "total_count": 10,
+    "count": 4,
+    "can_order_by": [
+      "sequence"
+    ],
+    "can_query_by": [],
+    "can_include": [
+      "arrangement",
+      "key",
+      "media",
+      "selected_attachment",
+      "selected_background",
+      "selected_layout",
+      "song",
+      "item_notes",
+      "item_times"
+    ],
+    "can_filter": [],
+    "parent": {
+      "id": "80000001",
+      "type": "Plan"
+    }
+  }
+}
