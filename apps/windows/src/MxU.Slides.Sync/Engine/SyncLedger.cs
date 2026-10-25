@@ -28,6 +28,14 @@ public sealed class LedgerEntry
     public long LocalLength { get; set; }
     public DateTime LocalWriteUtc { get; set; }
 
+    /// <summary>
+    /// A Windows edit already taken into this PC's copy but not yet out to the shared folder
+    /// (the folder moved on mid-way, or the app closed): its fingerprint, and the heads of the
+    /// copy it was made on. It's never taken in twice (that would add a new slide twice).
+    /// </summary>
+    public string? TakenLocalHash { get; set; }
+    public List<string>? TakenHeads { get; set; }
+
     /// <summary>The document's name, for the log.</summary>
     public string Name { get; set; } = "";
 }
@@ -41,6 +49,9 @@ public sealed class Tombstone
     public string Replica { get; set; } = "";
 
     public string Name { get; set; } = "";
+
+    /// <summary>The fingerprint of the shared file last found to be just the old copy (looked at once, not every pass).</summary>
+    public string? SharedHash { get; set; }
 }
 
 /// <summary>

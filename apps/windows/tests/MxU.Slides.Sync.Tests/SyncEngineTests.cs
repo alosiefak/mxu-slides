@@ -172,6 +172,48 @@ public sealed class SyncEngineTests
     }
 
     [Fact]
+    public void AMacWriteInTheMiddleOfSendingIsTakenInAndTheWindowsEditIsNotDoubled()
+    {
+        using var fixture = new SyncFixture();
+        fixture.Store.Save(Samples.Song());
+        fixture.Sync();
+        fixture.WindowsEdit<Presentation>("song", s => s.Slides.Insert(1, new Slide { Id = "new", Name = "New", Objects = [] }));
+        var once = false;
+        fixture.Engine.BeforeSharedWrite = _ =>
+        {
+            if (once) return;
+            once = true;
+            fixture.MacEdit<Presentation>(Songs, "song", s => s.Slides[^1].Notes = "Mac, meanwhile");
+        };
+        fixture.Sync();
+        var mac = fixture.MacRead<Presentation>(Songs, "song");
+        Assert.Equal(["slide-1", "new", "slide-2", "slide-3", "slide-4", "slide-5"], mac.Slides.Select(s => s.Id));
+        Assert.Equal("Mac, meanwhile", mac.Slides[^1].Notes);
+        Assert.True(MxuJson.StructurallyEqual(mac, fixture.Store.Get<Presentation>("song")));
+    }
+
+    [Fact]
+    public void AWindowsEditTakenInBeforeTheAppClosedIsNotDoubledAfterwards()
+    {
+        using var fixture = new SyncFixture();
+        fixture.Store.Save(Samples.Song());
+        fixture.Sync();
+        fixture.WindowsEdit<Presentation>("song", s => s.Slides.Insert(1, new Slide { Id = "new", Name = "New", Objects = [] }));
+        // The edit is in this PC's copy, but the folder can't be written; then the app closes.
+        fixture.Engine.BeforeSharedWrite = _ => throw new IOException("the network share dropped");
+        fixture.Sync();
+        Assert.DoesNotContain(fixture.MacRead<Presentation>(Songs, "song").Slides, s => s.Id == "new");
+        fixture.Engine.Dispose();
+        // Next time, the user has edited the song again.
+        fixture.WindowsEdit<Presentation>("song", s => s.Slides[0].Notes = "Later");
+        var again = fixture.NewEngine();
+        again.SyncNowAndWait();
+        var mac = fixture.MacRead<Presentation>(Songs, "song");
+        Assert.Equal(["slide-1", "new", "slide-2", "slide-3", "slide-4", "slide-5"], mac.Slides.Select(s => s.Id));
+        Assert.Equal("Later", mac.Slides[0].Notes);
+    }
+
+    [Fact]
     public void ASaveSyncHasNotSeenIsNeverOverwritten()
     {
         // The library's own guard: sync saves only over the file it read.

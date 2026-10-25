@@ -92,6 +92,10 @@ public sealed partial class SyncEngine
         {
             return Outcome.Done;
         }
+        if (local is null && ledger.Tombstones.TryGetValue(key, out var buried) && buried.SharedHash == SharedFolder.Fingerprint(sharedBytes!))
+        {
+            return Outcome.Done;
+        }
         if (sharedBytes is null)
         {
             // New on Windows.
@@ -112,7 +116,10 @@ public sealed partial class SyncEngine
         {
             // New from the Mac, unless it's the old copy of something deleted here.
             if (ledger.Tombstones.TryGetValue(key, out var tombstone) && NothingNewSince(tombstone, arrived))
+            {
+                tombstone.SharedHash = sharedStamp.Hash;
                 return Outcome.Done;
+            }
             if (ledger.Tombstones.Remove(key))
                 Log.Add(SyncDirection.Note, $"'{Name(decoded)}' was deleted here, but changed on the Mac since, so it's back.");
             if (!Save(key, kind, decoded, expected: null)) return Outcome.Again;
@@ -181,7 +188,7 @@ public sealed partial class SyncEngine
     {
         var sharedHash = sharedBytes is null ? null : SharedFolder.Fingerprint(sharedBytes);
         var changedShared = sharedBytes is not null && sharedHash != entry.SharedHash;
-        var changedHere = local is not null && local.Hash != entry.LocalHash;
+        var changedHere = local is not null && local.Hash != entry.LocalHash && local.Hash != entry.TakenLocalHash;
         using var replica = LoadReplica(key) ?? (sharedBytes is not null ? LoadShared(sharedBytes, kind) : null);
         if (replica is null)
         {
@@ -233,6 +240,7 @@ public sealed partial class SyncEngine
                 if (changedHere) TakeInLocal(kind, key, entry, replica, local);
                 var kept = Decoded(replica, kind);
                 SaveReplica(key, replica);
+                Taken(entry, changedHere, local);
                 if (!WriteShared(kind, id, replica, expected: null, out var written)) return Outcome.Again;
                 if (!Project(key, kind, kept, local)) return Outcome.Again;
                 Remember(key, kind, replica, windows.Read(kind, id)!, written);
@@ -265,6 +273,7 @@ public sealed partial class SyncEngine
         if (changedHere) TakeInLocal(kind, key, entry, replica, local);
         var merged = Decoded(replica, kind);
         SaveReplica(key, replica);
+        Taken(entry, changedHere, local);
 
         var result = new Written(sharedHash!, shared.Stamp(kind, id) ?? default);
         // The shared copy lacks something when Windows changed, or when it didn't hold all the replica had.
@@ -289,11 +298,14 @@ public sealed partial class SyncEngine
     private void TakeInLocal(MacKind kind, string key, LedgerEntry entry, AmDocument replica, LocalDocument local)
     {
         var candidates = versions.TryGetValue(key, out var known) ? known.ToList() : [];
-        var recorded = new DocHeads(entry.Heads);
-        if (!candidates.Any(c => c.Heads.Equals(recorded)) && !recorded.IsEmpty)
+        // After a restart the remembered versions are gone; the ledger still has two to go on.
+        foreach (var heads in new[] { entry.Heads, entry.TakenHeads })
         {
+            if (heads is not { Count: > 0 }) continue;
+            var recorded = new DocHeads(heads);
+            if (candidates.Any(c => c.Heads.Equals(recorded))) continue;
             using var then = replica.ForkAt(recorded);
-            if (documents.Decode(then, kind).Value is { } value) candidates.Add((value, recorded));
+            if (documents.Decode(then, kind).Value is { } value) candidates.Insert(0, (value, recorded));
         }
         // The nearest version wins; of two as near, the newer.
         var basis = candidates.Count == 0
@@ -303,11 +315,37 @@ public sealed partial class SyncEngine
         using var edit = basis.Equals(replica.Heads) ? replica.Fork() : replica.ForkAt(basis);
         documents.Edit(edit, local.Json, kind, options.Now());
         replica.Merge(edit);
+        // The copy now says exactly what Windows says: a version a later edit can start from.
+        takenHeads = edit.Heads;
+        Version(key, local.Json, takenHeads);
+    }
+
+    /// <summary>The heads of the copy the last Windows edit was made on (<see cref="TakeInLocal"/>).</summary>
+    private DocHeads takenHeads = DocHeads.None;
+
+    /// <summary>Notes in the ledger, at once, that a Windows edit is in this PC's copy, so it's never taken in twice.</summary>
+    private void Taken(LedgerEntry entry, bool changedHere, LocalDocument local)
+    {
+        if (!changedHere) return;
+        entry.TakenLocalHash = local.Hash;
+        entry.TakenHeads = takenHeads.Hashes.ToList();
+        ledger.Save(LedgerPath);
+    }
+
+    private void Version(string key, JsonObject json, DocHeads heads)
+    {
+        if (!versions.TryGetValue(key, out var list)) versions[key] = list = [];
+        list.RemoveAll(v => v.Heads.Equals(heads));
+        list.Add((json, heads));
+        if (list.Count > VersionsKept) list.RemoveAt(0);
     }
 
     // MARK: Helpers
 
     private readonly record struct Written(string Hash, FileStamp Stamp);
+
+    /// <summary>For the tests: runs just before sync looks at a shared file it's about to write (to play a Mac writing it at that moment).</summary>
+    internal Action<string>? BeforeSharedWrite { get; set; }
 
     /// <summary>
     /// Writes the document to the shared folder, as the Mac's DocumentStore.save does, but first
@@ -318,6 +356,7 @@ public sealed partial class SyncEngine
     private bool WriteShared(MacKind kind, string id, AmDocument document, string? expected, out Written written)
     {
         written = default;
+        BeforeSharedWrite?.Invoke(Key(kind, id));
         var now = shared.Read(kind, id);
         if ((now is null ? null : SharedFolder.Fingerprint(now)) != expected) return false;
         var bytes = document.Save();
@@ -373,10 +412,7 @@ public sealed partial class SyncEngine
             Name = local.Name,
         };
         notSent.Remove(key);
-        if (!versions.TryGetValue(key, out var list)) versions[key] = list = [];
-        list.RemoveAll(v => v.Heads.Equals(heads));
-        list.Add((local.Json, heads));
-        if (list.Count > VersionsKept) list.RemoveAt(0);
+        Version(key, local.Json, heads);
     }
 
     private void Forget(string key)
