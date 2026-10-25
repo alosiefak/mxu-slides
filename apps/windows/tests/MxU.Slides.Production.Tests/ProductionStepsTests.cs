@@ -198,6 +198,19 @@ public sealed class ProductionStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task ANewPasswordSignsInAgain()
+    {
+        using var obs = new ObsSimulator("right");
+        using var hub = Hub();
+        hub.Start();
+        var device = Wait.Device(DeviceKind.Obs, obs.Port);
+        hub.SaveDevice(device, "wrong");
+        await Wait.Until(() => hub.StatusOf(device.Id).Detail.Contains("refused"), what: "the refusal");
+        hub.SaveDevice(device, "right");
+        await Wait.Until(() => hub.StatusOf(device.Id).IsOnline, what: "OBS to accept the new password");
+    }
+
+    [Fact]
     public void DevicesAreThisPCsAndPasswordsAreKeptApart()
     {
         using (var hub = Hub())

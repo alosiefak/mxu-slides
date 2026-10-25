@@ -58,10 +58,20 @@ public sealed class DmxEngine : IDisposable
     private void Run()
     {
         var period = (long)(Stopwatch.Frequency / FramesPerSecond);
+        // The shortest gap an early frame may leave after the last one: 44 frames a second at most,
+        // the fastest DMX itself goes, however often a dragged slider wakes the thread.
+        var shortest = Stopwatch.Frequency / 44;
         var next = Stopwatch.GetTimestamp();
         var lastTick = 0L;
         while (!stopped)
         {
+            // Nothing to send (no node, or no lighting step yet): sleep until something changes.
+            if (outputs.Count == 0 || !lighting.IsActive)
+            {
+                wake.WaitOne(250);
+                next = Stopwatch.GetTimestamp();
+                continue;
+            }
             var now = Stopwatch.GetTimestamp();
             var woken = false;
             if (next > now)
@@ -69,13 +79,17 @@ public sealed class DmxEngine : IDisposable
                 var wait = (int)Math.Ceiling((next - now) * 1000.0 / Stopwatch.Frequency);
                 woken = wake.WaitOne(Math.Max(1, wait));
                 if (stopped) return;
-                // A slider being dragged wakes it many times a second: an early frame at most every
-                // half tick, so the rate never runs far past what DMX nodes expect (about 44 a second at most).
-                if (woken && Stopwatch.GetTimestamp() - lastTick < period / 2) continue;
+                // Too soon after the last frame: the change goes out with the next one instead.
+                if (woken && Stopwatch.GetTimestamp() - lastTick < shortest) continue;
             }
             lastTick = Stopwatch.GetTimestamp();
             Tick();
-            if (woken) continue;
+            if (woken)
+            {
+                // An early frame: the steady beat carries on a whole tick after it.
+                next = lastTick + period;
+                continue;
+            }
             next += period;
             // Far behind (the PC was asleep, or very busy): carry on from now rather than send a burst.
             if (next < Stopwatch.GetTimestamp() - period) next = Stopwatch.GetTimestamp() + period;

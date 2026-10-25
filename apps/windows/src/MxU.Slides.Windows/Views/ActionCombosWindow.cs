@@ -246,8 +246,8 @@ public sealed class ActionCombosWindow : Window
         if (Combo(id) is not { } combo) return;
         var run = new Button
         {
-            Content = "Run", Padding = new Thickness(10, 0, 10, 0), MinHeight = 22, FontSize = 11, IsEnabled = combo.Actions.Count > 0,
-            ToolTip = EditorKit.RunTooltip(combo.Actions.Count),
+            Content = "Run", Padding = new Thickness(10, 0, 10, 0), MinHeight = 22, FontSize = 11, IsEnabled = StepCount(id) > 0,
+            ToolTip = EditorKit.RunTooltip(StepCount(id)),
         };
         run.Click += (_, _) => Run(id);
         var row = new DockPanel { Margin = new Thickness(indent ? 18 : 0, 0, 0, 0) };
@@ -342,9 +342,9 @@ public sealed class ActionCombosWindow : Window
             return Combo(id)?.Name ?? renamed;
         }, "Combo name");
         nameBox.FontSize = 16;
-        var run = EditorKit.Button("▶ Run", () => Run(id), EditorKit.RunTooltip(combo.Actions.Count), accent: true);
+        var run = EditorKit.Button("▶ Run", () => Run(id), EditorKit.RunTooltip(StepCount(id)), accent: true);
         run.Margin = new Thickness(10, 0, 0, 0);
-        run.IsEnabled = combo.Actions.Count > 0;
+        run.IsEnabled = StepCount(id) > 0;
         var top = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
         DockPanel.SetDock(run, Dock.Right);
         top.Children.Add(run);
@@ -382,12 +382,12 @@ public sealed class ActionCombosWindow : Window
         editor.Changed += actions =>
         {
             Save(() => model.Automation.UpdateActionCombo(id, c => c.Actions = [.. actions]));
-            run.IsEnabled = actions.Count > 0;
-            run.ToolTip = EditorKit.RunTooltip(actions.Count);
+            run.IsEnabled = StepCount(id) > 0;
+            run.ToolTip = EditorKit.RunTooltip(StepCount(id));
         };
         Editor = editor;
         // Windows only: the combo's production steps (cameras, OBS, vMix, lights), kept beside the library.
-        Production.ProductionStepsSection.Attach(editor, model, id);
+        Production.ProductionStepsSection.Attach(editor, model, id).Changed += () => run.IsEnabled = StepCount(id) > 0;
         panel.Children.Add(editor);
         return panel;
     }
@@ -538,6 +538,9 @@ public sealed class ActionCombosWindow : Window
     }
 
     /// <summary>Runs a combo now, as the Combos tab does.</summary>
+    /// <summary>A combo's steps: its own and (Windows only) its production steps, so a combo of camera cuts can run.</summary>
+    private int StepCount(string id) => (Combo(id)?.Actions.Count ?? 0) + model.Production.Steps.For(id).Count;
+
     internal void Run(string id)
     {
         if (Combo(id) is not { } combo) return;

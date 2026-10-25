@@ -126,7 +126,8 @@ public sealed class ProductionHub : IDisposable
             else settings.Devices.Add(device.Copy());
             SaveSettings();
         }
-        Rebuild();
+        // A new password means signing in again, even when nothing else changed.
+        Rebuild(restart: password is not null ? device.Id : null);
     }
 
     public void RemoveDevice(string deviceId)
@@ -147,7 +148,8 @@ public sealed class ProductionHub : IDisposable
     }
 
     /// <summary>Makes the running devices match the settings: new ones start, changed ones restart, removed ones stop.</summary>
-    private void Rebuild()
+    /// <param name="restart">A device to restart even if its settings are the same (its password changed).</param>
+    private void Rebuild(string? restart = null)
     {
         List<ProductionDevice> stopping;
         List<ProductionDevice> starting = [];
@@ -155,7 +157,7 @@ public sealed class ProductionHub : IDisposable
         {
             if (!started) return;
             var wanted = settings.Devices.Where(d => d.Enabled).ToList();
-            var keep = devices.Where(d => wanted.Any(w => Core.Json.MxuJson.StructurallyEqual(w, d.Settings))).ToList();
+            var keep = devices.Where(d => d.Id != restart && wanted.Any(w => Core.Json.MxuJson.StructurallyEqual(w, d.Settings))).ToList();
             stopping = [.. devices.Except(keep)];
             var next = new List<ProductionDevice>();
             foreach (var want in wanted)

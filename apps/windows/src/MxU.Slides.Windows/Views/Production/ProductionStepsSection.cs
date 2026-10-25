@@ -158,7 +158,14 @@ internal sealed class ProductionStepsSection : StackPanel
         }
     }
 
-    private void Commit() => model.SaveProductionSteps(ownerId, [.. steps.Select(s => s.Copy())]);
+    private void Commit()
+    {
+        model.SaveProductionSteps(ownerId, [.. steps.Select(s => s.Copy())]);
+        Changed?.Invoke();
+    }
+
+    /// <summary>The steps were changed and saved (a combo's Run button wakes up when it gains one).</summary>
+    public event Action? Changed;
 
     private void Rebuild()
     {
