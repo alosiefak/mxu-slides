@@ -124,6 +124,48 @@ public static class StarterContent
         Than when we first begun
         """;
 
+    public const string CountdownPresentationId = "welcome.countdown";
+
+    /// <summary>
+    /// A pre-service countdown deck: one slide in each worship look, each slide using its own look's
+    /// Countdown design. The big digits come from the design, linked to a timer (the one running,
+    /// or the first), so starting a countdown in the Timers panel sets them going. Windows-only:
+    /// the Mac's starter content has no countdown; the deck itself is an ordinary presentation.
+    /// </summary>
+    public static Presentation CountdownPresentation()
+    {
+        (StarterPack Pack, string Kicker, string Message)[] pages =
+        [
+            (StarterPack.Arena, "Service starts in", "Grab a coffee and find a seat. We're so glad you're here."),
+            (StarterPack.Broadcast, "We're live in", "Welcome to everyone joining online. Say hi in the chat!"),
+            (StarterPack.ModernSerif, "Service starts in", "Take a moment. Breathe. You are welcome here."),
+            (StarterPack.MinimalSans, "Starting soon", "Find a seat, and say hello to someone new."),
+        ];
+        return new Presentation
+        {
+            Id = CountdownPresentationId,
+            Name = "Pre-Service Countdown",
+            PresentationKind = PresentationKind.Deck,
+            ThemeId = StarterPack.Arena.ThemeId(),
+            Slides = [.. pages.Select(page =>
+            {
+                var b = $"{CountdownPresentationId}.{page.Pack.Raw()}";
+                return new Slide
+                {
+                    Id = b,
+                    Name = $"Countdown ({page.Pack.Title()})",
+                    ThemeId = page.Pack.ThemeId(),
+                    ThemeSlideName = "Countdown",
+                    Objects =
+                    [
+                        new SlideObject { Id = $"{b}.kicker", ObjectKind = SlideObjectKind.Text, Name = "Kicker", Text = page.Kicker },
+                        new SlideObject { Id = $"{b}.message", ObjectKind = SlideObjectKind.Text, Name = "Message", Text = page.Message },
+                    ],
+                };
+            })],
+        };
+    }
+
     public static Service WelcomeService(DateOnly date, Presentation? song) => new()
     {
         Id = WelcomeServiceId,

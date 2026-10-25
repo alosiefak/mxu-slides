@@ -20,4 +20,9 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- The fonts the app ships, beside the tests as they are beside the app (BundledFontsTests). -->
+    <None Include="..\..\assets\fonts\*.ttf;..\..\assets\fonts\*.txt" Link="Fonts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

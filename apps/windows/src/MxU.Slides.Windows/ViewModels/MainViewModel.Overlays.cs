@@ -44,7 +44,15 @@ public sealed partial class MainViewModel
     [ObservableProperty]
     public partial string? SelectedOverlayPack { get; set; }
 
-    partial void OnSelectedOverlayPackChanged(string? value) => RefreshOverlays();
+    partial void OnSelectedOverlayPackChanged(string? value)
+    {
+        if (!rebuildingPacks) RefreshOverlays();
+    }
+
+    // True while the pack list is rebuilt. The bin's pack picker drops its selection when its list
+    // is cleared; that mustn't count as choosing no pack (it used to jump to the theme's pack, and
+    // add the packs twice, whenever a new pack appeared).
+    private bool rebuildingPacks;
 
     [ObservableProperty]
     public partial OverlayTileViewModel? SelectedOverlay { get; set; }
@@ -96,8 +104,15 @@ public sealed partial class MainViewModel
         var packs = OverlayLibrary.Packs(all);
         if (!packs.SequenceEqual(OverlayPacks))
         {
-            OverlayPacks.Clear();
-            foreach (var p in packs) OverlayPacks.Add(p);
+            var keep = SelectedOverlayPack;
+            rebuildingPacks = true;
+            try
+            {
+                OverlayPacks.Clear();
+                foreach (var p in packs) OverlayPacks.Add(p);
+                SelectedOverlayPack = keep;
+            }
+            finally { rebuildingPacks = false; }
         }
         if (SelectedOverlayPack is null || !packs.Contains(SelectedOverlayPack))
         {
@@ -200,6 +215,8 @@ public sealed partial class MainViewModel
     /// </summary>
     public void OverlayChanged(Overlay overlay)
     {
+        // A word-by-word build follows the words just typed into its field (Core/Animation/KineticText.cs).
+        KineticText.Reflow(overlay);
         foreach (var tile in Overlays.Where(t => t.Overlay.Id == overlay.Id))
             tile.Preview = OverlayTileViewModel.PreviewScene(overlay);
         OverlayContentChanged?.Invoke(overlay);

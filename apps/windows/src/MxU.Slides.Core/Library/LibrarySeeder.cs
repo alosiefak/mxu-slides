@@ -58,5 +58,28 @@ public static class LibrarySeeder
         }
         if (outdated)
             LibraryStore.AtomicWrite(marker, System.Text.Encoding.UTF8.GetBytes(StarterPacks.Revision.ToString(CultureInfo.InvariantCulture)));
+        AddWindowsStarters(library);
+    }
+
+    private const string WindowsStartersFile = "windows-starters.txt";
+
+    /// <summary>
+    /// What Windows adds beyond the Mac's starters (Phase 6): the worship looks' kinetic builds,
+    /// saved beside their themes as Windows extras, and the pre-service countdown deck. A new pack
+    /// needs no revision bump: like any missing starter theme, <see cref="RefreshStarterPacks"/>
+    /// saves it the first time a library opens without it, so an existing library gains the new
+    /// looks and nothing anyone edited is touched. The deck is added once per library (a list in
+    /// windows-starters.txt remembers it), so deleting it isn't undone at the next launch.
+    /// </summary>
+    private static void AddWindowsStarters(LibraryStore library)
+    {
+        new KineticExtras(library.Extras).Seed(StarterPacks.All.SelectMany(p => p.KineticBuilds()));
+
+        var list = Path.Combine(library.Root, WindowsStartersFile);
+        var added = File.Exists(list) ? File.ReadAllLines(list).Select(l => l.Trim()).Where(l => l.Length > 0).ToHashSet(StringComparer.Ordinal) : [];
+        if (added.Contains(StarterContent.CountdownPresentationId)) return;
+        if (library.Get<Presentation>(StarterContent.CountdownPresentationId) is null) library.Save(StarterContent.CountdownPresentation());
+        added.Add(StarterContent.CountdownPresentationId);
+        LibraryStore.AtomicWrite(list, System.Text.Encoding.UTF8.GetBytes(string.Join("\n", added.Order(StringComparer.Ordinal)) + "\n"));
     }
 }

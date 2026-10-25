@@ -37,10 +37,23 @@ public static class PlaceholderAnimations
                 var copy = MxuJson.Clone(step);
                 copy.Id = $"{o.Id}::{step.Id}";
                 copy.Ranges = null;
-                if (!donatedIds.TryGetValue(step.Id, out var ids)) donatedIds[step.Id] = ids = [];
-                ids.Add(copy.Id);
                 return copy;
             }).ToList();
+            // Windows-only: a kinetic build kept beside the theme (lines rising in turn) plays over
+            // this slide's own words in place of the design's whole-text In (KineticText.Donate).
+            var stepIds = steps.Select(s => s.Id).ToList();
+            var idsFor = stepIds.Select((id, i) => (id, ids: new List<string> { donated.AnimationSteps[i].Id })).ToList();
+            if (KineticText.BuildFor?.Invoke(placeholder) is { } build)
+            {
+                var (kinetic, kineticIds) = KineticText.Donate(build, o.Text, donated.AnimationSteps, stepIds);
+                donated.AnimationSteps = kinetic;
+                idsFor = [.. stepIds.Select(id => (id, kineticIds[id]))];
+            }
+            foreach (var (id, ids) in idsFor)
+            {
+                if (!donatedIds.TryGetValue(id, out var all)) donatedIds[id] = all = [];
+                all.AddRange(ids);
+            }
             result[index] = donated;
         }
         if (slideOrder is not null) return new Composition(result, slideOrder);

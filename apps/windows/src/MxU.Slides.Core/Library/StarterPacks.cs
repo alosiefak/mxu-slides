@@ -4,12 +4,14 @@ using MxU.Slides.Core.Model;
 namespace MxU.Slides.Core.Library;
 
 /// <summary>
-/// The four starter themes and their overlays, with the same ids, layouts,
-/// colours and animation steps as the Mac app's StarterPacks.swift.
+/// The starter themes and their overlays. The first four have the same ids, layouts, colours and
+/// animation steps as the Mac app's StarterPacks.swift; the worship looks after them (Arena,
+/// Broadcast, Modern Serif, Minimal Sans) are Windows' own, built in StarterPacks.Worship.cs from
+/// the fonts the app ships.
 /// </summary>
-public enum StarterPack { CleanGeometric, EditorialSerif, BoldBlocks, Digital }
+public enum StarterPack { CleanGeometric, EditorialSerif, BoldBlocks, Digital, Arena, Broadcast, ModernSerif, MinimalSans }
 
-public static class StarterPacks
+public static partial class StarterPacks
 {
     public static readonly StarterPack[] All = Enum.GetValues<StarterPack>();
 
@@ -24,7 +26,11 @@ public static class StarterPacks
         StarterPack.CleanGeometric => "cleanGeometric",
         StarterPack.EditorialSerif => "editorialSerif",
         StarterPack.BoldBlocks => "boldBlocks",
-        _ => "digital",
+        StarterPack.Digital => "digital",
+        StarterPack.Arena => "arena",
+        StarterPack.Broadcast => "broadcast",
+        StarterPack.ModernSerif => "modernSerif",
+        _ => "minimalSans",
     };
 
     public static string Title(this StarterPack pack) => pack switch
@@ -32,16 +38,20 @@ public static class StarterPacks
         StarterPack.CleanGeometric => "Clean Geometric",
         StarterPack.EditorialSerif => "Editorial Serif",
         StarterPack.BoldBlocks => "Bold Blocks",
-        _ => "Digital",
+        StarterPack.Digital => "Digital",
+        StarterPack.Arena => "Arena",
+        StarterPack.Broadcast => "Broadcast",
+        StarterPack.ModernSerif => "Modern Serif",
+        _ => "Minimal Sans",
     };
 
     public static string ThemeId(this StarterPack pack) => $"pack.{pack.Raw()}.theme";
 
     public static string OverlayId(this StarterPack pack, string item) => $"pack.{pack.Raw()}.overlay.{item}";
 
-    public static Theme MakeTheme(this StarterPack pack) => new Builder(pack).MakeTheme();
+    public static Theme MakeTheme(this StarterPack pack) => pack.IsWorshipLook() ? new WorshipBuilder(pack).MakeTheme() : new Builder(pack).MakeTheme();
 
-    public static List<Overlay> MakeOverlays(this StarterPack pack) => new Builder(pack).MakeOverlays();
+    public static List<Overlay> MakeOverlays(this StarterPack pack) => pack.IsWorshipLook() ? new WorshipBuilder(pack).MakeOverlays() : new Builder(pack).MakeOverlays();
 
     /// <summary>Unit-square path data for icons (same strings as the Mac's IconCatalog).</summary>
     public static class Icons

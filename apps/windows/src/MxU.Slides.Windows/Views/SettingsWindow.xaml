@@ -171,6 +171,8 @@
             <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,10,0"
                        Text="Moving from ProPresenter 7? Bring in its presentations, media, themes, props, messages, stage layouts and playlists. Run it again later to pick up changes; anything you've edited here is kept." />
         </DockPanel>
+        <!-- About: the version and the bundled fonts' credits and licence (Views/AboutSection.cs). -->
+        <v:AboutSection xmlns:v="clr-namespace:MxU.Slides.Windows.Views" />
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
             <Button Content="Cancel" IsCancel="True" Margin="0,0,8,0" MinWidth="90" />

@@ -761,6 +761,7 @@
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}}">
                         <TextBlock Text="Click to put up or take down · F4 clears all" Style="{StaticResource Muted}"
                                    VerticalAlignment="Center" Margin="0,0,12,0" FontSize="11" />
+                        <Button Command="{Binding OpenLowerThirdGalleryCommand}" Content="Gallery…" Margin="0,0,6,0" ToolTip="Designed, animated lower thirds: pick one, fill it in, add it, go live" />
                         <Button Command="{Binding EditOverlaysCommand}" Content="Edit…" Margin="0,0,6,0" ToolTip="Design overlays: text, shapes, masks and animations" />
                         <Button Command="{Binding DuplicateOverlayCommand}" Content="Duplicate" ToolTip="Make your own copy of the selected overlay" />
                     </StackPanel>

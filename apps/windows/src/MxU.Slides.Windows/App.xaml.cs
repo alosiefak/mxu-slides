@@ -100,8 +100,11 @@ public partial class App : Application
             if (library.IsNew || library.Count<Core.Model.Theme>() == 0) LibrarySeeder.Seed(library);
             else LibrarySeeder.RefreshStarterPacks(library);
             if (library.IsNew) StarterBackgrounds.AddTo(library);
-            // The library's own fonts (decks' embedded fonts), loaded for drawing as the Mac does at launch.
+            // The library's own fonts (decks' embedded fonts, and the ones the app ships), loaded for drawing as the Mac does at launch.
+            BundledFonts.AddTo(library.Root, BundledFonts.ShippedFolder);
             Rendering.FontMap.ActivateStored(library.Root);
+            // Kinetic builds on theme lyrics (lines rising in turn) are Windows extras beside the themes.
+            Core.Animation.KineticText.BuildFor = new KineticExtras(library.Extras).For;
             foreach (var problem in library.LoadProblems) Log.Warn($"Library: {problem}");
             try
             {

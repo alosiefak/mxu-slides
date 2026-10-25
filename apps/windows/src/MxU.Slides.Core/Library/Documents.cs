@@ -39,6 +39,24 @@ public sealed partial class GroupPalette : ILibraryDocument
     string ILibraryDocument.Name { get => "Groups"; set { } }
 }
 
+/// <summary>The animation recipes people saved (one document, id "animation-preset-board", as on the Mac; see PresetBoards).</summary>
+public sealed partial class AnimationPresetBoard : ILibraryDocument
+{
+    /// <summary>The one board's id (AnimationPresetBoard.wellKnownID on the Mac).</summary>
+    public const string WellKnownId = "animation-preset-board";
+
+    string ILibraryDocument.Name { get => "Animation presets"; set { } }
+}
+
+/// <summary>The effect chains people saved (one document, id "effect-presets", as on the Mac).</summary>
+public sealed partial class EffectPresetBoard : ILibraryDocument
+{
+    /// <summary>The one board's id (EffectPresetBoard.wellKnownID on the Mac).</summary>
+    public const string WellKnownId = "effect-presets";
+
+    string ILibraryDocument.Name { get => "Effect presets"; set { } }
+}
+
 /// <summary>A MIDI device the show talks to ("Lighting desk"); which ports it uses on this PC is a setting (see Core/Control/MidiDevices.cs).</summary>
 public sealed partial class MIDIDevice : ILibraryDocument;
 
