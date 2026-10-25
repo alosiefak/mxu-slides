@@ -164,6 +164,12 @@ public sealed class AnimatedLayer(LayerKind kind)
     public LayerKind Kind { get; } = kind;
     public bool IsHidden { get; set; }
     public List<AnimatedItem> Items { get; } = [];
+
+    /// <summary>
+    /// Set while a Windows-only transition plays on this layer (Phase 6): the items are the old and
+    /// new pictures, which the view mixes on the graphics card instead of drawing both.
+    /// </summary>
+    public LayerMix? Mix { get; set; }
 }
 
 /// <summary>A <see cref="RenderScene"/> whose items carry their animation.</summary>
@@ -199,6 +205,7 @@ public sealed class AnimatedScene
         foreach (var layer in Layers)
         {
             copy[layer.Kind].IsHidden = layer.IsHidden;
+            copy[layer.Kind].Mix = layer.Mix;
             copy[layer.Kind].Items.AddRange(layer.Items);
         }
         return copy;
