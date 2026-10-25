@@ -104,10 +104,10 @@ public sealed class RenderCrew : IDisposable
     {
         if (disposed) return;
         disposed = true;
-        lock (gate)
-        {
-            start.Release(threads.Length);
-        }
+        // Wake the helpers so they see they're done (a crew of just the caller has none).
+        if (threads.Length > 0)
+            lock (gate)
+                start.Release(threads.Length);
         foreach (var thread in threads) thread.Join(TimeSpan.FromSeconds(2));
         start.Dispose();
     }

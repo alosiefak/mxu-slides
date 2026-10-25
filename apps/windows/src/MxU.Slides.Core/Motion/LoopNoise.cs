@@ -192,8 +192,10 @@ public static class LoopNoise
     // MARK: Noise in a loop
 
     // Raw simplex noise spreads its values thinly (most within ±0.5). The loop noise below is
-    // scaled so its spread is the same whatever the number of layers: centred on 0, about two
-    // values in three within ±0.35, nearly all within ±0.8 (measured: NoiseIsSpreadAsDocumented).
+    // scaled up, and keeps the same spread whatever the number of layers: centred on 0, typically
+    // within ±0.25 to ±0.4, nearly all within ±0.8. How wide exactly depends a little on the lane:
+    // a small circle of time sits closer to or further from the noise's grid, and the noise is
+    // calmer near its grid lines (measured: NoiseIsSpreadAsDocumented).
     private const float Spread = 1.4f;
 
     /// <summary>
