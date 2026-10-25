@@ -85,6 +85,7 @@ public sealed partial class ScriptureViewModel : ObservableObject
         var settings = main.Settings;
         translation = catalog.Find(settings.ScriptureTranslation) ?? catalog.Default;
         compare = catalog.Find(settings.ScriptureCompare);
+        bothOnSlides = settings.ScriptureCompareOnSlides;
         layout = Enum.TryParse<ScriptureLayout>(settings.ScriptureLayout, out var saved) ? saved : ScriptureLayout.FullScreen;
         versesPerSlide = Math.Clamp(settings.ScriptureVersesPerSlide, 0, 9);
         verseNumbers = settings.ScriptureVerseNumbers;
@@ -107,6 +108,7 @@ public sealed partial class ScriptureViewModel : ObservableObject
 
     private BibleTranslation translation;
     private BibleTranslation? compare;
+    private bool bothOnSlides;
     private ScriptureLayout layout;
     private int versesPerSlide;
     private bool verseNumbers;
@@ -137,6 +139,31 @@ public sealed partial class ScriptureViewModel : ObservableObject
             Choose();
         }
     }
+
+    /// <summary>
+    /// True to put the second translation on the slides as well, side by side with the first
+    /// (<see cref="ScriptureSlides"/> halves the design's verse box). Without a second translation
+    /// it does nothing.
+    /// </summary>
+    public bool BothOnSlides
+    {
+        get => bothOnSlides;
+        set
+        {
+            if (value == bothOnSlides) return;
+            bothOnSlides = value;
+            main.Settings.ScriptureCompareOnSlides = value;
+            Choose();
+        }
+    }
+
+    // The translation to put beside a passage in another on its slides, or null.
+    private BibleTranslation? SideBySide(BibleTranslation shown) =>
+        bothOnSlides && compare is { } other && other.Id != shown.Id ? other : null;
+
+    // The same passage in that translation, when it's wanted and in memory.
+    private PassageText? Beside(PassageText passage) =>
+        SideBySide(passage.Translation) is { } other && catalog.Loaded(other.Id) is { } bible ? bible.Read(passage.Reference) : null;
 
     public ScriptureLayout Layout
     {
@@ -326,13 +353,16 @@ public sealed partial class ScriptureViewModel : ObservableObject
         Mode = ScriptureMode.Reference;
         // "John 3:16 WEB" looks it up in the WEB without changing the usual translation.
         var named = catalog.Find(reference.Translation) ?? translation;
-        if (catalog.Loaded(named.Id) is not { } bible)
+        // Both translations must be in memory when the slides show them side by side.
+        foreach (var needed in new[] { named, SideBySide(named) }.OfType<BibleTranslation>())
         {
-            Status = $"Opening the {named.Abbreviation}…";
+            if (catalog.Loaded(needed.Id) is not null) continue;
+            Status = $"Opening the {needed.Abbreviation}…";
             Changed?.Invoke();
-            Ready = LoadThenRefresh(named.Id, mine);
+            Ready = LoadThenRefresh(needed.Id, mine);
             return;
         }
+        var bible = catalog.Loaded(named.Id)!;
         var passage = bible.Read(reference);
         if (passage.IsEmpty || Theme is not { } theme)
         {
@@ -345,7 +375,7 @@ public sealed partial class ScriptureViewModel : ObservableObject
         // together then, so they never disagree. Meanwhile the status says what's coming.
         Status = $"{passage.Reference.Display} · {Count(passage.Verses.Count, "verse")} · making the slides…";
         Changed?.Invoke();
-        Ready = ShowWhenMade(passage, bible, MxuJson.Clone(theme), Options, mine);
+        Ready = ShowWhenMade(passage, Beside(passage), bible, MxuJson.Clone(theme), Options, mine);
     }
 
     private async Task LoadThenRefresh(string id, int mine)
@@ -366,12 +396,12 @@ public sealed partial class ScriptureViewModel : ObservableObject
         await Ready;
     }
 
-    private async Task ShowWhenMade(PassageText passage, Bible bible, Theme theme, ScriptureSlideOptions options, int mine)
+    private async Task ShowWhenMade(PassageText passage, PassageText? beside, Bible bible, Theme theme, ScriptureSlideOptions options, int mine)
     {
         Made made;
         try
         {
-            made = await OnLayoutThread(() => Make(passage, theme, options));
+            made = await OnLayoutThread(() => Make(passage, beside, theme, options));
         }
         catch (Exception error)
         {
@@ -466,11 +496,11 @@ public sealed partial class ScriptureViewModel : ObservableObject
         return done.Task;
     }
 
-    /// <summary>The passage as slides, measured the way the outputs draw text (on any thread).</summary>
-    private static Made Make(PassageText passage, Theme theme, ScriptureSlideOptions options)
+    /// <summary>The passage as slides (side by side with <paramref name="beside"/>, if given), measured the way the outputs draw text (on any thread).</summary>
+    private static Made Make(PassageText passage, PassageText? beside, Theme theme, ScriptureSlideOptions options)
     {
-        var pages = ScriptureSlides.Pages(passage, theme, options, TextLayout.OverflowsFrame);
-        var deck = ScriptureSlides.Build(passage, theme, options, pages);
+        var pages = ScriptureSlides.Pages(passage, theme, options, TextLayout.OverflowsFrame, beside);
+        var deck = ScriptureSlides.Build(passage, theme, options, pages, beside);
         return new Made(deck, pages, [.. deck.Slides.Select(slide => SlideSceneBuilder.Scene(slide, theme, deck, pager: TextLayout.Pager))]);
     }
 
@@ -522,6 +552,18 @@ public sealed partial class ScriptureViewModel : ObservableObject
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// ↓ / ↑ in the box. Searching: the highlighted result. While the passage is live: its next or
+    /// previous slide, then verse (<see cref="Step"/>). Otherwise only the preview moves, so an
+    /// arrow key in a text box never changes what the audience sees.
+    /// </summary>
+    public void Arrow(int by)
+    {
+        if (Mode == ScriptureMode.Search) MoveResult(by);
+        else if (IsLive) Step(by);
+        else SelectPage(SelectedPage + by);
+    }
+
     /// <summary>Moves the highlighted search result (↑ ↓ in the box).</summary>
     public void MoveResult(int by)
     {
@@ -543,11 +585,12 @@ public sealed partial class ScriptureViewModel : ObservableObject
         if (SelectedResult < 0 || catalog.Loaded(translation.Id) is not { } bible || Theme is not { } theme) return;
         var chosen = SelectedResult;
         var verse = bible.Read(PassageReference.Of(Results[chosen].Verse.Ref));
+        var beside = Beside(verse);
         var options = Options;
         var copy = MxuJson.Clone(theme);
         try
         {
-            var made = await OnLayoutThread(() => Make(verse, copy, options));
+            var made = await OnLayoutThread(() => Make(verse, beside, copy, options));
             if (mine != generation || chosen != SelectedResult) return;
             resultPreview = made;
             Changed?.Invoke();
@@ -591,15 +634,22 @@ public sealed partial class ScriptureViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Next or Previous (the window's arrows, PageDown and PageUp, and the main window's Next
+    /// Next or Previous (the window's ◀ ▶, PageDown and PageUp, and the main window's Next
     /// while the passage is live): the next slide of the passage, and past its end the next verse
-    /// (across chapters and books), which becomes what's typed. Before anything is live, Next
-    /// puts the typed passage up. False when there's nowhere to go.
+    /// (across chapters and books), which becomes what's typed. While something else is on screen
+    /// (a song), they move that on instead, as the main window's would: a clicker pressed while
+    /// this window has the focus must never put scripture over the lyrics. With nothing on screen,
+    /// Next puts the typed passage up. False when there's nowhere to go.
     /// </summary>
     public bool Step(int direction)
     {
         if (!IsLive || LivePresentation is not { } deck || LivePassage is not { } passage)
         {
+            if (main.Show.Live is not null)
+            {
+                (direction > 0 ? main.NextCommand : main.PreviousCommand).Execute(null);
+                return true;
+            }
             if (direction <= 0) return false;
             _ = GoLive();
             return true;
@@ -619,7 +669,7 @@ public sealed partial class ScriptureViewModel : ObservableObject
         }
         // One verse is made here and now (a few milliseconds), so Next answers at once.
         var next = bible.Read(PassageReference.Of(verse));
-        var made = Make(next, theme, Options);
+        var made = Make(next, Beside(next), theme, Options);
         if (made.Deck.Slides.Count == 0) return false;
         // The box, the list and the preview follow, so the operator sees where they are.
         ++generation;
@@ -669,11 +719,14 @@ public sealed partial class ScriptureViewModel : ObservableObject
         Changed?.Invoke();
     }
 
+    /// <summary>True from a key typed in the box until the box is read (the short pause after typing).</summary>
+    public bool HasUnreadTyping => typingPause.IsEnabled || readQuery != Query;
+
     // Typing not yet read (Enter pressed inside the pause after a key) is read now; text already
     // read isn't read again, which would throw away the search results Enter is choosing from.
     private void ReadTyping()
     {
-        if (typingPause.IsEnabled || readQuery != Query) RefreshNow();
+        if (HasUnreadTyping) RefreshNow();
     }
 
     // Shows text in the box without reading it again (what it says is already shown).

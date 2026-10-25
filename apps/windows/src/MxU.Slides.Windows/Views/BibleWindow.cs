@@ -20,7 +20,9 @@ namespace MxU.Slides.Windows.Views;
 /// <see cref="ScriptureViewModel"/> and hands it keys:
 /// <list type="bullet">
 /// <item>Enter: on screen now. ↓ / ↑ in the box, ← → ↓ ↑ and Space elsewhere, PageDown / PageUp
-/// (what clickers send): the next or previous slide, then verse.</item>
+/// (what clickers send): the next or previous slide, then verse. Until the passage is on screen,
+/// ↓ / ↑ in the box only move the preview, and the others move on whatever else is up (a song),
+/// so a key pressed here never puts scripture over the lyrics (<see cref="ScriptureViewModel.Step"/>).</item>
 /// <item>Tab takes the book offered; Esc empties the box; typing anywhere starts a new reference.</item>
 /// <item>F1–F6 clear, as in the main window.</item>
 /// </list>
@@ -49,6 +51,7 @@ public sealed class BibleWindow : Window
     private readonly Ellipse liveDot = new() { Width = 9, Height = 9, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock liveLine = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly List<ToggleButton> layoutButtons = [];
+    private readonly CheckBox bothOnSlides = new() { Content = "Both translations on the slides" };
     private ComboBox? translationPicker;
     private ComboBox? comparePicker;
     private readonly Button goLive;
@@ -266,6 +269,12 @@ public sealed class BibleWindow : Window
         checks.Children.Add(reference);
         panel.Children.Add(EditorKit.Row("Show", checks, 92));
 
+        // The second translation (picked at the top) on the slides too, each in half the verse box.
+        bothOnSlides.IsChecked = model.BothOnSlides;
+        bothOnSlides.Click += (_, _) => model.BothOnSlides = bothOnSlides.IsChecked == true;
+        ToolTipService.SetShowOnDisabled(bothOnSlides, true); // greyed out, it says why
+        panel.Children.Add(EditorKit.Row("Side by side", bothOnSlides, 92));
+
         var keep = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
         keep.Children.Add(addButton);
         keep.Children.Add(saveButton);
@@ -295,6 +304,11 @@ public sealed class BibleWindow : Window
             DrawPages();
             DrawLive();
             foreach (var button in layoutButtons) button.IsChecked = (ScriptureLayout)button.Tag == model.Layout;
+            bothOnSlides.IsChecked = model.BothOnSlides;
+            bothOnSlides.IsEnabled = model.Compare is not null;
+            bothOnSlides.ToolTip = model.Compare is { } other
+                ? $"Put the {other.Abbreviation} on the slides beside the {model.Translation.Abbreviation}, each in half the design's verse box"
+                : "Pick a second translation at the top first (Beside it: …)";
             var canShow = model.Mode == ScriptureMode.Search ? model.SelectedResult >= 0 : model.Preview is { Slides.Count: > 0 };
             goLive.IsEnabled = addButton.IsEnabled = saveButton.IsEnabled = canShow;
         }
@@ -563,20 +577,13 @@ public sealed class BibleWindow : Window
                 box.CaretIndex = box.Text.Length;
                 break;
             case Key.Escape when inBox && box.Text.Length > 0: box.Clear(); break;
-            case Key.Down when inBox: Move(+1); break;
-            case Key.Up when inBox: Move(-1); break;
+            case Key.Down when inBox: model.Arrow(+1); break;
+            case Key.Up when inBox: model.Arrow(-1); break;
             case Key.Right or Key.Down or Key.Space when !typing: model.Step(+1); break;
             case Key.Left or Key.Up when !typing: model.Step(-1); break;
             default: return;
         }
         e.Handled = true;
-    }
-
-    // ↓ / ↑ in the box: through the search results while searching, else the next or previous slide.
-    private void Move(int by)
-    {
-        if (model.Mode == ScriptureMode.Search) model.MoveResult(by);
-        else model.Step(by);
     }
 
     // Typing a letter or number while the list has focus starts a new reference in the box.

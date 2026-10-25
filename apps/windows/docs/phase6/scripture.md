@@ -33,15 +33,21 @@ Then:
 - **↓** in the box, **PageDown** (what a presentation clicker sends), or the main window's
   **Next** go to the next slide of the passage, and past its end to the next verse, across
   chapters and books. **↑** and **PageUp** go back.
+- **Until the passage is on screen**, those keys never put it there by accident. ↓ and ↑ in the
+  box only move the preview, and PageDown moves on whatever *is* on screen, a song say, just as
+  the main window's Next would. Only Enter (or **Show**) puts scripture up. With nothing on
+  screen at all, PageDown puts the passage up too.
 - **Tab** takes the book the window offers while you type a name (`phil` → Philippians).
 - **F1–F6** clear, exactly as in the main window.
 - **Add to Service** and **Save** keep the passage as a presentation in the library.
-- **Beside it: KJV** shows a second translation next to the first.
+- **Beside it: KJV** shows a second translation next to the first in the window. Tick **Both
+  translations on the slides** and the audience sees both, side by side.
 - **ⓘ** shows each translation's licence notes.
 
 The right-hand side chooses the look: **Full screen**, **Lower third** or **Side third** (the
-theme's three scripture designs), the theme, how many verses go on a slide, and whether to
-show verse numbers and the reference line. The window remembers these on this PC.
+theme's three scripture designs), the theme, how many verses go on a slide, whether to show
+verse numbers and the reference line, and whether the second translation goes on the slides.
+The window remembers these on this PC.
 
 ## 1. The Bibles in the app
 
@@ -251,6 +257,39 @@ The reference line on each slide names that slide's verses ("John 3:16–17 KJV"
 only a verse the translation leaves out doesn't break the range. A gap you asked for does
 ("Romans 8:28, 31–32").
 
+The reference line is measured too. The lower third's reference sits on a small plate (380
+pixels wide), and "1 THESSALONIANS 4:13–18 KJV" doesn't fit it at the design's size: it wraps
+onto a second line, below the plate. So `ReferenceSizer` asks "does it fit on **one** line of
+the design's Reference box?" (it measures in a box a line and a half tall, so two lines can't
+pass). When the answer is no, the slide's Reference box gets a smaller font size: 90, 80 or
+70 % of the design's, or 60 % at the least. Like the side-by-side halves, that's one ordinary
+field (`textStyle.fontSize`), and the rest of the style is still the design's. A reference that
+fits, which is nearly all of them, gets nothing of its own.
+
+### Two translations on one slide
+
+Some churches read in two translations, or two languages, at once. The designs have one verse
+box, so side by side has to share it. `ScriptureSlides.Halves` cuts the design's verse box in
+two with a gutter between:
+
+- **left and right** when the box is at least twice as wide as it is tall (full screen, lower
+  third);
+- **one above the other** otherwise. The side third's box is square, and its halves side by
+  side would be too narrow for more than a word or two a line.
+
+Each slide then has **two** text boxes named "Verse". Both bind to the design's "Verse"
+placeholder (the binding matches by name, on the Mac too), so both get the design's font,
+colour, alignment and builds. Each box is given only three things of its own: its half's
+position and size (`x`, `y`, `width`, `height`) and a font size **three quarters** of the
+design's (`ScriptureSlides.SideBySideScale`), since at full size a verse rarely fits in half the
+room. Those are ordinary fields every slide object has, so this is still nothing new in the
+document. The reference line names both: "John 3:16–17 KJV · WEB", and the presentation is
+"John 3:16–17 (KJV, WEB)".
+
+Splitting works as before, but a slide holds only as many verses as fit on **both** sides,
+each measured in its half at the smaller size. The first translation decides which verses there
+are. A verse the second one leaves out just isn't on its side (Acts 8:37, KJV beside the WEB).
+
 ## 7. The window and going live
 
 `Views/BibleWindow.cs` only draws and passes keys on. The logic is
@@ -271,6 +310,14 @@ if (StepScripture(direction)) return true; // a Bible passage: its next slide, t
 verse (one verse takes a few milliseconds) and fires that. The box, the list and the preview
 follow along, so the operator always sees where they are. **Add to Service** and **Save** turn
 the passage into a real library presentation. The same passage saved twice is kept once.
+
+**No scripture over the lyrics by accident.** The Bible window is often left open, with the
+focus in it, during the worship before the sermon. A clicker press then arrives here as
+PageDown. So while the passage *isn't* the thing on screen, `Step` hands Next and Previous to
+the main window (`main.NextCommand`), and the song moves on as the operator meant. ↓ and ↑ in
+the box are typing keys, so there they only move the preview (`ScriptureViewModel.Arrow`).
+Scripture goes up when the operator says so: Enter, Show, a double-click, or Next with nothing
+on screen at all.
 
 **Two threads, so the window never stutters.**
 
@@ -310,16 +357,20 @@ the passage into a real library presentation. The same passage saved twice is ke
 3. **See the gap.** Pick the ASV and type `Mark 9:43-48`. Two verses are missing. Read
    `AbsentVerses.Explain`, then press *Show it in the KJV*.
 4. **Make a long reading.** Type `Psalm 119`, choose *Lower third*, and look at the slide strip.
-   Then change *Per slide* to 2.
-5. **Take it to the Mac.** Add a passage to the service, export it as `.mxuslides`, and open it on a
+   Then change *Per slide* to 2. Then type `1 Thess 4:13-18` and compare its reference plate
+   with Psalm 119's.
+5. **Two at once.** Pick *Beside it: KJV*, tick *Both translations on the slides*, type
+   `John 3:16-17`, then try each design. Find where `Fitter` measures one half, not the whole box.
+6. **Take it to the Mac.** Add a passage to the service, export it as `.mxuslides`, and open it on a
    Mac. It's an ordinary deck there.
 
 ## Different from the Mac, and not done yet
 
 - **The Mac has no Bible**, so everything but `ScriptureReference` is Windows-only. When the Mac
   gets one, its book codes and reference reading should be compared with these.
-- **Two translations side by side** are shown in the window, not on the output. Slides with
-  both would need text boxes placed by hand, as the designs have one verse box.
+- **Two translations side by side on the slides** give each box its own position and font size.
+  Change a saved passage's theme and the halves keep the old design's places, like any text
+  moved by hand. Making the passage again in the new theme places them afresh.
 - **With the reference line off**, the lower third's reference plate (a shape in the design) stays,
   empty. Hiding it would need a different design.
 - **The ASV's supplied words** keep their `[brackets]`, as eBible.org prints them (only the KJV's
