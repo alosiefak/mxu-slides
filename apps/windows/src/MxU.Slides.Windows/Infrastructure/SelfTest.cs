@@ -827,19 +827,21 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
         var path = Path.Combine(Path.GetTempPath(), $"MxU self-test tone {Guid.NewGuid():N}.wav");
         try
         {
-            WriteTone(path, seconds: 6);
+            // 30 s: the show-flow checks play it again later and need it still playing after
+            // several slow steps (a 6 s tone could end by itself, making "it stops" pass for nothing).
+            WriteTone(path, seconds: 30);
             model.ImportAudioFiles([path]);
             var tile = model.AudioTiles.FirstOrDefault(t => t.Item is not null && t.Name.StartsWith("MxU self-test tone", StringComparison.Ordinal));
             Check("a music file imports into the library", tile is { Item.DurationSeconds: > 5 });
             if (tile is null) return;
             model.Bin = BinTab.Music;
             model.AudioTileClickedCommand.Execute(tile);
-            await Delay(1200);
+            await WhenShown(() => tile.IsPlaying && model.Audio.Status().Any(b => b.Playing && b.AudioItemId == tile.Item!.Id), 10);
             Check("music plays from its tile", tile.IsPlaying && model.Audio.Status().Any(b => b.Playing && b.AudioItemId == tile.Item!.Id));
             Check("now playing shows the song and time", model.NowPlaying.Contains("MxU self-test tone"));
             await Step("17-music", () => { }, settle: 300);
             model.ClearAudioCommand.Execute(null);
-            await Delay(2500);
+            await WhenShown(() => !model.Audio.Status().Any(b => b.Playing), 10); // it fades out first
             Check("F5 stops the music", !model.Audio.Status().Any(b => b.Playing));
             model.Bin = BinTab.Media;
         }
