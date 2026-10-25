@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Motion templates (Phase 11, Windows only): Lottie animations drawn by Skia's Skottie
+       (Lottie/), played live off the UI thread with their transparency, rendered to H.264 MP4
+       through the app's own encoder (Export/), and the After Effects bridge, which renders
+       compositions through Adobe's aerender (AfterEffects/). The Lottie reading and field
+       editing are in Core (Core/MotionTemplates), which has no Skia. No WPF.
+       SkiaSharp and SkiaSharp.Skottie are MIT licensed; the native Skia library (BSD) comes
+       inside SkiaSharp.NativeAssets.Win32. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>MxU.Slides.MotionTemplates</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
+    <ProjectReference Include="..\MxU.Slides.Broadcast\MxU.Slides.Broadcast.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 3.119 is SkiaSharp's long-lived line (patched into 2026); the 4.x line is only months old. -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.Skottie" Version="3.119.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MxU.Slides.MotionTemplates.Tests" />
+  </ItemGroup>
+</Project>
