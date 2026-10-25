@@ -191,13 +191,29 @@ public static class SongEditing
         return found?.Id;
     }
 
-    /// <summary>The arrangement written back as an editable order ("Verse 1, Chorus, Verse 2").</summary>
+    /// <summary>
+    /// The arrangement written back as an editable order ("Verse 1, Chorus x2, Verse 2"). A run of
+    /// the same section is folded into "x2", the way it would be typed, so the song editor's order
+    /// box and the arrangement editor (Lyrics/ArrangementEditing.cs) show the same words, and
+    /// <see cref="ParseOrder"/> reads them back to the same blocks.
+    /// </summary>
     public static string OrderText(Presentation presentation, string? arrangementId)
     {
         var arrangement = presentation.Arrangements?.FirstOrDefault(a => a.Id == arrangementId);
         if (arrangement is null) return "";
-        return string.Join(", ", arrangement.SectionIds
+        var names = arrangement.SectionIds
             .Select(id => presentation.Sections?.FirstOrDefault(s => s.Id == id)?.Name)
-            .OfType<string>());
+            .OfType<string>()
+            .ToList();
+        var parts = new List<string>();
+        for (var i = 0; i < names.Count;)
+        {
+            var run = 1;
+            // At most x20 in one go, the most ParseOrder reads.
+            while (i + run < names.Count && run < 20 && names[i + run] == names[i]) run++;
+            parts.Add(run == 1 ? names[i] : $"{names[i]} x{run}");
+            i += run;
+        }
+        return string.Join(", ", parts);
     }
 }
