@@ -170,14 +170,15 @@
     $('now-text').textContent = live ? (live.text ?? '').replace(/\s*\n\s*/g, ' / ') : '';
   }
 
-  /** The row (or the presentation outside the service) that's live now, and the slide's index in it. */
+  /** The row (or the presentation outside the service) that's live now, and the slide's index and id in it. */
   function findLive() {
     const live = state.status?.liveSlide;
     if (!live) return null;
     const items = state.doc?.service?.items ?? [];
-    const row = live.serviceItemId && items.find(i => i.id === live.serviceItemId);
-    if (row) return { key: row.id, index: live.occurrence ?? live.slideIndex };
-    if (state.doc?.other?.id === live.presentationId) return { key: 'other', index: live.slideIndex };
+    const row = (live.serviceItemId && items.find(i => i.id === live.serviceItemId))
+      ?? (!live.serviceItemId && items.find(i => i.presentation?.id === live.presentationId));
+    if (row) return { key: row.id, index: live.occurrence ?? live.slideIndex, slide: live.slideId };
+    if (state.doc?.other?.id === live.presentationId) return { key: 'other', index: live.slideIndex, slide: live.slideId };
     return null;
   }
 
@@ -187,13 +188,13 @@
     const live = findLive();
     const list = $('service-items');
     const rows = (service?.items ?? []).map(item => {
-      if (item.kind === 'header') return el('li', { class: 'item header', style: item.colorHex ? `--item:${css(item.colorHex)}` : null }, item.name);
+      if (item.kind === 'header') return el('li', { class: 'item header', style: item.colorHex ? { '--item': css(item.colorHex) } : null }, item.name);
       const detail = item.presentation ? `${item.presentation.slides.length} slide${item.presentation.slides.length === 1 ? '' : 's'}`
         : item.media ? 'Media' : ({ audio: 'Music', playlist: 'Playlist', info: 'Plan item' }[item.kind] ?? '');
       const goes = item.presentation?.slides.length > 0 || item.media;
       return el('li', {
         class: `item${live?.key === item.id ? ' live' : ''}${chosenKey() === item.id ? ' chosen' : ''}`,
-        style: item.colorHex ? `--item:${css(item.colorHex)}` : null,
+        style: item.colorHex ? { '--item': css(item.colorHex) } : null,
         onclick: () => { if (item.presentation) { state.chosen = item.id; state.follow = false; renderSlides(); renderItems(); showTabIfNarrow('slides'); } },
       },
       el('div', { class: 'name' }, item.name, el('small', {}, detail)),
@@ -235,8 +236,8 @@
       const path = `/remote/thumbnails/${encodeURIComponent(presentation.id)}/${encodeURIComponent(slide.id)}?width=320&v=${slide.thumbnailChecksum ?? ''}`;
       MxU.image(path).then(url => pic.replaceChildren(el('img', { src: url, alt: slide.text ?? '' })), () => { });
       return el('button', {
-        class: 'slide control', 'data-index': slide.index, disabled: state.session.scope === 'view',
-        style: slide.groupColorHex ? `--group:${css(slide.groupColorHex)}` : null,
+        class: 'slide control', 'data-index': slide.index, 'data-slide': slide.id, disabled: state.session.scope === 'view',
+        style: slide.groupColorHex ? { '--group': css(slide.groupColorHex) } : null,
         onclick: () => goLive(item, slide.index, presentation),
       }, pic, el('span', { class: 'label' }, el('b', {}, String(slide.index + 1)), slide.label ?? slide.group ?? ''));
     }));
@@ -245,11 +246,13 @@
 
   function markLive() {
     const live = findLive();
-    const key = chosenKey();
-    document.querySelectorAll('#slides .slide').forEach(tile => {
-      tile.classList.toggle('live', live?.key === key && String(live.index) === tile.dataset.index);
-    });
-    document.querySelector('#slides .slide.live')?.scrollIntoView({ block: 'nearest' });
+    const tiles = [...document.querySelectorAll('#slides .slide')];
+    // The live slide's place, or (a repeated chorus, say) the first tile showing that slide.
+    const match = live && live.key === chosenKey()
+      ? tiles.find(t => t.dataset.index === String(live.index) && t.dataset.slide === live.slide) ?? tiles.find(t => t.dataset.slide === live.slide)
+      : null;
+    tiles.forEach(tile => tile.classList.toggle('live', tile === match));
+    match?.scrollIntoView({ block: 'nearest' });
   }
 
   function goLive(item, index, presentation) {
@@ -283,9 +286,12 @@
       return;
     }
     const viewOnly = state.session.scope === 'view';
-    list.replaceChildren(...state.timers.map(timer => el('li', { class: 'timer', 'data-id': timer.id },
+    // The church's own timers first; the automatic service-tracking ones after, without buttons (they run themselves).
+    const tracking = timer => timer.id.startsWith('service_tracking.');
+    const ordered = [...state.timers.filter(t => !tracking(t)), ...state.timers.filter(tracking)];
+    list.replaceChildren(...ordered.map(timer => el('li', { class: 'timer', 'data-id': timer.id },
       el('span', { class: 'clock' }),
-      el('div', { class: 'buttons' },
+      tracking(timer) ? el('span', { class: 'muted' }, 'automatic') : el('div', { class: 'buttons' },
         el('button', { class: 'control', disabled: viewOnly, 'aria-label': timer.running ? 'Pause' : 'Start',
           onclick: () => act(() => api('POST', `/v1/timers/${encodeURIComponent(timer.id)}/${timer.running ? 'pause' : 'play'}`)) }, timer.running ? '❚❚' : '▶'),
         el('button', { class: 'control', disabled: viewOnly, 'aria-label': 'Reset',

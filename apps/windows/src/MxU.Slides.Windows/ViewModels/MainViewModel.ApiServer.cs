@@ -60,15 +60,32 @@ public sealed partial class MainViewModel
 
     public void StopApi() => api?.Stop();
 
+    // Topics waiting to be pushed (see PublishApi).
+    private readonly HashSet<ApiTopic> apiPending = [];
+
     private void PublishApi(ApiTopic topic)
     {
         if (api?.IsRunning != true) return;
         var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess()) Publish();
-        else dispatcher.BeginInvoke(Publish);
+        if (dispatcher is null)
+        {
+            Publish();
+            return;
+        }
+        // Pushed a moment later, once the change that raised it has finished: firing a slide changes
+        // the show first and what's live (its service row, its position) just after, and a snapshot
+        // taken in between told remotes the old position. Several changes in one go push once.
+        lock (apiPending)
+            if (!apiPending.Add(topic)) return;
+        dispatcher.BeginInvoke(() =>
+        {
+            lock (apiPending) apiPending.Remove(topic);
+            Publish();
+        });
 
         void Publish()
         {
+            if (api?.IsRunning != true) return;
             try
             {
                 api.Publish(topic);

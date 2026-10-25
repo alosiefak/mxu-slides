@@ -40,6 +40,10 @@ public static class ServiceMenus
         foreach (var entry in VersionItems(owner, model)) versions.Items.Add(entry);
         menu.Items.Add(versions);
         menu.Items.Add(new Separator());
+        // Planning Center (ViewModels/MainViewModel.PlanningCenter.cs).
+        menu.Items.Add(Item("Import from Planning Center…", () => PlanningCenterWindow.Open(owner, model)));
+        menu.Items.Add(Item("Update from Planning Center", () => _ = model.UpdateFromPlanningCenterAsync(service!), model.PlanLinkFor(service) is not null));
+        menu.Items.Add(new Separator());
         menu.Items.Add(Item("Move service to Trash", () =>
         {
             if (service is not null && MessageBox.Show(owner, $"Move \"{service.Name}\" to the library's Trash folder?", "MxU Slides",

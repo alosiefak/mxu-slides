@@ -145,6 +145,8 @@ const MxU = (() => {
     const node = document.createElement(tag);
     for (const [name, value] of Object.entries(props)) {
       if (name === 'class') node.className = value;
+      // Styles go through the style object: the page's security policy refuses style="" attributes.
+      else if (name === 'style') { for (const [property, setting] of Object.entries(value ?? {})) node.style.setProperty(property, setting); }
       else if (name.startsWith('on')) node.addEventListener(name.slice(2), value);
       else if (value === true) node.setAttribute(name, '');
       else if (value !== false && value != null) node.setAttribute(name, value);

@@ -176,6 +176,8 @@
                 </DockPanel>
             </StackPanel>
         </Expander>
+        <!-- Planning Center and the browser remote (Views/ConnectSettingsSection.cs). -->
+        <v:ConnectSettingsSection xmlns:v="clr-namespace:MxU.Slides.Windows.Views" />
 
         <TextBlock Text="LIBRARY" Style="{StaticResource SectionLabel}" Margin="0,18,0,6" />
         <TextBlock x:Name="LibraryPath" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,6" />

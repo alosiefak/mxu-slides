@@ -78,9 +78,15 @@
     fitAll();
   }
 
-  /** Running timers first, at most three, each with its name under it. */
+  /**
+   * The church's own timers (the sermon countdown…), running ones first, at most three, each with
+   * its name under it. The automatic service-tracking timers show only when there are none.
+   */
   function renderTimers() {
-    const shown = [...state.timers].sort((a, b) => Number(b.running) - Number(a.running)).slice(0, 3);
+    const tracking = timer => timer.id.startsWith('service_tracking.');
+    const own = state.timers.filter(t => !tracking(t));
+    const pool = own.length > 0 ? own : state.timers.filter(t => tracking(t) && t.running);
+    const shown = [...pool].sort((a, b) => Number(b.running) - Number(a.running)).slice(0, own.length > 0 ? 3 : 2);
     $('timers').replaceChildren(...shown.map(timer => el('span', { class: 'timer-face', 'data-id': timer.id },
       el('span', { class: 'digits' }), el('small', {}, timer.name))));
     tick();
