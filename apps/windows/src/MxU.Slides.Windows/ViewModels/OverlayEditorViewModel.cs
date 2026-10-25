@@ -70,7 +70,7 @@ public sealed partial class OverlayFieldRow(SlideObject o, Action changed) : Obs
 /// editing, which opens an overlay in the slide editor as a one-slide composition
 /// (SlideEditorModel's overlay host) from the library and the Overlays module.
 /// </summary>
-public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposable
+public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposable, IAnimationHost
 {
     private readonly MainViewModel main;
     private readonly Dictionary<string, Overlay> originals = new(StringComparer.Ordinal);
@@ -86,6 +86,7 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
         main.Library.Changed += OnLibraryChanged;
         previewClock = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Render, (_, _) => PreviewTick(), Dispatcher.CurrentDispatcher);
         previewClock.Stop();
+        Animation = new AnimationTabViewModel(this);
         var start = main.Library.Get<Overlay>(overlayId);
         RefreshPacks(start is null ? null : OverlayLibrary.PackOf(start));
         Open(start?.Id ?? Items.FirstOrDefault()?.Overlay.Id);
@@ -393,10 +394,11 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
 
     private void LoadCurrent()
     {
+        posedStepId = null;
         Mirror = Current is { } overlay ? new Slide { Id = overlay.Id, Name = overlay.Name, Objects = overlay.Objects, AnimationOrder = overlay.AnimationOrder } : null;
         canvas?.Load(Mirror, null, null);
         Inspector = null;
-        StepEditor = null;
+        Animation.SelectedStepRow = null;
         RefreshAll();
         OnPropertyChanged(string.Empty);
     }
@@ -405,7 +407,7 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
     {
         RefreshObjects();
         RefreshFields();
-        RefreshSteps();
+        Animation.Reload();
         OnLiveChanged();
         OnPropertyChanged(nameof(PreviewDuration));
         OnPropertyChanged(nameof(PlayheadText));
@@ -422,7 +424,8 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
     private void Changed(Parts parts = Parts.All)
     {
         if (Current is not { } overlay) return;
-        if (!ReferenceEquals(Mirror?.Objects, overlay.Objects)) LoadCurrent();
+        // The objects list was replaced (an undo, a revert): load it again. While posing, the canvas has its own list on purpose.
+        if (posedStepId is null && !ReferenceEquals(Mirror?.Objects, overlay.Objects)) LoadCurrent();
         canvas?.Refresh();
         changing = true;
         try { main.OverlayChanged(overlay); }
@@ -430,7 +433,7 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
         if (SelectedItem is { } tile) tile.Preview = OverlayTileViewModel.PreviewScene(overlay);
         if (parts.HasFlag(Parts.Objects)) RefreshObjects();
         if (parts.HasFlag(Parts.Fields)) RefreshFields();
-        if (parts.HasFlag(Parts.Steps)) RefreshSteps();
+        if (parts.HasFlag(Parts.Steps)) Animation.Reload();
         OnPropertyChanged(nameof(PreviewDuration));
         OnPropertyChanged(nameof(PlayheadText));
     }
@@ -444,7 +447,7 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
         canvas?.Refresh();
         Inspector?.Refresh();
         RefreshFields();
-        RefreshSteps();
+        Animation.Reload();
     }
 
     // MARK: The canvas
@@ -494,8 +497,27 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
         return OverlayPreview.Plain(SceneSize.Hd, Backdrop == 1 ? SceneColor.Black : DarkGrey);
     }
 
-    private RenderScene CanvasScene() =>
-        Current is { } overlay ? OverlayPreview.Still(overlay, BackdropScene(), ShowMattes) : OverlayPreview.Plain(SceneSize.Hd, DarkGrey);
+    private RenderScene CanvasScene()
+    {
+        if (Current is not { } overlay) return OverlayPreview.Plain(SceneSize.Hd, DarkGrey);
+        if (posedStepId is null || Mirror is null) return OverlayPreview.Still(overlay, BackdropScene(), ShowMattes);
+        // Posing a step: the pose in place of its object, over a faint copy of where it rests.
+        var posed = AnimationEditing.Find(overlay, posedStepId)?.ObjectId;
+        List<SlideObject> resting = overlay.Objects.FirstOrDefault(o => o.Id == posed) is { } rest ? [Faint(rest)] : [];
+        var stand = new Overlay { Id = overlay.Id, Name = overlay.Name, Layer = overlay.Layer, Objects = [.. resting, .. Mirror.Objects] };
+        return OverlayPreview.Still(stand, BackdropScene(), ShowMattes);
+    }
+
+    /// <summary>A see-through copy of an object at rest, shown under its pose (the Mac's "faint copy").</summary>
+    private static SlideObject Faint(SlideObject o)
+    {
+        var copy = MxuJson.Clone(o);
+        copy.Id = o.Id + ".resting";
+        copy.Opacity = Math.Clamp((o.Opacity ?? 1) * 0.3, 0, 1);
+        copy.AnimationSteps = null;
+        copy.MaskObjectId = null;
+        return copy;
+    }
 
     [ObservableProperty]
     public partial ObjectInspectorViewModel? Inspector { get; set; }
@@ -504,31 +526,38 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
     private List<SlideObject> SelectedObjects() =>
         Current is { } overlay && canvas is not null ? overlay.Objects.Where(o => canvas.Selection.Contains(o.Id)).ToList() : [];
 
+    /// <summary>What's selected as the canvas has it: while posing, the pose (which the inspector then edits).</summary>
+    private List<SlideObject> CanvasSelected() =>
+        Mirror is { } mirror && canvas is not null ? mirror.Objects.Where(o => canvas.Selection.Contains(o.Id)).ToList() : [];
+
     public bool HasSelection => canvas?.Selection.Count > 0;
 
     private void OnCanvasSelectionChanged()
     {
-        var selected = SelectedObjects();
+        var selected = CanvasSelected();
         Inspector = selected.Count == 1 && Current is { } overlay
-            ? new ObjectInspectorViewModel(selected[0], null, null, SceneSize.Hd, InspectorChanged) { Siblings = overlay.Objects }
+            ? new ObjectInspectorViewModel(selected[0], null, null, SceneSize.Hd, InspectorChanged) { Siblings = Mirror?.Objects ?? overlay.Objects, Library = main.Library }
             : null;
         syncingSelection = true;
         SelectedObjectRow = selected.Count == 1 ? ObjectRows.FirstOrDefault(r => r.Id == selected[0].Id) : null;
         syncingSelection = false;
         OnPropertyChanged(nameof(HasSelection));
-        OnPropertyChanged(nameof(GalleryTarget));
+        Animation.SelectionChanged();
     }
 
     private void OnCanvasEdited(bool final)
     {
         Inspector?.GeometryChanged();
-        if (final) Changed(Parts.None);
+        if (!final) return;
+        if (posedStepId is not null) Animation.PoseEdited();
+        Changed(Parts.None);
     }
 
     private void InspectorChanged()
     {
         canvas?.Refresh();
         Changed(Parts.All);
+        if (posedStepId is not null) Animation.PoseEdited();
     }
 
     /// <summary>Selects objects on the canvas (the Objects list and the self-test use this).</summary>
@@ -570,7 +599,7 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
 
     private void AddObject(SlideObject o)
     {
-        if (Current is not { } overlay) return;
+        if (RefusedWhilePosing() || Current is not { } overlay) return;
         overlay.Objects.Add(o);
         AfterStructureChange([o.Id]);
     }
@@ -639,10 +668,18 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     public partial string? Notice { get; set; }
 
+    /// <summary>While a step is posed, the canvas edits the pose: adding, deleting and copying objects waits until posing is done.</summary>
+    private bool RefusedWhilePosing()
+    {
+        if (posedStepId is null) return false;
+        Notice = "You're posing a step. Press Done posing first, then add, copy or delete objects.";
+        return true;
+    }
+
     [RelayCommand]
     private void DeleteSelectedObjects()
     {
-        if (Current is not { } overlay || SelectedObjects() is not { Count: > 0 } selected) return;
+        if (RefusedWhilePosing() || Current is not { } overlay || SelectedObjects() is not { Count: > 0 } selected) return;
         var stepIds = selected.SelectMany(o => o.AnimationSteps ?? []).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var o in selected) overlay.Objects.Remove(o);
         // Leave no dangling steps in the play order, and no masks naming an object that's gone.
@@ -663,7 +700,7 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
     [RelayCommand]
     private void DuplicateSelectedObjects()
     {
-        if (Current is not { } overlay || canvas is null || SelectedObjects() is not { Count: > 0 } selected) return;
+        if (RefusedWhilePosing() || Current is not { } overlay || canvas is null || SelectedObjects() is not { Count: > 0 } selected) return;
         var copies = new List<SlideObject>();
         var order = overlay.AnimationOrder is { Count: > 0 } existing ? existing.ToList() : null;
         foreach (var o in selected)

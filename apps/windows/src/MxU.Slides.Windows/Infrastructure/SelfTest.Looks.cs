@@ -339,43 +339,44 @@ public sealed partial class SelfTest
             var title = overlay.Objects.Single(o => o.Name == "Title");
             var plate = overlay.Objects.Single(o => o.Name == "Plate");
             vm.SelectObjects([name.Id]);
-            Check("the presets list kinetic text, the Mac's recommended set", vm.PresetChoices.Count(p => p.Title.StartsWith("Kinetic text", StringComparison.Ordinal)) >= 12
-                && vm.PresetChoices.Any(p => p.Title == "Recommended › Settle · In + Out"));
-            vm.SelectedPreset = vm.PresetChoices.First(p => p.Title == "Kinetic text › Word by word: rise");
-            vm.ApplyPresetCommand.Execute("replace");
+            Check("the presets list kinetic text, the Mac's recommended set", vm.Animation.PresetChoices.Count(p => p.Title.StartsWith("Kinetic text", StringComparison.Ordinal)) >= 12
+                && vm.Animation.PresetChoices.Any(p => p.Title == "Recommended › Settle · In + Out"));
+            vm.Animation.SelectedPreset = vm.Animation.PresetChoices.First(p => p.Title == "Kinetic text › Word by word: rise");
+            vm.Animation.ApplyPresetCommand.Execute("replace");
             var ins = name.AnimationSteps!.Where(s => s.Kind == AnimationKind.In).ToList();
             Check("a kinetic preset gives each word its own step, playing as the overlay goes up", ins.Count == 3 && ins.All(s => s.Ranges is { Count: 1 })
-                && AnimationSequence.Groups(overlay.Objects, overlay.AnimationOrder).Click.Count == 0 && vm.StepRows.All(r => r.Warning is null));
+                && AnimationSequence.Groups(overlay.Objects, overlay.AnimationOrder).Click.Count == 0 && vm.Animation.StepRows.All(r => r.Warning is null));
 
             vm.SelectObjects([title.Id]);
-            vm.GalleryKindIndex = 0;
-            vm.GenerateStepsCommand.Execute("word");
+            vm.Animation.GalleryKindIndex = 0;
+            vm.Animation.GenerateStepsCommand.Execute("word");
             Check("one step per word splits the title into its words", title.AnimationSteps!.Count(s => s.Ranges is { Count: 1 } && s.Kind == AnimationKind.In) == 2
                 && AnimationSequence.Groups(overlay.Objects, overlay.AnimationOrder).Click.Count == 0);
 
             vm.SelectObjects([plate.Id]);
-            vm.SelectedPreset = vm.PresetChoices.First(p => p.Title == "Recommended › Blur Resolve · In + Out");
-            vm.ApplyPresetCommand.Execute("replace");
+            vm.Animation.SelectedPreset = vm.Animation.PresetChoices.First(p => p.Title == "Recommended › Blur Resolve · In + Out");
+            vm.Animation.ApplyPresetCommand.Execute("replace");
             Check("a Mac preset replaces the plate's steps", plate.AnimationSteps?.Count == 2 && plate.AnimationSteps.All(s => s.Animation == StepAnimation.Blur));
-            Check("Save as preset puts it on the animation preset board", vm.SavePreset("Self-test blur")
+            Check("Save as preset puts it on the animation preset board", vm.Animation.SavePreset("Self-test blur")
                 && model.Library.Get<AnimationPresetBoard>(AnimationPresetBoard.WellKnownId)?.Presets.Any(p => p.Name == "Self-test blur") == true
-                && vm.PresetChoices.Any(p => p.Title == "My presets › Self-test blur"));
-            vm.SelectedEffect = vm.EffectChoices.First(e => e.Title == "Frost · Light");
-            vm.ApplyEffectCommand.Execute("replace");
+                && vm.Animation.PresetChoices.Any(p => p.Title == "My presets › Self-test blur"));
+            // Look effects now live in the inspector's Effects section (Phase 7), with the Mac's presets menu.
+            vm.SelectObjects([plate.Id]);
+            vm.Inspector!.Effects.ApplyPreset(EffectPresetCatalog.Recommended.First(e => e.Id == "builtin.frost.light"), add: false);
             Check("a look effect lands on the plate", plate.Effects is [{ EffectKind: EffectKind.Scatter }]);
-            vm.ApplyEffectCommand.Execute("clear");
+            vm.Inspector.Effects.ApplyPreset(new EffectPreset { Id = "none", Name = "None", Effects = [] }, add: false);
             Check("a preset you save is on the gallery's Mine shelf", editor.PresetGallery.Shelf == PresetChoice.Mine);
 
             // The gallery as you'd see it: kinetic text, one tile picked and playing on its sample.
             vm.SelectObjects([name.Id]);
-            vm.SelectedStepRow = null;
-            vm.SelectedPreset = vm.PresetChoices.First(p => p.Title == "Kinetic text › Word by word: blur in");
+            vm.Animation.SelectedStepRow = null;
+            vm.Animation.SelectedPreset = vm.Animation.PresetChoices.First(p => p.Title == "Kinetic text › Word by word: blur in");
             Check("picking a kinetic preset turns the gallery to its shelf", editor.PresetGallery.Shelf == PresetChoice.Kinetic);
             await Delay(500);
             editor.AnimationScroll.ScrollToTop();
             await Delay(300);
             Save(editor, "65-overlay-editor-presets");
-            editor.PresetGallery.Play(vm.SelectedPreset);
+            editor.PresetGallery.Play(vm.Animation.SelectedPreset);
             await Delay(650);
             Save(editor, "65-overlay-editor-presets-tile-playing");
             editor.PresetGallery.Shelf = PresetChoice.Recommended;

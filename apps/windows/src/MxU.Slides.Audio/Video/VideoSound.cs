@@ -127,6 +127,12 @@ public sealed class VideoSound : IDisposable
 
     public VideoSoundStatus? Status(string key) => Player(key)?.Status;
 
+    /// <summary>One video's own level, 0…1 (a media item's volume changed while it plays).</summary>
+    public void SetGain(string key, double gain)
+    {
+        if (Player(key) is { } player) player.Gain = (float)gain;
+    }
+
     /// <summary>True when the key's file turned out to have no sound we can play (the caller can let the video player have it).</summary>
     public bool HasNoSound(string key) => Player(key)?.HasNoSound == true;
 

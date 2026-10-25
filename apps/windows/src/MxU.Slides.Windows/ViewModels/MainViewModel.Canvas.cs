@@ -54,7 +54,7 @@ public sealed partial class MainViewModel
             var theme = EditedSlideTheme;
             var template = SlideSceneBuilder.ThemeSlide(slide, theme);
             var placeholder = SlideSceneBuilder.PlaceholderAssignments(slide.Objects, template).GetValueOrDefault(selected[0].Id);
-            Inspector = new ObjectInspectorViewModel(selected[0], placeholder, theme, SlideSceneBuilder.CanvasSizeFor(CurrentPresentation), InspectorChanged);
+            Inspector = new ObjectInspectorViewModel(selected[0], placeholder, theme, SlideSceneBuilder.CanvasSizeFor(CurrentPresentation), InspectorChanged) { Library = Library };
         }
         else
         {

@@ -274,9 +274,10 @@ public sealed partial class MediaHub
         // A video with sound plays its sound through our engine (MediaHub.Sound.cs), on the video sound's
         // device, over the same trim and at the same speed as the picture (MediaHub.Trim.cs).
         var trim = TrimOf?.Invoke(mediaId);
+        var gain = Gain(mediaId); // the item's own volume (MediaHub.Gain.cs)
         var ownSound = audible && TakeSound(playbackKey, player, media.Path,
-            trim?.InPoint, trim?.OutPoint, Math.Clamp(trim?.Rate ?? 1, Core.Media.PlaybackOptions.MinimumRate, Core.Media.PlaybackOptions.MaximumRate));
-        mp.Volume = audible && !ownSound ? VideoVolume : 0;
+            trim?.InPoint, trim?.OutPoint, Math.Clamp(trim?.Rate ?? 1, Core.Media.PlaybackOptions.MinimumRate, Core.Media.PlaybackOptions.MaximumRate), gain);
+        mp.Volume = audible && !ownSound ? VideoVolume * gain : 0;
         mp.IsMuted = !audible || ownSound;
         mp.ScrubbingEnabled = false;
         mp.MediaOpened += (_, _) =>
@@ -420,7 +421,7 @@ public sealed partial class MediaHub
     public void ApplyVolume()
     {
         foreach (var p in players.Values)
-            if (!p.MediaPlayer.IsMuted) p.MediaPlayer.Volume = VideoVolume;
+            if (!p.MediaPlayer.IsMuted) p.MediaPlayer.Volume = VideoVolume * Gain(p.MediaId);
         ApplySoundVolume();
     }
 

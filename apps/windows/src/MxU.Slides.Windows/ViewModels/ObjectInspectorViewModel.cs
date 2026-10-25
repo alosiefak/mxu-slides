@@ -363,4 +363,19 @@ public sealed partial class ObjectInspectorViewModel : ObservableObject
 
     /// <summary>True for a text box the operator types into (it appears as a field in the bin).</summary>
     public bool IsTyped => o.TextLink is null;
+
+    // MARK: Effects (Views/EffectsPanel.cs)
+
+    /// <summary>Where saved effect presets are kept (the library); null offers only the recommended ones.</summary>
+    public Core.Library.LibraryStore? Library { get; init; }
+
+    private EffectsEditorViewModel? effects;
+
+    /// <summary>The object's picture effects, for the inspector's Effects section.</summary>
+    public EffectsEditorViewModel Effects => effects ??= new EffectsEditorViewModel(
+        () => o.Effects, chain => Core.Animation.EffectEditing.SetChain(o, chain), changed, Library)
+    {
+        ApplyBelowRead = o.ObjectKind == SlideObjectKind.Shape ? () => o.EffectsApplyBelow ?? false : null,
+        ApplyBelowWrite = on => o.EffectsApplyBelow = on ? true : null,
+    };
 }

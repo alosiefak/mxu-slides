@@ -19,6 +19,11 @@ public sealed partial class StepRowViewModel(string stepId, string group) : Obse
     /// <summary>"When it goes up", "On click 1" or "When it's taken down" (the list is grouped by this).</summary>
     public string Group { get; } = group;
 
+    /// <summary>The group it plays in, and its place there (drag and drop puts a step in another row's place).</summary>
+    public AnimationSequence.GroupSlot Slot { get; set; }
+
+    public int Position { get; set; }
+
     [ObservableProperty]
     public partial string Title { get; set; } = "";
 
@@ -60,6 +65,9 @@ public sealed partial class AnimationStepViewModel : ObservableObject
     }
 
     public string StepId { get; }
+
+    /// <summary>The Animation tab this editor sits in (for posing the step on the canvas).</summary>
+    public AnimationTabViewModel? Tab { get; init; }
 
     private (string ObjectId, AnimationStep Step)? Found => AnimationEditing.Find(composition, StepId);
 
@@ -118,18 +126,47 @@ public sealed partial class AnimationStepViewModel : ObservableObject
     public IReadOnlyList<Choice<StepAnimation>> Effects =>
         AnimationEditing.Choices(Step.Kind).Select(a => new Choice<StepAnimation>(a, AnimationEditing.TileTitle(a, Step.Kind))).ToList();
 
-    /// <summary>The effect; picking another swaps it, keeping the timing (the Mac's replaceStepEffect).</summary>
+    /// <summary>
+    /// The effect; picking another swaps it, keeping the timing (the Mac's replaceStepEffect). A
+    /// change keeps its end state and only changes how it gets there (plain, blur, burn, glitch).
+    /// </summary>
     public Choice<StepAnimation>? Effect
     {
         get => Effects.FirstOrDefault(e => e.Value == Step.Animation);
         set
         {
-            if (value is null || value.Value == Step.Animation || IsMorph) return;
+            if (value is null || value.Value == Step.Animation) return;
+            if (IsMorph)
+            {
+                Write(s => s.Animation = value.Value);
+                return;
+            }
             if (!AnimationEditing.ReplaceEffect(composition, StepId, Step.Kind, value.Value)) return;
             OnPropertyChanged(string.Empty);
             changed();
         }
     }
+
+    // MARK: Posed on the canvas (a change's end, an In's custom start)
+
+    /// <summary>A change's end state, or an In's custom start: something the canvas can pose.</summary>
+    public bool HasPose => AnimationTimelineEditing.Pose(composition, StepId) is not null;
+
+    public bool IsIn => Step.Kind == AnimationKind.In;
+
+    /// <summary>An In that travels from where you placed it ("Enters from: where you place it").</summary>
+    public bool HasCustomStart
+    {
+        get => Step.FromObject is not null;
+        set
+        {
+            if (value == HasCustomStart) return;
+            Tab?.SetCustomStart(value);
+            OnPropertyChanged(string.Empty);
+        }
+    }
+
+    public bool IsPosing => Tab?.Posing == true && Tab.PosedStepId == StepId;
 
     // MARK: When and how fast
 
@@ -223,7 +260,7 @@ public sealed partial class AnimationStepViewModel : ObservableObject
 
     // MARK: The effect's own settings
 
-    private StepAnimation Shown => IsMorph ? StepAnimation.Fade : Step.Animation;
+    private StepAnimation Shown => Step.Animation;
 
     public bool IsMove => Shown == StepAnimation.Move;
     public bool IsWipe => Shown == StepAnimation.Wipe;
@@ -370,7 +407,7 @@ public sealed partial class AnimationStepViewModel : ObservableObject
 
     // MARK: Camera push
 
-    public bool ShowsCameraPush => !HasRanges && Step.Kind != AnimationKind.Emphasis && !IsMorph;
+    public bool ShowsCameraPush => !HasRanges && Step.Kind != AnimationKind.Emphasis;
 
     /// <summary>The program video moves into the space this object leaves free, in step with this animation.</summary>
     public bool CameraPush
@@ -387,5 +424,72 @@ public sealed partial class AnimationStepViewModel : ObservableObject
         {
             if (s.VideoPush is { } push) push.Mode = value switch { 1 => VideoPushMode.Fit, 2 => VideoPushMode.BlurBackground, _ => VideoPushMode.Fill };
         });
+    }
+
+    /// <summary>The push moves the video (crop in or letterbox), so where it sits and its margin apply; a blurred background doesn't.</summary>
+    public bool PushMoves => CameraPush && (Step.VideoPush?.Mode ?? VideoPushMode.Fill) != VideoPushMode.BlurBackground;
+
+    /// <summary>Where the pushed video sits in the space left: 0 centre, 1 left, 2 right, 3 top, 4 bottom (the Mac's "Video Sits").</summary>
+    public int PushAlignmentIndex
+    {
+        get => (int)(Step.VideoPush?.Alignment ?? VideoPushAlignment.Center);
+        set => Write(s =>
+        {
+            if (s.VideoPush is { } push) push.Alignment = value <= 0 ? null : (VideoPushAlignment)Math.Clamp(value, 0, 4);
+        });
+    }
+
+    /// <summary>Space kept between the video and the object (0–400).</summary>
+    public string PushMargin
+    {
+        get => Num(Step.VideoPush?.Margin ?? 0);
+        set
+        {
+            if (Parse(value) is not { } v) return;
+            Write(s =>
+            {
+                if (s.VideoPush is { } push) push.Margin = Math.Abs(v) < 0.0005 ? null : Math.Clamp(v, 0, 400);
+            });
+        }
+    }
+
+    /// <summary>Extra zoom on the pushed video (1–2).</summary>
+    public string PushZoom
+    {
+        get => Num(Step.VideoPush?.Zoom ?? 1);
+        set
+        {
+            if (Parse(value) is not { } v) return;
+            Write(s =>
+            {
+                if (s.VideoPush is { } push) push.Zoom = Math.Abs(v - 1) < 0.0005 ? null : Math.Clamp(v, 1, 2);
+            });
+        }
+    }
+
+    /// <summary>A blurred copy of the video behind the pushed one, filling the space (not for blur background, which is all blur).</summary>
+    public bool PushBackdrop
+    {
+        get => Step.VideoPush?.Backdrop ?? false;
+        set => Write(s =>
+        {
+            if (s.VideoPush is { } push) push.Backdrop = value ? true : null;
+        });
+    }
+
+    public bool ShowsPushBlur => CameraPush && ((Step.VideoPush?.Mode ?? VideoPushMode.Fill) == VideoPushMode.BlurBackground || PushBackdrop);
+
+    /// <summary>How much the blurred video is blurred (0–200; 36 unless set).</summary>
+    public string PushBlur
+    {
+        get => Num(Step.VideoPush?.BlurRadius ?? 36);
+        set
+        {
+            if (Parse(value) is not { } v) return;
+            Write(s =>
+            {
+                if (s.VideoPush is { } push) push.BlurRadius = Math.Clamp(v, 0, 200);
+            });
+        }
     }
 }

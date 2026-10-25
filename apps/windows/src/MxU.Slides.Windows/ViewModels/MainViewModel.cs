@@ -25,6 +25,7 @@ public sealed partial class MainViewModel : ObservableObject
         Session = session;
         Media = new MediaHub(ResolveMedia) { VideoVolume = settings.VideoVolume, PosterCache = Path.Combine(AppPaths.LocalRoot, "Posters") };
         Media.TrimOf = TrimFor; // each video's in point, out point and play rate (MainViewModel.Rendering.cs)
+        Media.GainOf = GainFor; // and its own volume (MainViewModel.MediaLooks.cs)
         SceneView.DefaultMedia = Media;
         Library.Changed += OnLibraryChanged;
         InitializeSound();
@@ -242,11 +243,8 @@ public sealed partial class MainViewModel : ObservableObject
         set
         {
             if (value is null || CurrentPresentation is null || CurrentPresentation.ThemeId == value.Id) return;
-            CurrentPresentation.ThemeId = value.Id;
-            SavePresentation(CurrentPresentation);
-            CurrentTheme = Library.Get<Theme>(value.Id);
-            RebuildSlides();
-            OnPropertyChanged();
+            // Asks first when slides have a theme of their own (MainViewModel.Themes.cs); cancelled, the picker goes back.
+            if (!ApplyDeckTheme(CurrentPresentation, value.Id)) System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => OnPropertyChanged());
         }
     }
 

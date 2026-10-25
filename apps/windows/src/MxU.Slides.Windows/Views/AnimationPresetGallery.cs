@@ -15,14 +15,14 @@ using SceneTransition = MxU.Slides.Windows.Rendering.SceneTransition;
 namespace MxU.Slides.Windows.Views;
 
 /// <summary>
-/// The overlay editor's presets gallery: three shelves (Windows' kinetic text, the Mac's
-/// recommended set, and the presets you saved), each a grid of tiles. Point at a tile and it plays
+/// The Animation tab's presets gallery (in the overlay, theme and stage layout editors): three
+/// shelves (Windows' kinetic text, the Mac's recommended set, and the presets you saved), each a grid of tiles. Point at a tile and it plays
 /// its preset on a small sample lower third (Core/Animation/PresetSamples.cs), so you can see the
 /// motion before you use it; click to pick it (the line about it and the Apply / Add buttons sit
-/// under the gallery, in the window's XAML); double-click to apply it straight away.
+/// under the gallery, in the tab's XAML); double-click to apply it straight away.
 /// <para>
-/// Built in code, like the lower-thirds gallery. It finds its <see cref="OverlayEditorViewModel"/>
-/// through the DataContext it inherits from the window.
+/// Built in code, like the lower-thirds gallery. It finds its <see cref="AnimationTabViewModel"/>
+/// through the DataContext it inherits from the tab (Views/AnimationTab.xaml).
 /// </para>
 /// </summary>
 public sealed class AnimationPresetGallery : UserControl
@@ -39,7 +39,7 @@ public sealed class AnimationPresetGallery : UserControl
     // The tiles playing, and when each one's current pass began.
     private readonly Dictionary<SceneView, (Overlay Sample, double StartedAt)> playing = [];
 
-    private OverlayEditorViewModel? vm;
+    private AnimationTabViewModel? vm;
     private string shelf = PresetChoice.Kinetic;
 
     public AnimationPresetGallery()
@@ -61,7 +61,7 @@ public sealed class AnimationPresetGallery : UserControl
             loop.Stop();
             playing.Clear();
         };
-        DataContextChanged += (_, e) => Attach(e.NewValue as OverlayEditorViewModel);
+        DataContextChanged += (_, e) => Attach(e.NewValue as AnimationTabViewModel);
     }
 
     /// <summary>The shelf showing: <see cref="PresetChoice.Kinetic"/>, <see cref="PresetChoice.Recommended"/> or <see cref="PresetChoice.Mine"/>.</summary>
@@ -76,7 +76,7 @@ public sealed class AnimationPresetGallery : UserControl
         }
     }
 
-    private void Attach(OverlayEditorViewModel? model)
+    private void Attach(AnimationTabViewModel? model)
     {
         if (vm is not null) vm.PropertyChanged -= OnModelChanged;
         vm = model;
@@ -86,8 +86,8 @@ public sealed class AnimationPresetGallery : UserControl
 
     private void OnModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(OverlayEditorViewModel.PresetChoices)) Rebuild();
-        else if (e.PropertyName == nameof(OverlayEditorViewModel.SelectedPreset))
+        if (e.PropertyName == nameof(AnimationTabViewModel.PresetChoices)) Rebuild();
+        else if (e.PropertyName == nameof(AnimationTabViewModel.SelectedPreset))
         {
             // A preset picked on another shelf (one just saved lands on Mine) turns to that shelf.
             if (vm?.SelectedPreset is { } selected && selected.Group != shelf) Shelf = selected.Group;
@@ -134,7 +134,7 @@ public sealed class AnimationPresetGallery : UserControl
 
     private Border Tile(PresetChoice choice)
     {
-        var sample = OverlayEditorViewModel.Sample(choice);
+        var sample = AnimationTabViewModel.Sample(choice);
         var view = new SceneView { PlaysVideo = false, Width = TileWidth, Height = TileHeight };
         view.Present(Still(sample), SceneTransition.Cut);
         var stack = new StackPanel();

@@ -527,6 +527,7 @@
                                                                 <ComboBoxItem Content="Stretch" />
                                                             </ComboBox>
                                                         </DockPanel>
+                                                        <v:EffectsPanel DataContext="{Binding Effects}" />
                                                     </StackPanel>
                                                 </DataTemplate>
                                             </ContentControl.ContentTemplate>

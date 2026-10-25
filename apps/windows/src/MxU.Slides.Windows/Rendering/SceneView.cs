@@ -900,7 +900,7 @@ public sealed partial class SceneView : FrameworkElement
                     visual.Effect = ShadowEffect(shape.Style.Shadow);
                     break;
                 case ItemContent.Media mediaContent:
-                    DrawMedia(dc, mediaContent.Id, mediaContent.ScaleMode, frame, item, usesKey, new RectangleGeometry(frame));
+                    DrawMedia(dc, mediaContent.Id, mediaContent.ScaleMode, frame, item, usesKey, new RectangleGeometry(frame), crop: mediaContent.SourceRect);
                     break;
             }
         }
@@ -1057,7 +1057,7 @@ public sealed partial class SceneView : FrameworkElement
         {
             if (fillOpacity < 1) dc.PushOpacity(fillOpacity);
             if (style.Fill is SceneFill.Media mediaFill)
-                DrawMedia(dc, mediaFill.Id, mediaFill.ScaleMode, frame, item, usesKey, geometry, isFill: true);
+                DrawMedia(dc, mediaFill.Id, mediaFill.ScaleMode, frame, item, usesKey, geometry, isFill: true, crop: mediaFill.SourceRect);
             else if (Painting.FillBrush(style.Fill, frame) is { } brush)
                 dc.DrawGeometry(brush, null, geometry);
             if (fillOpacity < 1) dc.Pop();
@@ -1182,8 +1182,9 @@ public sealed partial class SceneView : FrameworkElement
         else media?.Release(key);
     }
 
+    /// <param name="crop">The part of the picture to show, in its unit square (a media item's crop, an imported picture's crop); null for all of it.</param>
     private void DrawMedia(DrawingContext dc, string mediaId, SceneMediaScaleMode mode, Rect frame, RenderItem item, Action<string> usesKey, Geometry clip,
-        bool isFill = false)
+        bool isFill = false, SceneSourceRect? crop = null)
     {
         if (media is null || frame.Width <= 0 || frame.Height <= 0) return;
         dc.PushClip(clip);
@@ -1199,7 +1200,7 @@ public sealed partial class SceneView : FrameworkElement
                 case Core.Model.MediaKind.Image:
                     var pixelWidth = (int)Math.Ceiling(frame.Width * Math.Max(1, RenderScale()));
                     if (media.Image(mediaId, pixelWidth) is { } image)
-                        dc.DrawImage(image, Place(new Size(image.Width, image.Height), frame, mode));
+                        DrawCropped(dc, frame, mode, crop, new Size(image.Width, image.Height), at => dc.DrawImage(image, at));
                     break;
                 case Core.Model.MediaKind.Video when PlaysVideo:
                     // A video fading out in a layer transition keeps playing on the same player.
@@ -1213,10 +1214,10 @@ public sealed partial class SceneView : FrameworkElement
                         break;
                     }
                     var natural = media.NaturalSize(mediaId) ?? frame.Size;
-                    dc.DrawVideo(player, Place(natural, frame, mode));
+                    DrawCropped(dc, frame, mode, crop, natural, at => dc.DrawVideo(player, at));
                     break;
                 case Core.Model.MediaKind.Video when media.Poster(mediaId) is { } poster:
-                    dc.DrawImage(poster, Place(new Size(poster.Width, poster.Height), frame, mode));
+                    DrawCropped(dc, frame, mode, crop, new Size(poster.Width, poster.Height), at => dc.DrawImage(poster, at));
                     break;
                 case Core.Model.MediaKind.Video:
                     DrawPlaceholder(dc, frame, media.NameOf(mediaId), failed: false);
@@ -1274,6 +1275,35 @@ public sealed partial class SceneView : FrameworkElement
     }
 
     /// <summary>Where content of <paramref name="natural"/> size lands in <paramref name="frame"/> for a scale mode.</summary>
+    /// <summary>
+    /// Draws a picture fitted into <paramref name="frame"/>; with a crop, only the part kept is
+    /// fitted (and drawn), the rest of the picture lying outside it is clipped away.
+    /// </summary>
+    private static void DrawCropped(DrawingContext dc, Rect frame, SceneMediaScaleMode mode, SceneSourceRect? crop, Size natural, Action<Rect> draw)
+    {
+        var (at, keep) = PlaceCropped(natural, frame, mode, crop);
+        if (keep is { } kept) dc.PushClip(new RectangleGeometry(kept));
+        draw(at);
+        if (keep is not null) dc.Pop();
+    }
+
+    /// <summary>
+    /// Where the whole picture goes so its kept part (<paramref name="crop"/>, fractions of its width and
+    /// height) is fitted into <paramref name="frame"/>, and the rectangle that kept part fills (to clip
+    /// to). Without a crop: <see cref="Place"/>, no clip.
+    /// </summary>
+    public static (Rect Whole, Rect? Kept) PlaceCropped(Size natural, Rect frame, SceneMediaScaleMode mode, SceneSourceRect? crop)
+    {
+        if (crop is not { } c || c.Width <= 0 || c.Height <= 0 || (c.X <= 0 && c.Y <= 0 && c.Width >= 1 && c.Height >= 1)
+            || natural.Width <= 0 || natural.Height <= 0)
+            return (Place(natural, frame, mode), null);
+        var kept = Place(new Size(natural.Width * c.Width, natural.Height * c.Height), frame, mode);
+        var sx = kept.Width / (natural.Width * c.Width);
+        var sy = kept.Height / (natural.Height * c.Height);
+        var whole = new Rect(kept.X - c.X * natural.Width * sx, kept.Y - c.Y * natural.Height * sy, natural.Width * sx, natural.Height * sy);
+        return (whole, kept);
+    }
+
     public static Rect Place(Size natural, Rect frame, SceneMediaScaleMode mode)
     {
         if (mode == SceneMediaScaleMode.Stretch || natural.Width <= 0 || natural.Height <= 0) return frame;

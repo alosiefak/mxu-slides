@@ -100,6 +100,9 @@
             </ComboBox>
         </DockPanel>
 
+        <!-- Effects (Views/EffectsPanel.cs) -->
+        <v:EffectsPanel DataContext="{Binding Effects}" />
+
         <!-- Mask -->
         <StackPanel Visibility="{Binding ShowsMask, Converter={StaticResource Visible}}" Margin="0,12,0,0">
             <TextBlock Text="MASK" Style="{StaticResource SectionLabel}" />

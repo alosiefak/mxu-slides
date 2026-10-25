@@ -78,22 +78,22 @@ public sealed partial class SelfTest
             // Animations: the plate slides in, the name follows it, and fades out when taken down.
             vm.ShowingAnimationTab = true;
             vm.SelectObjects([plate.Id]);
-            vm.GalleryKindIndex = 0;
-            vm.AddEffectCommand.Execute(vm.GalleryTiles.First(t => t.Animation == StepAnimation.Move));
+            vm.Animation.GalleryKindIndex = 0;
+            vm.Animation.AddEffectCommand.Execute(vm.Animation.GalleryTiles.First(t => t.Animation == StepAnimation.Move));
             vm.SelectObjects([name.Id]);
-            vm.AddEffectCommand.Execute(vm.GalleryTiles.First(t => t.Animation == StepAnimation.Move));
-            if (vm.StepEditor is { } step)
+            vm.Animation.AddEffectCommand.Execute(vm.Animation.GalleryTiles.First(t => t.Animation == StepAnimation.Move));
+            if (vm.Animation.StepEditor is { } step)
             {
                 step.MoveFromIndex = 3; // from the bottom, out of the matte
                 step.TriggerIndex = 2; // after the plate
             }
-            vm.GalleryKindIndex = 1;
-            vm.AddEffectCommand.Execute(vm.GalleryTiles.First(t => t.Animation == StepAnimation.Fade));
-            Check("the steps go up, then come down", vm.StepRows.Count(r => r.Group == OverlayEditorViewModel.GoesUp) == 2
-                && vm.StepRows.Count(r => r.Group == OverlayEditorViewModel.ComesDown) == 1 && vm.StepRows.All(r => r.Warning is null));
+            vm.Animation.GalleryKindIndex = 1;
+            vm.Animation.AddEffectCommand.Execute(vm.Animation.GalleryTiles.First(t => t.Animation == StepAnimation.Fade));
+            Check("the steps go up, then come down", vm.Animation.StepRows.Count(r => r.Group == AnimationTabViewModel.GoesUp) == 2
+                && vm.Animation.StepRows.Count(r => r.Group == AnimationTabViewModel.ComesDown) == 1 && vm.Animation.StepRows.All(r => r.Warning is null));
             Check("the name's step slides it up from the bottom after the plate",
-                vm.StepRows.ElementAtOrDefault(1)?.Timing.StartsWith("After", StringComparison.Ordinal) == true
-                && vm.StepRows[1].Title.Contains("Slides in from bottom", StringComparison.Ordinal));
+                vm.Animation.StepRows.ElementAtOrDefault(1)?.Timing.StartsWith("After", StringComparison.Ordinal) == true
+                && vm.Animation.StepRows[1].Title.Contains("Slides in from bottom", StringComparison.Ordinal));
             await Delay(600);
             Save(editor, "17-overlay-editor-animation");
 
