@@ -21,9 +21,9 @@ $env:MXU_SLIDES_DATA = "$sandbox\data"
 $env:MXU_SLIDES_LOCAL = "$sandbox\local"
 $exe = Get-ChildItem (Join-Path $root 'src\MxU.Slides.Windows\bin\Debug') -Recurse -Filter MxUSlides.exe | Select-Object -First 1
 $process = Start-Process -FilePath $exe.FullName -ArgumentList '--self-test', "`"$Out`"" -PassThru
-# Up to 30 minutes: the full run takes about 5 on a laptop, but over 15 on GitHub's test machine,
+# Up to 45 minutes: the full run takes about 5 on a laptop, but about 25 on GitHub's test machine,
 # which has no graphics card (WPF draws every window in software there).
-$finished = $process.WaitForExit(1800000)
+$finished = $process.WaitForExit(2700000)
 if (-not $finished) { Stop-Process -Id $process.Id -Force }
 # Keep the app's log beside the pictures (CI uploads the folder), then throw the library away.
 Copy-Item -Recurse -Force "$sandbox\local\Logs" (Join-Path $Out 'Logs') -ErrorAction SilentlyContinue

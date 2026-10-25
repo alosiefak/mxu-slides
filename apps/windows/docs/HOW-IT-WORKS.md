@@ -390,6 +390,12 @@ Not on Windows (yet): SRT, HDR/HEVC streaming, ProRes recording, and signing in 
 - **Pretending to be a different PC.** Two environment variables make this PC behave like the GitHub test machine, to reproduce its problems here:
   - `MXU_SLIDES_CAPTURE=software` makes recording and streaming use the slower software copy (no graphics-card capture);
   - `MXU_SLIDES_AUDIO=none` makes the app see no sound devices at all.
+- **How the self-test copes with a slow PC.** The GitHub machine is several times slower than a laptop. A check that sleeps a fixed time and then looks ("wait 300 ms, then the video should be paused") passes on a fast PC and fails there, because the app simply hasn't got round to it yet. So the checks **wait for what they're looking for** instead. `Until(...)` (`SelfTest.Sound.cs`) and `WhenShown(...)` (`SelfTest.Show.cs`) look again every 50 ms until the condition is true, and give up only after a generous limit, usually 10 to 15 seconds. On a fast PC they return straight away, so the run is no slower. Three more habits:
+  - **A clock is compared with the time that really passed.** "Item Remaining shows about 2:00" became "Item Remaining shows 2:00 less the seconds since the row was fired", measured with the computer's clock. On the GitHub machine 7 seconds passed between firing and looking, so the right answer there is 1:53.
+  - **Something that must happen at a moment is done at that moment.** To test holding a 1.2-second slide timer, the test used to wait 300 ms and then press hold. On a slow PC the timer could run out first. Now the test listens for the chip changing (`AutoAdvance.Changed`) and holds the timer the instant it starts.
+  - **Windows' own media calls get a time limit** (`SelfTest.Slow.cs`). On the GitHub machine, Windows' video encoder (`MediaComposition.RenderToFileAsync`) can start making the test video and never finish. After 90 seconds the test stops waiting, writes a NOTE and reports the video checks as SKIP, like the other checks that need hardware.
+
+  To try it here, set the two variables above and keep the computer busy while the self-test runs.
 
 ## 27. Looks: one slide, a different design on each screen (Phase 4)
 
