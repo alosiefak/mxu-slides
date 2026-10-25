@@ -70,7 +70,14 @@ public sealed class HiddenCapture : IDisposable
         // the pieces are put back together as they're captured. One window when the picture fits.
         stage = new Border { Background = Brushes.Black, Child = content };
         var screen = Displays.All().FirstOrDefault(d => d.IsPrimary);
-        foreach (var tile in CaptureTiles.Plan(width, height, screen?.Width ?? 0, screen?.Height ?? 0))
+        // MXU_SLIDES_CAPTURE=software forces the slower copy (to test it, or on a PC whose capture misbehaves).
+        var forcedSoftware = string.Equals(Environment.GetEnvironmentVariable("MXU_SLIDES_CAPTURE"), "software", StringComparison.OrdinalIgnoreCase);
+        var plan = CaptureTiles.Plan(width, height, screen?.Width ?? 0, screen?.Height ?? 0);
+        // The slower copy draws the stage itself and never looks at the pieces, so it needs only the
+        // first window (which holds the stage). The others would only cost drawing time, and on a PC
+        // without a graphics card WPF draws every window in software.
+        if (forcedSoftware || FastCaptureFailed) plan = [plan[0]];
+        foreach (var tile in plan)
         {
             VisualBrush? piece = null;
             Visual root;
@@ -96,9 +103,7 @@ public sealed class HiddenCapture : IDisposable
         };
         try
         {
-            // MXU_SLIDES_CAPTURE=software forces the slower copy (to test it, or on a PC whose capture misbehaves).
-            if (string.Equals(Environment.GetEnvironmentVariable("MXU_SLIDES_CAPTURE"), "software", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("MXU_SLIDES_CAPTURE is set to software");
+            if (forcedSoftware) throw new InvalidOperationException("MXU_SLIDES_CAPTURE is set to software");
             // Once Windows' capture has failed on this PC, later captures (the next recording) start on the copy straight away.
             if (FastCaptureFailed) throw new InvalidOperationException("it delivered nothing earlier");
             foreach (var (tile, window, _) in tiles)
@@ -174,6 +179,13 @@ public sealed class HiddenCapture : IDisposable
         FastCaptureFailed = true;
         foreach (var capture in captures) capture.Dispose();
         captures.Clear();
+        // The other pieces' windows only fed Windows' capture: close them (the first holds the stage).
+        foreach (var (_, window, _) in tiles.Skip(1))
+        {
+            window.RootVisual = null;
+            window.Dispose();
+        }
+        if (tiles.Count > 1) tiles.RemoveRange(1, tiles.Count - 1);
         Problem = $"This PC can't use Windows' fast capture ({reason}), so recording, streaming and NDI use a slower copy.";
         Log.Warn($"{title}: {Problem}");
         copyTarget = new RenderTargetBitmap(Width, Height, 96, 96, PixelFormats.Pbgra32);
