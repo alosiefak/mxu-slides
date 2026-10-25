@@ -13,16 +13,12 @@ namespace MxU.Slides.Windows.Views;
 /// The Stage panel: each stage screen (confidence monitor) with the layout it shows, so the
 /// band's monitor can show chords while the pastor's shows the clock; a preview of one of them
 /// (click a screen's name to preview it); and the stage message. Port of
-/// Sources/Modules/ConfidenceModule.swift (screens and Stage Message). Windows has no stage
-/// layout editor yet, so the Mac's "Edit Layout in Library" isn't offered.
+/// Sources/Modules/ConfidenceModule.swift (screens and Stage Message). The layout picker lists
+/// layouts with no folder, then a submenu for each folder (Phase 8, the Mac's EntryFolderMenuItems).
+/// Windows has no stage layout editor yet, so the Mac's "Edit Layout in Library" isn't offered.
 /// </summary>
 public sealed class StagePanel : UserControl
 {
-    private sealed record LayoutChoice(string? Id, string Name)
-    {
-        public override string ToString() => Name;
-    }
-
     private readonly StackPanel screens = new();
     private readonly SceneView preview = new() { PlaysVideo = false, PlaybackScope = "stage-preview" };
     private readonly TextBlock status = new() { FontSize = 11, Margin = new Thickness(2, 4, 0, 0), TextWrapping = TextWrapping.Wrap };
@@ -88,6 +84,7 @@ public sealed class StagePanel : UserControl
         }
         screens.Children.Clear();
         ScreenNames.Clear();
+        LayoutChips.Clear();
         if (model is null) return;
         var rows = model.StageScreenRows();
         if (rows.Count == 0)
@@ -95,18 +92,25 @@ public sealed class StagePanel : UserControl
             screens.Children.Add(EditorKit.Muted("No confidence monitors. Give a screen the Stage job in Screens & Settings › More screens.", 11, 4));
             return;
         }
-        List<LayoutChoice> choices = [new(null, "Built-in Layout"), .. model.StageLayouts.Select(l => new LayoutChoice(l.Id, l.Name))];
         var previewing = model.StagePreviewScreenId is { } chosen && rows.Any(r => r.Id == chosen) ? chosen : rows[0].Id;
         foreach (var row in rows)
         {
             ScreenNames.Add(row.Name);
-            var picker = new ComboBox { ItemsSource = choices, MinWidth = 150, MaxWidth = 190, ToolTip = $"The layout {row.Name} shows" };
-            picker.SelectedItem = choices.FirstOrDefault(c => c.Id == row.LayoutId) ?? choices[0];
             var id = row.Id;
-            picker.SelectionChanged += (_, _) =>
+            var current = model.StageLayouts.FirstOrDefault(l => l.Id == row.LayoutId);
+            FrameworkElement picker;
+            if (model.IsVolunteer)
             {
-                if (picker.SelectedItem is LayoutChoice choice) model.SetStageLayout(id, choice.Id);
-            };
+                picker = new TextBlock { Text = current?.Name ?? "Built-in Layout", FontSize = 11, Foreground = EditorKit.Res<Brush>("MutedText"), VerticalAlignment = VerticalAlignment.Center };
+            }
+            else
+            {
+                var chip = OperatorKit.Chip(null, current?.Name ?? "Built-in Layout", $"The layout {row.Name} shows", under => OperatorKit.Open(LayoutMenu(id, current?.Id), under));
+                chip.Margin = new Thickness(0);
+                chip.MaxWidth = 200;
+                picker = chip;
+                LayoutChips[row.Name] = chip;
+            }
             var name = new TextBlock
             {
                 Text = row.Name, FontSize = 12, FontWeight = FontWeights.Medium, VerticalAlignment = VerticalAlignment.Center,
@@ -120,6 +124,34 @@ public sealed class StagePanel : UserControl
             line.Children.Add(name);
             screens.Children.Add(line);
         }
+    }
+
+    /// <summary>Each screen's layout chip, by screen name (the self-test opens one).</summary>
+    internal Dictionary<string, Button> LayoutChips { get; } = [];
+
+    /// <summary>
+    /// The layout menu: Built-in Layout, the layouts in no folder, then a submenu for each folder
+    /// (and the folders inside it), sorted by name (Core's <see cref="Core.Library.FolderTree"/>).
+    /// </summary>
+    internal ContextMenu LayoutMenu(Guid screenId, string? currentId)
+    {
+        var layouts = model?.StageLayouts.ToList() ?? [];
+        MenuItem Pick(ConfidenceLayout layout) => OperatorKit.Choice(layout.Name, layout.Id == currentId, () => model?.SetStageLayout(screenId, layout.Id));
+        List<object> items = [OperatorKit.Choice("Built-in Layout", currentId is null, () => model?.SetStageLayout(screenId, null))];
+        if (layouts.Count > 0) items.Add(EditorKit.Separator());
+        items.AddRange(Core.Library.FolderTree.In(layouts, l => l.Folder, null).OrderBy(l => l.Name, StringComparer.CurrentCultureIgnoreCase).Select(Pick));
+        object Folder(Core.Library.FolderNode node)
+        {
+            List<object> inside = [.. Core.Library.FolderTree.In(layouts, l => l.Folder, node.Path).OrderBy(l => l.Name, StringComparer.CurrentCultureIgnoreCase).Select(Pick)];
+            if (node.Children.Count > 0)
+            {
+                if (inside.Count > 0) inside.Add(EditorKit.Separator());
+                inside.AddRange(node.Children.Select(Folder));
+            }
+            return OperatorKit.Submenu(node.Name, inside);
+        }
+        items.AddRange(Core.Library.FolderTree.Tree(layouts.Select(l => l.Folder)).Select(Folder));
+        return OperatorKit.Menu(items);
     }
 
     // MARK: Stage message

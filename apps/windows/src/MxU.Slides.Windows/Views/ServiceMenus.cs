@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using MxU.Slides.Core.Automation;
+using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Windows.ViewModels;
 
@@ -36,6 +38,10 @@ public static class ServiceMenus
             if (ServiceDateWindow.Ask(owner, service?.Name ?? "Service", model.SelectedServiceDate) is { } date) model.ChangeServiceDate(date);
         }, has));
         menu.Items.Add(Item("Duplicate", () => model.DuplicateServiceCommand.Execute(null), has));
+        // Every song's hand-over to the next item at once (Phase 8, the Mac's Set All Transitions).
+        var all = TransitionMenu("Set all transitions", null, transition => model.SetServiceTransition(null, transition));
+        all.IsEnabled = has;
+        menu.Items.Add(all);
         var versions = new MenuItem { Header = "Versions", IsEnabled = has };
         foreach (var entry in VersionItems(owner, model)) versions.Items.Add(entry);
         menu.Items.Add(versions);
@@ -99,18 +105,50 @@ public static class ServiceMenus
 
     private const string ExtraTag = "show-flow";
 
-    /// <summary>Adds Hide, Output Preset and Use Main's to a row's right-click menu as it opens.</summary>
+    /// <summary>
+    /// Adds Hide, Output Preset and Use Main's to a row's right-click menu as it opens; for a song,
+    /// its Arrangement ›; for a header, Collapse and Expand. With several rows chosen, the menu
+    /// becomes the bulk menu instead (Transition ›, Hide, Remove), working on all of them, as
+    /// the Mac's bulkMenu does. In volunteer mode only Go live is left.
+    /// </summary>
     public static void AddItemOptions(ContextMenu menu, MainViewModel model)
     {
         foreach (var old in menu.Items.OfType<FrameworkElement>().Where(i => Equals(i.Tag, ExtraTag)).ToList()) menu.Items.Remove(old);
         if (model.SelectedServiceItem is not { } row) return;
         var item = row.Item;
+        var batch = model.ServiceBatch(item.Id);
+        // The menu's own items (Go live, Rename…, Move up…) are for one row, and only Go live runs the show.
+        foreach (var own in menu.Items.OfType<FrameworkElement>())
+            own.Visibility = batch.Count > 1 || model.IsVolunteer && !(own is MenuItem { Header: "Go live" }) ? Visibility.Collapsed : Visibility.Visible;
         void Add(FrameworkElement element)
         {
             element.Tag = ExtraTag;
             menu.Items.Add(element);
         }
+        if (model.IsVolunteer) return;
+        if (batch.Count > 1)
+        {
+            foreach (var entry in BulkItems(model, batch)) Add(entry);
+            return;
+        }
         Add(new Separator());
+        if (item.ItemKind == ServiceItemKind.Header)
+        {
+            var collapsed = model.IsHeaderCollapsed(item.Id);
+            Add(Item(collapsed ? "Expand" : "Collapse", () => model.SetHeaderCollapsed(item.Id, !collapsed)));
+            Add(Item("Collapse All Headers", () => model.SetAllHeadersCollapsed(true)));
+            Add(Item("Expand All Headers", () => model.SetAllHeadersCollapsed(false)));
+            Add(new Separator());
+        }
+        if (item.ItemKind == ServiceItemKind.Presentation && model.Library.Get<Presentation>(item.RefId) is { Arrangements.Count: > 0 } song)
+        {
+            var arrangement = new MenuItem { Header = "Arrangement" };
+            arrangement.Items.Add(Item("Default", () => model.SetServiceItemArrangement(item.Id, null), check: string.IsNullOrEmpty(item.ArrangementId)));
+            arrangement.Items.Add(new Separator());
+            foreach (var choice in song.Arrangements!)
+                arrangement.Items.Add(Item(choice.Name, () => model.SetServiceItemArrangement(item.Id, choice.Id), check: item.ArrangementId == choice.Id));
+            Add(arrangement);
+        }
         if (item.ItemKind is ServiceItemKind.Presentation or ServiceItemKind.Media && model.Library.All<OutputPreset>() is { Count: > 0 } presets)
         {
             var preset = new MenuItem { Header = "Output preset" };
@@ -122,5 +160,47 @@ public static class ServiceMenus
         }
         Add(Item("Hide", () => model.SetServiceItemHidden(item.Id, true)));
         if (row.IsChanged) Add(Item("Use Main's", () => model.UseMainForServiceItem(item.Id)));
+    }
+
+    /// <summary>The bulk menu: "3 Items", then Transition ›, Hide and Remove from Service for all of them.</summary>
+    private static IEnumerable<FrameworkElement> BulkItems(MainViewModel model, List<string> ids)
+    {
+        yield return new MenuItem { Header = ServiceBulkEdit.BatchTitle(ids.Count), IsEnabled = false };
+        yield return new Separator();
+        yield return TransitionMenu("Transition", null, transition => model.SetServiceTransition(ids, transition));
+        yield return new Separator();
+        yield return Item("Hide", () => model.HideServiceRows(ids));
+        yield return Item("Remove from Service", () =>
+        {
+            if (MessageBox.Show(Application.Current.MainWindow, $"Remove {ids.Count} rows from this service? Their songs and media stay in the library.",
+                    "Remove from service", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
+                model.RemoveServiceRows(ids);
+        });
+    }
+
+    /// <summary>
+    /// The song transition menu (how a song hands over to the next item in a timeline): Stop, Fade,
+    /// Overlap, Crossfade, and a length. Port of SongTransitionMenuItems; the same choices as the
+    /// timeline editor's Song menu.
+    /// </summary>
+    public static MenuItem TransitionMenu(string header, SongTransition? current, Action<SongTransition?> apply)
+    {
+        var menu = new MenuItem { Header = header };
+        var kind = SongTransitions.KindOf(current);
+        foreach (var option in Enum.GetValues<SongTransitions.Kind>())
+            menu.Items.Add(Item(option.Title(), () => apply(TimelineEditing.Choosing(option, current)), check: current is not null && kind == option));
+        menu.Items.Add(new Separator());
+        var length = new MenuItem { Header = "Length" };
+        foreach (var option in new[] { SongTransitions.Kind.Fade, SongTransitions.Kind.Overlap, SongTransitions.Kind.Crossfade })
+        {
+            var sub = new MenuItem { Header = option.Title() };
+            sub.Items.Add(Item(option == SongTransitions.Kind.Overlap ? "Automatic (by sections, up to 5 s)" : "Automatic (5 s)",
+                () => apply(new SongTransition { Kind = option.Raw() })));
+            foreach (var seconds in TimelineEditing.TransitionLengths)
+                sub.Items.Add(Item(TimelineEditing.Seconds(seconds), () => apply(new SongTransition { Kind = option.Raw(), Seconds = seconds })));
+            length.Items.Add(sub);
+        }
+        menu.Items.Add(length);
+        return menu;
     }
 }

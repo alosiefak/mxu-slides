@@ -42,6 +42,9 @@ public partial class MainWindow : Window
         Closing += OnClosing;
         PreviewKeyDown += OnPreviewKeyDown;
         Transitions.TransitionMenus.Attach(this, model);
+        // Phase 8's operator depth: selecting several service rows, collapsing headers, and volunteer mode.
+        ServiceListExtras.Attach(ServiceList, model);
+        Volunteer.VolunteerLayout.Attach(this, model);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -204,80 +207,15 @@ public partial class MainWindow : Window
         model.RenderOutputs(SceneTransition.Cut, refreshOnly: true);
     }
 
-    // MARK: Keyboard (same defaults as the Mac app)
+    // MARK: Keyboard
 
+    /// <summary>
+    /// Every key goes through this PC's shortcuts first (MainWindow.Keys.cs: the defaults are the
+    /// Mac's, and Screens & Settings › Keyboard Shortcuts changes them).
+    /// </summary>
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        var typing = Keyboard.FocusedElement is TextBox or ComboBox { IsEditable: true };
-        var ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
-        var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
-
-        switch (key)
-        {
-            case Key.F1: model.ClearAllCommand.Execute(null); e.Handled = true; return;
-            case Key.F2: model.ClearSlideCommand.Execute(null); e.Handled = true; return;
-            case Key.F3: model.ClearMediaCommand.Execute(null); e.Handled = true; return;
-            case Key.F4: model.ClearOverlaysCommand.Execute(null); e.Handled = true; return;
-            case Key.F5: model.ClearAudioCommand.Execute(null); e.Handled = true; return;
-            case Key.F6: model.ClearAlertsCommand.Execute(null); e.Handled = true; return;
-        }
-
-        if (ctrl)
-        {
-            switch (key)
-            {
-                case Key.N when shift: model.NewPresentationCommand.Execute(null); e.Handled = true; return;
-                case Key.N: NewSong_Click(this, e); e.Handled = true; return;
-                case Key.I: Import_Click(this, e); e.Handled = true; return;
-                case Key.E: model.IsEditing = !model.IsEditing; e.Handled = true; return;
-                case Key.F: LibrarySearchBox.Focus(); LibrarySearchBox.SelectAll(); e.Handled = true; return;
-                case Key.B: model.OpenBibleCommand.Execute(null); e.Handled = true; return;
-            }
-        }
-
-        // While typing, or while the canvas has focus (arrows nudge, Delete removes), keys belong there.
-        if (typing || Keyboard.FocusedElement is SlideCanvasEditor)
-        {
-            if (key == Key.Escape && typing) Keyboard.ClearFocus();
-            return;
-        }
-
-        switch (key)
-        {
-            case Key.Enter when model.CommitGoTo():
-                e.Handled = true;
-                return;
-            case Key.Escape when model.GoToBuffer.Length > 0:
-                model.CancelGoTo();
-                e.Handled = true;
-                return;
-            case Key.Right when Keyboard.Modifiers == ModifierKeys.Alt:
-                model.NextSkippingBuildsCommand.Execute(null);
-                e.Handled = true;
-                return;
-            case Key.Right or Key.Space or Key.Enter or Key.PageDown or Key.Down:
-                model.NextCommand.Execute(null);
-                e.Handled = true;
-                return;
-            case Key.Left or Key.PageUp or Key.Up:
-                model.PreviousCommand.Execute(null);
-                e.Handled = true;
-                return;
-        }
-
-        // Digits build a slide number (Enter takes it live); letters are group hot keys (C = Chorus…).
-        if (Keyboard.Modifiers != ModifierKeys.None) return;
-        if (key is >= Key.D0 and <= Key.D9 or >= Key.NumPad0 and <= Key.NumPad9)
-        {
-            var digit = (char)('0' + (key >= Key.NumPad0 ? key - Key.NumPad0 : key - Key.D0));
-            model.AppendGoToDigit(digit);
-            e.Handled = true;
-        }
-        else if (key is >= Key.A and <= Key.Z && model.FireHotKey(((char)('a' + (key - Key.A))).ToString()))
-        {
-            e.Handled = true;
-        }
+        if (HandleKey(e)) e.Handled = true;
     }
 
     // MARK: Slides

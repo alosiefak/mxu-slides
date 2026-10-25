@@ -137,6 +137,8 @@ public sealed partial class MainViewModel
         foreach (var tile in MediaItems)
             tile.IsLive = Show.LiveMedia.Values.Any(m => m.MediaId == tile.Item.Id);
         MarkLiveOverlays();
+        // Phase 8: the live row's collapsed group opens, and the continuous view marks the live slide.
+        FollowLiveInViews();
     }
 
     [RelayCommand]
@@ -229,7 +231,7 @@ public sealed partial class MainViewModel
     private List<Position> Positions(Service service)
     {
         var positions = new List<Position>();
-        foreach (var item in service.Items.Where(i => i.HiddenInPresenter != true))
+        foreach (var item in RunOfShow(service))
         {
             switch (item.ItemKind)
             {

@@ -16,8 +16,9 @@ namespace MxU.Slides.Windows.Views;
 /// button reads Turn Off, and Send Update resends what the blanks say now. Clicking a row opens
 /// its editor: name, phrase, where it goes (Confidence, Audience or both), its layer and theme,
 /// and Flash or Persist. Port of Sources/Modules/AlertsModule.swift; the rules are Core's
-/// (<see cref="AlertEditing"/>, <see cref="AlertLibrary"/>), so this only draws. The Mac reorders
-/// by dragging; here a row's right-click menu has Move up, Move down and Folder.
+/// (<see cref="AlertEditing"/>, <see cref="AlertLibrary"/>), so this only draws. Rows and folders
+/// drag to reorder (Phase 8: <see cref="BoardDragging"/>), and a row's right-click menu has Move up,
+/// Move down and Folder too. In volunteer mode alerts can be sent and taken down, not edited.
 /// </summary>
 public sealed class AlertsPanel : UserControl
 {
@@ -27,9 +28,14 @@ public sealed class AlertsPanel : UserControl
     private MainViewModel? model;
     private Button? searchButton;
     private readonly Button addButton;
+    private readonly BoardDragging drags;
+
+    /// <summary>Volunteer mode: alerts go up and come down; nothing is added, edited, moved or deleted.</summary>
+    private bool Locked => model?.IsVolunteer == true;
 
     public AlertsPanel()
     {
+        drags = new BoardDragging("alerts", () => !Locked, move => model?.Alerts.UpdateAlertBoard(b => b.Apply(move)));
         searchButton = OperatorKit.IconButton("", "Search the alerts", ToggleSearch);
         var add = addButton = OperatorKit.IconButton("", "Add an alert (write the phrase once, fill the blanks at fire time) or a folder", () => { });
         add.Click += (_, _) => OperatorKit.Open(AddMenu(), add);
@@ -51,9 +57,17 @@ public sealed class AlertsPanel : UserControl
 
     private void Attach(MainViewModel? next)
     {
-        if (model is not null) model.AlertsChanged -= Rebuild;
+        if (model is not null)
+        {
+            model.AlertsChanged -= Rebuild;
+            model.VolunteerChanged -= Rebuild;
+        }
         model = next;
-        if (model is not null) model.AlertsChanged += Rebuild;
+        if (model is not null)
+        {
+            model.AlertsChanged += Rebuild;
+            model.VolunteerChanged += Rebuild;
+        }
         Rebuild();
     }
 
@@ -107,6 +121,7 @@ public sealed class AlertsPanel : UserControl
         if (model is null) return;
         var board = model.Alerts.AlertBoard();
         var ids = board.AllItemIds();
+        addButton.Visibility = Locked ? Visibility.Collapsed : Visibility.Visible;
         if (searchButton is not null) searchButton.Visibility = ids.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (ids.Count == 0) list.Children.Add(EditorKit.Muted(AlertEditing.EmptyHint, 11, 2));
 
@@ -123,6 +138,7 @@ public sealed class AlertsPanel : UserControl
             if (board.Folder(node) is { } folder) AddFolder(folder, board);
             else AddAlertRow(list, node, board);
         }
+        if (ids.Count > 0 && !Locked) list.Children.Add(drags.EndStrip());
     }
 
     private void AddFolder(ControlFolder folder, ControlBoard board)
@@ -144,8 +160,13 @@ public sealed class AlertsPanel : UserControl
         row.Children.Add(EditorKit.Faint(folder.ItemIds.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         var card = OperatorKit.RowCard(row);
         card.Cursor = Cursors.Hand;
-        card.MouseLeftButtonUp += (_, _) => model?.Alerts.UpdateAlertBoard(b => b.SetFolderCollapsed(id, !collapsed));
-        card.ContextMenu = OperatorKit.Menu(
+        drags.Source(card, new BoardDrag.Folder(id));
+        drags.Target(card, new BoardDropTarget.OntoFolder(id));
+        card.MouseLeftButtonUp += (_, _) =>
+        {
+            if (!Locked) model?.Alerts.UpdateAlertBoard(b => b.SetFolderCollapsed(id, !collapsed));
+        };
+        if (!Locked) card.ContextMenu = OperatorKit.Menu(
         [
             EditorKit.Command("Rename…", () =>
             {
@@ -161,7 +182,7 @@ public sealed class AlertsPanel : UserControl
         if (collapsed) return;
         var members = new StackPanel { Margin = new Thickness(14, 0, 0, 0) };
         foreach (var alertId in folder.ItemIds) AddAlertRow(members, alertId, board);
-        if (folder.ItemIds.Count == 0) members.Children.Add(EditorKit.Muted("Right-click an alert › Folder to file it here.", 11, 4));
+        if (folder.ItemIds.Count == 0) members.Children.Add(EditorKit.Muted("Drag an alert onto the folder's name to file it here.", 11, 4));
         list.Children.Add(members);
     }
 
@@ -201,7 +222,7 @@ public sealed class AlertsPanel : UserControl
         });
         strip.MouseLeftButtonUp += (_, e) =>
         {
-            if (e.OriginalSource is DependencyObject source && IsInside<Button>(source)) return;
+            if (Locked || e.OriginalSource is DependencyObject source && IsInside<Button>(source)) return;
             Toggle(id);
         };
         body.Children.Add(strip);
@@ -229,10 +250,12 @@ public sealed class AlertsPanel : UserControl
             if (isLive) blanks.Children.Add(OperatorKit.SmallButton("Send Update", AlertEditing.SendUpdateHelp, () => model.FireAlertPreset(preset)));
             body.Children.Add(blanks);
         }
-        if (isOpen) body.Children.Add(Editor(preset));
+        if (isOpen && !Locked) body.Children.Add(Editor(preset));
 
         var card = OperatorKit.RowCard(body, isLive ? OperatorKit.OrangeWash : null);
-        card.ContextMenu = RowMenu(id, board, isOpen);
+        if (!Locked) card.ContextMenu = RowMenu(id, board, isOpen);
+        drags.Source(card, new BoardDrag.Item(id));
+        drags.Target(card, new BoardDropTarget.BeforeRow(id));
         into.Children.Add(card);
     }
 

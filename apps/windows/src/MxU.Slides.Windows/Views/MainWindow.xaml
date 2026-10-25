@@ -74,13 +74,15 @@
                         <TextBlock Text="Show" />
                     </StackPanel>
                 </ToggleButton>
-                <ToggleButton DockPanel.Dock="Left" IsChecked="{Binding IsEditing}" Padding="12,4" Margin="4,0,16,0"
+                <ToggleButton DockPanel.Dock="Left" IsChecked="{Binding IsEditing}" Padding="12,4" Margin="4,0,0,0"
                               ToolTip="Edit mode: clicking a slide selects it for editing (Ctrl+E)">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE70F;" Margin="0,0,6,0" VerticalAlignment="Center" />
                         <TextBlock Text="Edit" />
                     </StackPanel>
                 </ToggleButton>
+                <!-- Volunteer mode (Phase 8): shown once Settings › Present turns it on (Views/Volunteer). -->
+                <vol:VolunteerModeButton xmlns:vol="clr-namespace:MxU.Slides.Windows.Views.Volunteer" DockPanel.Dock="Left" Margin="0,0,16,0" />
 
                 <Button DockPanel.Dock="Left" Click="NewSong_Click" ToolTip="New song from lyrics (Ctrl+N)" Margin="0,0,6,0">
                     <StackPanel Orientation="Horizontal">
@@ -200,7 +202,7 @@
                                 <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE710;" />
                             </Button>
                             <v:ServiceVersionChip DockPanel.Dock="Right" />
-                            <ComboBox Margin="8,0,4,0" ItemsSource="{Binding Services}" SelectedItem="{Binding SelectedService}" DisplayMemberPath="Name" />
+                            <v:ServicePicker Margin="8,0,4,0" />
                         </DockPanel>
                         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Command="{Binding AddCurrentToServiceCommand}" ToolTip="Add the open song or presentation to this service" Margin="0,0,6,0">
@@ -326,8 +328,7 @@
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
                                         Visibility="{Binding HasPresentation, Converter={StaticResource Visible}}">
-                                <TextBlock Text="Arrangement" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <ComboBox ItemsSource="{Binding Arrangements}" SelectedItem="{Binding SelectedArrangement}" MinWidth="120" Margin="0,0,12,0" />
+                                <v:ArrangementPicker VerticalAlignment="Center" Margin="0,0,12,0" />
                                 <TextBlock Text="Theme" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding CurrentThemeChoice}" MinWidth="150" Margin="0,0,12,0" />
                                 <Button Click="EditLyrics_Click" Margin="0,0,6,0" ToolTip="Edit the words, sections and order (double-click a song)">
@@ -345,6 +346,7 @@
                                 <TextBlock Text="{Binding CurrentTitle}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                            MouseLeftButtonDown="Title_MouseDown" ToolTip="Double-click to rename" />
                                 <TextBlock Text="{Binding CurrentSubtitle}" Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis" />
+                                <v:ArrangementStrip Margin="0,6,0,0" />
                             </StackPanel>
                         </DockPanel>
                     </Border>
@@ -658,10 +660,13 @@
                             <TextBlock Text="Pick a song or presentation" FontSize="16" HorizontalAlignment="Center" />
                             <TextBlock Text="from the service or the library, or start a new one." Style="{StaticResource Muted}" HorizontalAlignment="Center" Margin="0,4,0,0" />
                         </StackPanel>
+                        <!-- The whole service as one scroll, instead of the grid (Phase 8). -->
+                        <v:ContinuousSlidesView x:Name="ContinuousView" />
                         <Slider HorizontalAlignment="Right" VerticalAlignment="Bottom" Width="120" Margin="0,0,16,8" Minimum="120" Maximum="420"
                                 Value="{Binding Settings.ThumbnailSize}" ValueChanged="ThumbSize_Changed" ToolTip="Thumbnail size" Opacity="0.7" />
                         <!-- A music row selected in the service shows its card over the slides. -->
                         <v:ServiceMusicCard x:Name="MusicCard" />
+                        <v:SlideViewSwitch HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,144,6" />
                     </Grid>
                 </DockPanel>
             </Border>
@@ -686,8 +691,7 @@
                                 <TextBlock Text="{Binding LiveTitle}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                             </DockPanel>
                             <Border CornerRadius="4" ClipToBounds="True" Background="Black">
-                                <r:SceneView x:Name="AudiencePreview" PlaysVideo="True" PlaybackScope="live"
-                                             Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource SixteenByNine}}" />
+                                <r:SceneView x:Name="AudiencePreview" PlaysVideo="True" PlaybackScope="live" v:PreviewShape.FollowsTarget="True" />
                             </Border>
                             <Grid Margin="0,8,0,0">
                                 <Grid.ColumnDefinitions>

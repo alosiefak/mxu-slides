@@ -186,7 +186,7 @@ public sealed partial class MainViewModel
 
         if (SelectedService is { } service && Live?.ItemId is { } itemId)
         {
-            var items = service.Items.Where(i => i.ItemKind != ServiceItemKind.Header && i.HiddenInPresenter != true).ToList();
+            var items = RunOfShow(service).Where(i => i.ItemKind != ServiceItemKind.Header).ToList();
             var index = items.FindIndex(i => i.Id == itemId);
             currentItem = index >= 0 ? items[index].Name : null;
             nextItem = index >= 0 && index + 1 < items.Count ? items[index + 1].Name : null;

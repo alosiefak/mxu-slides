@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Stage;
 using MxU.Slides.Windows.ViewModels;
@@ -16,7 +17,9 @@ namespace MxU.Slides.Windows.Views;
 /// warning levels and colours. The + menu adds a countdown of a quick length, a custom one, a
 /// countdown to a time of day, a count up or a folder. Port of Sources/Modules/TimersModule.swift;
 /// the rules are Core's (<see cref="TimerPanel"/>, <see cref="TimerController"/>, <see cref="TimerBoard"/>).
-/// The Mac reorders by dragging; here a row's right-click menu has Move up, Move down and Folder.
+/// Timers and folders drag to reorder (Phase 8: <see cref="BoardDragging"/>); a row's right-click
+/// menu has Move up, Move down and Folder too. In volunteer mode timers start, pause and reset,
+/// and nothing else changes.
 /// </summary>
 public sealed class TimersPanel : UserControl
 {
@@ -32,9 +35,14 @@ public sealed class TimersPanel : UserControl
     private string? shownSignature;
 
     private readonly Button addButton;
+    private readonly BoardDragging drags;
+
+    /// <summary>Volunteer mode: start, pause and reset only.</summary>
+    private bool Locked => model?.IsVolunteer == true;
 
     public TimersPanel()
     {
+        drags = new BoardDragging("timers", () => !Locked, move => model?.Timers.Apply(move));
         searchButton = OperatorKit.IconButton("", "Search the timers", ToggleSearch);
         var add = addButton = OperatorKit.IconButton("", "Add a timer: it shows on the confidence layout", () => { });
         add.Click += (_, _) => OperatorKit.Open(AddMenu(add), add);
@@ -53,12 +61,14 @@ public sealed class TimersPanel : UserControl
         {
             model.Timers.Changed -= OnTimersChanged;
             model.TimersTicked -= Tick;
+            model.VolunteerChanged -= Rebuild;
         }
         model = next;
         if (model is not null)
         {
             model.Timers.Changed += OnTimersChanged;
             model.TimersTicked += Tick;
+            model.VolunteerChanged += Rebuild;
         }
         Rebuild();
     }
@@ -153,6 +163,7 @@ public sealed class TimersPanel : UserControl
         if (model is null) return;
         var timers = model.Timers;
         searchButton.Visibility = timers.Timers.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        addButton.Visibility = Locked ? Visibility.Collapsed : Visibility.Visible;
         if (timers.Timers.Count == 0) list.Children.Add(EditorKit.Muted("Timers show on the confidence layout.", 11, 2));
         var board = timers.Board;
         var query = search.Text.Trim();
@@ -169,6 +180,7 @@ public sealed class TimersPanel : UserControl
                 if (node.Folder is { } folder) AddFolder(folder, board);
                 else AddTimerRow(list, node.TimerId!, board);
             }
+            if (timers.Timers.Count > 0 && !Locked) list.Children.Add(drags.EndStrip());
         }
         Tick();
     }
@@ -192,8 +204,17 @@ public sealed class TimersPanel : UserControl
         body.Children.Add(row);
         if (editingFolders.Contains(id) && editable) body.Children.Add(FolderEditor(folder));
         var card = OperatorKit.RowCard(body);
-        row.MouseLeftButtonUp += (_, _) => model.Timers.SetFolderCollapsed(id, !folder.Collapsed);
+        row.MouseLeftButtonUp += (_, _) =>
+        {
+            if (!Locked) model.Timers.SetFolderCollapsed(id, !folder.Collapsed);
+        };
+        // The Service Tracking folder stays where it is, and nothing is filed in it by hand.
         if (editable)
+        {
+            drags.Source(card, new BoardDrag.Folder(id));
+            drags.Target(card, new BoardDropTarget.OntoFolder(id));
+        }
+        if (editable && !Locked)
         {
             card.ContextMenu = OperatorKit.Menu(
             [
@@ -222,7 +243,7 @@ public sealed class TimersPanel : UserControl
         if (folder.Collapsed) return;
         var inside = new StackPanel { Margin = new Thickness(14, 0, 0, 0) };
         foreach (var timerId in folder.TimerIds) AddTimerRow(inside, timerId, board);
-        if (folder.TimerIds.Count == 0) inside.Children.Add(EditorKit.Muted("Right-click a timer › Folder to file it here.", 11, 4));
+        if (folder.TimerIds.Count == 0) inside.Children.Add(EditorKit.Muted("Drag a timer onto the folder's name to file it here.", 11, 4));
         list.Children.Add(inside);
     }
 
@@ -290,7 +311,7 @@ public sealed class TimersPanel : UserControl
         });
         strip.MouseLeftButtonUp += (_, e) =>
         {
-            if (e.OriginalSource is DependencyObject source && IsInside<Button>(source)) return;
+            if (Locked || e.OriginalSource is DependencyObject source && IsInside<Button>(source)) return;
             // Closing the editor forgets what was typed but not applied; it reopens on the timer as it is.
             if (expanded.Remove(id)) edits.Remove(id);
             else expanded.Add(id);
@@ -311,13 +332,19 @@ public sealed class TimersPanel : UserControl
         var body = new StackPanel();
         body.Children.Add(strip);
         body.Children.Add(bar);
-        if (isOpen)
+        if (isOpen && !Locked)
         {
             if (TimerPanel.PermanentNote(id) is { } note) body.Children.Add(EditorKit.Muted(note, 11, 8).WithMargin(new Thickness(22, 0, 10, 8)));
             else body.Children.Add(Editor(timer));
         }
         var card = OperatorKit.RowCard(body);
-        if (!locked) card.ContextMenu = RowMenu(timer, board, isOpen);
+        if (!locked && !Locked) card.ContextMenu = RowMenu(timer, board, isOpen);
+        // A service tracking timer neither drags nor takes drops (its folder is the app's).
+        if (!locked)
+        {
+            drags.Source(card, new BoardDrag.Item(id));
+            drags.Target(card, new BoardDropTarget.BeforeRow(id));
+        }
         into.Children.Add(card);
 
         tickers.Add(now =>
