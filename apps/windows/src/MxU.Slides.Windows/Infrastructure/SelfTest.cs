@@ -36,12 +36,27 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
         return index + 1 < args.Length ? args[index + 1] : Path.Combine(AppPaths.LocalRoot, "SelfTest");
     }
 
+    /// <summary>
+    /// The sections to run, from MXU_SLIDES_SELFTEST_ONLY ("Looks,Scripture"; the script's -Only), or
+    /// null for all of them. The basics at the start (a song live, Next, the stage, editing) always
+    /// run: the sections build on what they leave. Running one area takes a minute or two instead of
+    /// ten, so an engineer working on it can check it often. The whole run is still what counts.
+    /// </summary>
+    private static readonly HashSet<string>? Only =
+        Environment.GetEnvironmentVariable("MXU_SLIDES_SELFTEST_ONLY") is { Length: > 0 } names
+            ? new HashSet<string>(names.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase)
+            : null;
+
+    /// <summary>Runs one section of checks, unless MXU_SLIDES_SELFTEST_ONLY leaves it out.</summary>
+    private Task Section(string name, Func<Task> checks) => Only is null || Only.Contains(name) ? checks() : Task.CompletedTask;
+
     public async Task RunAsync()
     {
         Directory.CreateDirectory(folder);
         using var trail = new Trail(this);
         report.AppendLine($"MxU Slides self-test {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         report.AppendLine($"Displays: {string.Join("; ", Displays.All().Select(d => d.Label))}");
+        if (Only is not null) report.AppendLine($"NOTE  only the basics and these sections: {string.Join(", ", Only)} (MXU_SLIDES_SELFTEST_ONLY)");
         try
         {
             await Step("01-start", () => { });
@@ -231,33 +246,33 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await Snapshot("11-welcome-frame", model.Show.Scene());
             model.ClearAllCommand.Execute(null);
 
-            await EffectsCheck();
-            await MusicCheck();
-            await LiveInputCheck();
-            await TimelineCheck();
-            await RecordingCheck();
-            await MidiDevicesCheck();
-            await ActionsCheck();
-            await ScreensCheck();
-            await ApiCheck();
-            await PowerPointCheck();
-            await ProPresenterCheck();
-            await RenderCheck();
-            await EditorsCheck();
-            await TimelineEditorCheck();
-            await OverlayEditorChecks();
-            await BroadcastExtrasCheck();
-            await RenderFixesCheck();
-            await LibraryCheck();
-            await ShowFlowChecks();
-            await OperatorCheck();
-            await SoundCheck();
-            await ScriptureCheck();
-            await ConnectCheck();
-            await ProductionCheck();
-            await TransitionsCheck();
-            await LooksCheck();
-            await MotionBackgroundsCheck();
+            await Section("Effects", EffectsCheck);
+            await Section("Music", MusicCheck);
+            await Section("LiveInput", LiveInputCheck);
+            await Section("Timeline", TimelineCheck);
+            await Section("Recording", RecordingCheck);
+            await Section("MidiDevices", MidiDevicesCheck);
+            await Section("Actions", ActionsCheck);
+            await Section("Screens", ScreensCheck);
+            await Section("Api", ApiCheck);
+            await Section("PowerPoint", PowerPointCheck);
+            await Section("ProPresenter", ProPresenterCheck);
+            await Section("Render", RenderCheck);
+            await Section("Editors", EditorsCheck);
+            await Section("TimelineEditor", TimelineEditorCheck);
+            await Section("OverlayEditor", OverlayEditorChecks);
+            await Section("BroadcastExtras", BroadcastExtrasCheck);
+            await Section("RenderFixes", RenderFixesCheck);
+            await Section("Library", LibraryCheck);
+            await Section("ShowFlow", ShowFlowChecks);
+            await Section("Operator", OperatorCheck);
+            await Section("Sound", SoundCheck);
+            await Section("Scripture", ScriptureCheck);
+            await Section("Connect", ConnectCheck);
+            await Section("Production", ProductionCheck);
+            await Section("Transitions", TransitionsCheck);
+            await Section("Looks", LooksCheck);
+            await Section("MotionBackgrounds", MotionBackgroundsCheck);
         }
         catch (Exception ex)
         {
