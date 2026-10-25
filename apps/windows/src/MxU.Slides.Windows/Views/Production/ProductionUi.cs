@@ -20,11 +20,19 @@ internal static class ProductionUi
     };
 
     /// <summary>A round status light, with the status as its tooltip.</summary>
-    public static Ellipse Dot(DeviceStatus status, double size = 9) => new()
+    public static Ellipse Dot(DeviceStatus status, double size = 9)
     {
-        Width = size, Height = size, Fill = StateBrush(status.State), VerticalAlignment = VerticalAlignment.Center,
-        Margin = new Thickness(0, 0, 8, 0), ToolTip = $"{StateWord(status.State)}: {status.Detail}",
-    };
+        var dot = new Ellipse { Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        Paint(dot, status);
+        return dot;
+    }
+
+    /// <summary>Gives a light the colour and tooltip of a status (so a row can be repainted, not made again).</summary>
+    public static void Paint(Ellipse dot, DeviceStatus status)
+    {
+        dot.Fill = StateBrush(status.State);
+        dot.ToolTip = $"{StateWord(status.State)}: {status.Detail}";
+    }
 
     public static string StateWord(DeviceState state) => state switch
     {

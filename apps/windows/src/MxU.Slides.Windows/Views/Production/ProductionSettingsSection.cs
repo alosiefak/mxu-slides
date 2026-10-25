@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using MxU.Slides.Production.Devices;
 using MxU.Slides.Windows.ViewModels;
 
@@ -14,10 +15,16 @@ namespace MxU.Slides.Windows.Views.Production;
 /// here too. Changes apply at once (a changed device reconnects in the background) and
 /// belong to this PC, like Timecode in: Cancel doesn't undo them.
 /// <para>Built in code like the other settings panels; the settings window holds it in one place.</para>
+/// <para>
+/// The rows are made again only when the devices change. A status light changing (which can
+/// happen every few seconds: OBS changing scene, vMix's poll) only repaints that row's light
+/// and words, so the row's buttons never vanish from under the mouse mid-click.
+/// </para>
 /// </summary>
 public sealed class ProductionSettingsSection : UserControl
 {
     private readonly StackPanel rows = new();
+    private readonly Dictionary<string, (Ellipse Dot, TextBlock Words)> lights = [];
     private MainViewModel? model;
 
     public ProductionSettingsSection()
@@ -39,7 +46,7 @@ public sealed class ProductionSettingsSection : UserControl
         panel.Children.Add(buttons);
         Content = panel;
 
-        void OnChange(ProductionDevice _) => ProductionUi.OnUi(this, Rebuild);
+        void OnChange(ProductionDevice device) => ProductionUi.OnUi(this, () => ShowStatus(device.Id));
         void OnDevices() => ProductionUi.OnUi(this, Rebuild);
         Loaded += (_, _) =>
         {
@@ -77,18 +84,29 @@ public sealed class ProductionSettingsSection : UserControl
     {
         if (model is null) return;
         rows.Children.Clear();
-        var shown = new List<(string, DeviceStatus)>();
+        lights.Clear();
         var setups = model.Production.Setups;
         if (setups.Count == 0)
             rows.Children.Add(EditorKit.Muted("No devices yet. Production steps for a device this PC hasn't got are skipped (and noted in the log).", 11, 6));
-        foreach (var device in setups)
-        {
-            var status = device.Enabled ? model.Production.StatusOf(device.Id) : DeviceStatus.Off;
-            shown.Add((device.Name, status));
-            rows.Children.Add(EditorKit.Card(Row(device, status)));
-        }
-        Shown = shown;
+        foreach (var device in setups) rows.Children.Add(EditorKit.Card(Row(device, StatusOf(device))));
+        Shown = [.. setups.Select(d => (d.Name, StatusOf(d)))];
     }
+
+    private DeviceStatus StatusOf(DeviceSettings device) => device.Enabled ? model!.Production.StatusOf(device.Id) : DeviceStatus.Off;
+
+    /// <summary>One device's light changed: repaint just its light and words.</summary>
+    private void ShowStatus(string deviceId)
+    {
+        if (model is null || !lights.TryGetValue(deviceId, out var light)) return;
+        var setups = model.Production.Setups;
+        if (setups.FirstOrDefault(d => d.Id == deviceId) is not { } device) return;
+        var status = StatusOf(device);
+        ProductionUi.Paint(light.Dot, status);
+        light.Words.Text = Words(status);
+        Shown = [.. setups.Select(d => (d.Name, StatusOf(d)))];
+    }
+
+    private static string Words(DeviceStatus status) => $"{ProductionUi.StateWord(status.State)}: {status.Detail}";
 
     private DockPanel Row(DeviceSettings device, DeviceStatus status)
     {
@@ -121,8 +139,10 @@ public sealed class ProductionSettingsSection : UserControl
             : $"{DeviceSettings.KindName(device.Kind)} · {device.Host}:{device.EffectivePort.ToString(CultureInfo.InvariantCulture)}";
         text.Children.Add(new TextBlock { Text = device.Name, FontWeight = FontWeights.SemiBold, Foreground = EditorKit.Res<Brush>("Text") });
         text.Children.Add(ProductionUi.Line(address));
-        text.Children.Add(ProductionUi.Line($"{ProductionUi.StateWord(status.State)}: {status.Detail}", 10.5));
+        var words = ProductionUi.Line(Words(status), 10.5);
+        text.Children.Add(words);
         row.Children.Add(text);
+        lights[device.Id] = (dot, words);
         return row;
     }
 

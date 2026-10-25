@@ -13,7 +13,9 @@ sharing the same library never notices it is there.
 
 - **Screens & Settings › Production (Windows)** lists this PC's devices, each with a status
   light: green connected, amber connecting, red not answering (the app keeps trying quietly),
-  grey off or waiting.
+  grey off or waiting. A light changing only repaints its own dot and words; the rows are
+  made again only when a device is added, changed or removed, so a button never disappears
+  from under the mouse while a device is connecting.
   - **+ Add a device** › Blackmagic ATEM, OBS Studio, vMix, Art-Net or sACN. Give it a name
     and an address; OBS and vMix can have a password; a DMX node has a way of sending
     (broadcast, multicast or straight to its address) and the universes it gets.
@@ -170,11 +172,23 @@ may ever delay a slide, the lights or another device**:
   a cut that happens half a minute late, when the switcher comes back, is worse than none.
 - A command that waited more than 3 s behind a slow one is dropped for the same reason
   (`ProductionDevice.StaleAfter`).
-- Every network wait has a limit: 2 s to connect to OBS or vMix, 2 s for an answer, 1.2 s for
-  the ATEM to ack a command (after ten resends).
+- Every network wait has a limit: 2 s to connect to OBS or vMix, 2 s for an answer, about a
+  second for the ATEM to ack a command (it's sent again every 100 ms, ten times). The limits
+  are kept on the device's own thread: `Network.ConnectTcp` (`Devices/Network.cs`) starts a
+  connect without waiting and then asks the socket whether it has finished, because the usual
+  .NET ways of putting a limit on a connect finish on the thread pool, and an import or a busy
+  PC can hold that up for far longer than the limit.
+- **One unanswered command costs one time limit, not one each.** A device that stops
+  answering in the middle of a service (the switcher unplugged, OBS frozen, vMix busy) is
+  treated as gone the moment a command times out: the ATEM's session is dropped, OBS's
+  connection is closed, vMix is marked offline. The commands queued behind it then find it
+  not connected and are skipped at once. Five cuts fired at a switcher that has just been
+  unplugged take about a second in all, not five.
 - Then the device's thread **reconnects quietly** in the background, and the light shows how
-  it's going. A step for a device this PC hasn't got at all is skipped with a line in the log,
-  so a library made in a room with an ATEM still runs, without the cuts, on a laptop at home.
+  it's going. An OBS that signs in but then doesn't answer (its main thread stuck) waits its
+  turn before the next try, so its light doesn't flicker between green and red. A step for a
+  device this PC hasn't got at all is skipped with a line in the log, so a library made in a
+  room with an ATEM still runs, without the cuts, on a laptop at home.
 
 ### The ATEM protocol
 
@@ -199,12 +213,17 @@ bytes 10-11 this packet's id                       (with the AckRequest flag)
    program and preview), and `InCm`, "initialisation complete": the light goes green. A packet
    that arrives out of order isn't acked, so the switcher sends the missing one again.
 4. From then on it sends changes, and when there are none an empty **ping** twice a second.
-   Acking them is what keeps the session alive; we also repeat our last ack each second as a
-   keepalive. Nothing heard for 5 s: the session is lost and we start again from step 1.
+   Acking them is what keeps the session alive (a switcher gives up on a client that stops
+   acking); we also repeat our last ack each second as a keepalive. A packet we already have
+   that comes again means our ack was lost, so we ack it again. Nothing heard for 5 s: the
+   session is lost and we start again from step 1.
 5. **Commands** go the other way the same way: `CPgI` (program input: M/E, source), `CPvI`,
    `DCut`, `DAut`, `FtbA`, `MAct` (macro), `CAuS` (aux), `CKOn` (upstream key), `CDsL`
    (downstream key), each in a numbered packet that we send again every 100 ms until it's
-   acked. Each command waits for its ack before the next goes, so they arrive in order.
+   acked, or at once when the switcher asks for it again (the RetransmitRequest flag). A
+   resend is the same bytes again, as atem-connection sends it: the packet id is what tells the
+   switcher it has had it before. Each command waits for its ack before the next goes, so they
+   arrive in order.
 
 The switcher counts from 0 (M/E 1 is 0, macro 1 is 0); the steps count from 1, as its panel
 does, and `AtemSwitcher` converts. Sources keep the switcher's numbers: 1-20 cameras, 0 black,
@@ -288,17 +307,29 @@ each change at once, to the extras, never to the shared document.
 
 ### Tests
 
-- `tests/MxU.Slides.Production.Tests`: the ATEM packets byte for byte and a whole session
-  against a pretend switcher (handshake, input names, commands, a lost packet resent, pings,
-  reconnecting after silence, a missing switcher); OBS's sign-in sum against one worked out in
-  Python, and requests against a pretend OBS built on .NET's *own* WebSocket server (wrong
-  password, OBS not running, OBS coming back); vMix's URLs, its state XML, sign-in and a slow
-  vMix; Art-Net and sACN packets byte for byte against the specifications, the engine's rate
-  and sequence numbers, sACN's universes and "stream terminated"; the fades and merges; the
-  cue list; the steps in the extras folder, a kind from a newer version, the delays and Clear
-  All; and "a missing device never holds the show up". The pretend devices
-  (`src/MxU.Slides.Production/Simulators/`) are written from the protocol notes, not from the
-  app's packet code, so a mistake in one shows up instead of cancelling out.
+- `tests/MxU.Slides.Production.Tests`:
+  - **ATEM**: the packets byte for byte, then whole sessions against a pretend switcher that
+    behaves like a real one: it keeps every numbered packet until it's acked, sends it again
+    every 200 ms, and drops a client that stops acking. The tests make it lose a state packet
+    (the client must not ack past the gap, and gets it when it's sent again), lose the client's
+    acks (the client must ack the resends), ignore a command packet (the client sends it
+    again), ask for a command again, go quiet, or not be there at all.
+  - **OBS**: the sign-in sum against one worked out in Python; the WebSocket client against
+    .NET's *own* WebSocket server (masking, fragments, long messages, the close code); then
+    requests against a pretend OBS whose server half is written separately, on threads of its
+    own (wrong password, no password, OBS not running, OBS quitting, OBS frozen, OBS coming back).
+  - **vMix**: the URLs, its state XML, sign-in, and a slow vMix (one time limit, then the
+    next command is skipped until it answers again).
+  - **DMX**: Art-Net and sACN packets byte for byte against the specifications, the engine's
+    rate and sequence numbers, sACN's universes and "stream terminated".
+  - **Lighting**: the fades and merges, the cue list.
+  - **Steps**: the extras folder, a kind from a newer version, the delays and Clear All, and
+    "a missing device never holds the show up".
+
+  The pretend devices (`src/MxU.Slides.Production/Simulators/`) are written from the protocol
+  notes, not from the app's packet code, so a mistake in one shows up instead of cancelling
+  out. Each runs on threads of its own with blocking sockets, like the app's devices, so a
+  busy thread pool can't make them slow when the self-test runs them inside the app.
 - `tests/MxU.Slides.Core.Tests/Automation/ExtraStepsTests.cs`: the router, scheduler and
   timeline name the owner that ran.
 - `tests/MxU.Slides.LocalApi.Tests/WindowsRoutesTests.cs`: the Windows-only routes.
@@ -307,7 +338,10 @@ each change at once, to the extras, never to the shared document.
   look and a cue in the lighting window, gives a slide four production steps in its Slide
   Actions window and fires it (the ATEM cut, the OBS scene, the vMix cut half a second later,
   the Art-Net levels), runs a combo with only a production step, checks a missing switcher costs
-  nothing, and fires a macro through the Local API. Pictures: `90-production-settings`,
+  nothing (handing its steps over is timed on the UI thread; its answer is timed on a thread of
+  its own, so a busy screen or a busy PC doesn't count against it), and fires a macro through
+  the Local API. Its waits are for conditions (the lights going green), with generous limits,
+  rather than fixed times. Pictures: `90-production-settings`,
   `91-production-device`, `92-production-lighting`, `93-production-add-menu`,
   `94-production-slide-actions`.
 
@@ -321,6 +355,11 @@ each change at once, to the extras, never to the shared document.
    Attribute and do it again: the newer one wins, whatever its level.
 3. **Read a session.** `AtemSwitcherTests.ALostCommandPacketIsSentAgainUntilItIsAcked` drops two
    packets on purpose. Step through `AtemSwitcher.Maintain` in the debugger to see the resends.
+   `ALostStatePacketIsNeverAckedPastAndArrivesWhenSentAgain` does it the other way round: put a
+   breakpoint in `AtemSwitcher.Handle` where an out-of-order packet is left unacked.
+4. **Break it on purpose.** Change `AtemSwitcher.Handle` to ack any new packet id, not just the
+   next one, and run the ATEM tests: the lost-state-packet test fails, because the switcher would
+   never send the missing packet again. Each of the session tests is there to catch one such slip.
 
 ## Where this goes beyond the Mac (and what's not here yet)
 

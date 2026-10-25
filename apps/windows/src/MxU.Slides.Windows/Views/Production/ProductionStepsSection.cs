@@ -182,9 +182,7 @@ internal sealed class ProductionStepsSection : StackPanel
         for (var i = 0; i < cards.Children.Count && i < steps.Count; i++)
         {
             if (cards.Children[i] is not Border { Tag: DotHolder holder }) continue;
-            var status = DeviceStatusFor(steps[i]);
-            holder.Dot.Fill = ProductionUi.StateBrush(status.State);
-            holder.Dot.ToolTip = $"{ProductionUi.StateWord(status.State)}: {status.Detail}";
+            ProductionUi.Paint(holder.Dot, DeviceStatusFor(steps[i]));
         }
     }
 

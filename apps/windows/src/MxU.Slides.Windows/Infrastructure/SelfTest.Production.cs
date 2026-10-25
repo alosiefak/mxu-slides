@@ -81,7 +81,8 @@ public sealed partial class SelfTest
         Add(DeviceKind.Vmix, vmix.Port, name: "Self-test vMix");
         Add(DeviceKind.ArtNet, artNet.Port, name: "Self-test Art-Net");
         var hub = model.Production;
-        var online = await Until(() => hub.Devices.Count(d => d.Status.IsOnline), n => n >= 3, 6000);
+        // Usually well under a second; generous, because the PC may be busy with other work.
+        var online = await Until(() => hub.Devices.Count(d => d.Status.IsOnline), n => n >= 3, 20000);
         Check("an ATEM, OBS (with its password) and vMix connect: their lights go green", online >= 3);
         Check("the OBS password is kept encrypted, not in production.json",
             hub.Setups.FirstOrDefault(d => d.Kind == DeviceKind.Obs) is { } obsDevice && hub.Secrets.Get(obsDevice.Id) == "selftest"
@@ -97,7 +98,10 @@ public sealed partial class SelfTest
         {
             await Delay(500);
             settings.ProductionPanel.BringIntoView();
-            await Delay(400);
+            // Each row's light repaints by itself as its device connects: wait for them, then for the layout.
+            await Until(() => settings.ProductionPanel.Shown.Count(s => s.Status.IsOnline), n => n >= 3, 10000);
+            settings.UpdateLayout();
+            await Delay(300);
             Check("Settings › Production lists each device with its light",
                 settings.ProductionPanel.Shown.Count(s => s.Name.StartsWith("Self-test", StringComparison.Ordinal)) == 4
                 && settings.ProductionPanel.Shown.Count(s => s.Status.IsOnline) >= 3);
@@ -210,6 +214,8 @@ public sealed partial class SelfTest
             stored.Count == (look is null ? 3 : 4) && deckFile is not null && !File.ReadAllText(deckFile).Contains("atemProgram", StringComparison.Ordinal)
             && model.Library.Get<Presentation>(deck.Id)?.Slides[0].Actions is null);
 
+        // The devices are connected before the slide fires (a busy PC can make OBS slow to sign in).
+        await Until(() => model.Production.Devices.Count(d => d.Status.IsOnline), n => n >= 3, 15000);
         while (atem.Commands.TryDequeue(out _)) { }
         while (obs.Requests.TryDequeue(out _)) { }
         while (vmix.Functions.TryDequeue(out _)) { }
@@ -263,12 +269,40 @@ public sealed partial class SelfTest
         model.Production.SaveDevice(missing);
         var step = ProductionEditing.New(ProductionKind.AtemCut, model.Production.Context());
         step.DeviceId = missing.Id;
-        var watch = Stopwatch.StartNew();
-        var done = await model.Production.PerformAsync(step);
-        var took = watch.ElapsedMilliseconds;
-        var red = await Until(() => model.Production.StatusOf(missing.Id).State, s => s == DeviceState.Problem, 5000);
-        Check($"a missing switcher is skipped at once ({took} ms) and its light goes red", !done && took < 1500 && red == DeviceState.Problem);
+        // Handing steps over (what firing a slide does) only queues them: the UI thread carries straight on.
+        var handOver = Stopwatch.StartNew();
+        model.Production.Runner.Run([step.Copy(), step.Copy(), step.Copy()]);
+        var handed = handOver.ElapsedMilliseconds;
+        var (done, took) = await TimedOnItsOwnThread(() => model.Production.PerformAsync(step));
+        var red = await Until(() => model.Production.StatusOf(missing.Id).State, s => s == DeviceState.Problem, 10000);
+        Check($"a missing switcher costs the show nothing (handed over in {handed} ms, skipped in {took} ms) and its light goes red",
+            handed < 200 && !done && took is >= 0 and < 1500 && red == DeviceState.Problem);
         model.Production.RemoveDevice(missing.Id);
+    }
+
+    /// <summary>
+    /// Hands a step over and times its answer on a thread of its own, neither the UI's (a busy
+    /// screen would count against the device) nor the thread pool's (a busy PC would). The answer
+    /// comes from the device's own thread. Took is -1 when there was no answer within 5 s.
+    /// </summary>
+    private static Task<(bool Done, long Took)> TimedOnItsOwnThread(Func<Task<bool>> handOver)
+    {
+        var result = new TaskCompletionSource<(bool, long)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        new Thread(() =>
+        {
+            try
+            {
+                var watch = Stopwatch.StartNew();
+                var task = handOver();
+                var answered = task.Wait(TimeSpan.FromSeconds(5));
+                result.TrySetResult(answered ? (task.Result, watch.ElapsedMilliseconds) : (false, -1));
+            }
+            catch (Exception)
+            {
+                result.TrySetResult((false, -1));
+            }
+        }) { IsBackground = true, Name = "Self-test timing" }.Start();
+        return result.Task;
     }
 
     /// <summary>The Local API's Windows-only routes report the devices and fire a step.</summary>
