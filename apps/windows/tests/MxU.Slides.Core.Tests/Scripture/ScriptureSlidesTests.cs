@@ -135,15 +135,100 @@ public class ScriptureSlidesTests
     }
 
     [Fact]
+    public void TwoTranslationsGoSideBySideInTheDesignsVerseBox()
+    {
+        var kjv = Look("kjv", "John 3:16-18");
+        var deck = ScriptureSlides.Build(kjv, Theme, new(), LongerThan(10_000), beside: Look("web", "John 3:16-18"));
+        Assert.Equal("John 3:16–18 (KJV, WEB)", deck.Name);
+        Assert.Equal("Bible (KJV, WEB)", deck.Origin?.Detail);
+        var slide = Assert.Single(deck.Slides);
+        Assert.Equal("Verse + Reference", slide.ThemeSlideName);
+        Assert.Equal("John 3:16–18 KJV · WEB", ReferenceText(slide));
+        var (left, right) = (slide.Objects[0], slide.Objects[1]);
+        Assert.Equal(["Verse", "Verse", "Reference"], slide.Objects.Select(o => o.Name));
+        Assert.StartsWith("¹⁶ For God so loved the world, that he gave his only begotten Son", left.Text);
+        Assert.StartsWith("¹⁶ For God so loved the world, that he gave his only born Son", right.Text);
+
+        // The two halves of the design's verse box, a gutter between, the words a quarter smaller.
+        var box = ScriptureSlides.Design(Theme, ScriptureLayout.FullScreen)!.Objects.First(o => o.Name == "Verse");
+        var whole = SlideSceneBuilder.Frame(box);
+        Assert.Equal((whole.X, whole.Y, whole.Height), (left.X!.Value, left.Y!.Value, left.Height!.Value));
+        Assert.Equal(whole.X + whole.Width, right.X!.Value + right.Width!.Value, 3);
+        Assert.True(left.X + left.Width < right.X && right.Y == left.Y && right.Width == left.Width);
+        Assert.Equal(Math.Round(box.TextStyle!.FontSize!.Value * ScriptureSlides.SideBySideScale), left.TextStyle!.FontSize);
+        // Only the size is its own: the rest of the style is the design's, as the Mac reads it too.
+        Assert.Null(left.TextStyle.FontName);
+        var scene = SlideSceneBuilder.Scene(slide, Theme, deck);
+        var texts = scene[LayerKind.Slide].Items.Select(i => i.Content).OfType<ItemContent.Text>().Select(t => t.Styled).ToList();
+        var designStyle = SlideSceneBuilder.StyledTextFor(box, Theme, box);
+        Assert.Equal(2, texts.Count(t => t.FontName == designStyle.FontName && t.Color == designStyle.Color && t.FontSize == left.TextStyle.FontSize));
+
+        // The side third's box is square, so its halves are one above the other.
+        var side = ScriptureSlides.Halves(Theme, ScriptureSlides.Design(Theme, ScriptureLayout.SideThird));
+        Assert.True(side.First.X == side.Second.X && side.First.Width == side.Second.Width && side.First.Y + side.First.Height < side.Second.Y);
+    }
+
+    [Fact]
+    public void SideBySideEachTranslationFitsItsHalfAndAGapStaysEmpty()
+    {
+        var kjv = Look("kjv", "Acts 8:26-40");
+        var web = Look("web", "Acts 8:26-40");
+        var pages = ScriptureSlides.Pages(kjv, Theme, new(), LongerThan(220), beside: web);
+        Assert.True(pages.Count > 3);
+        Assert.All(pages, p => Assert.True(p.Text.Length <= 220 && p.Beside!.Length <= 220, p.Reference));
+        // Every verse is on a slide, once, on both sides; the KJV decides which verses there are.
+        Assert.Equal(string.Join(" ", kjv.Verses.Select(v => $"{ScriptureSlides.Superscript(v.Ref.Verse)} {v.Text}")), string.Join(" ", pages.Select(p => p.Text)));
+        Assert.Equal(string.Join(" ", web.Verses.Select(v => $"{ScriptureSlides.Superscript(v.Ref.Verse)} {v.Text}")), string.Join(" ", pages.Select(p => p.Beside).Where(t => t!.Length > 0)));
+        // Acts 8:37 is in the KJV; the WEB's side of its slide just hasn't got it.
+        var gap = pages.First(p => p.First.Verse <= 37 && p.Last.Verse >= 37);
+        Assert.Contains("³⁷", gap.Text);
+        Assert.DoesNotContain("³⁷", gap.Beside);
+        Assert.All(pages, p => Assert.EndsWith(" KJV · WEB", p.Reference));
+    }
+
+    // A stand-in measurer that wraps: each letter 0.6 of the font size wide, each line 1.2 tall.
+    private static bool Wraps(StyledText text, SceneSize frame)
+    {
+        var lines = Math.Ceiling(text.String.Length * text.FontSize * 0.6 / (frame.Width - text.InsetLeft - text.InsetRight));
+        return lines * text.FontSize * 1.2 > frame.Height;
+    }
+
+    [Fact]
+    public void AReferenceTooLongForItsBoxIsMadeSmallerToStayOnOneLine()
+    {
+        var lower = new ScriptureSlideOptions { Layout = ScriptureLayout.LowerThird };
+        var plate = ScriptureSlides.Design(Theme, ScriptureLayout.LowerThird)!.Objects.First(o => o.Name == "Reference");
+        var plateStyle = SlideSceneBuilder.StyledTextFor(plate, Theme, plate);
+        // A short one fits the lower third's small plate as the design has it.
+        Assert.Null(Assert.Single(ScriptureSlides.Pages(Look("kjv", "John 3:16"), Theme, lower, Wraps)).ReferenceFontSize);
+
+        var deck = ScriptureSlides.Build(Look("kjv", "1 Thess 4:13-18"), Theme, lower, Wraps);
+        Assert.All(deck.Slides, slide =>
+        {
+            var reference = slide.Objects.Single(o => o.Name == "Reference");
+            var size = reference.TextStyle?.FontSize;
+            Assert.True(size < plateStyle.FontSize && size >= Math.Round(plateStyle.FontSize * 0.6), $"{reference.Text}: {size}");
+            // At that size it sits on one line of the plate; only the size is its own.
+            Assert.False(Wraps(plateStyle with { String = reference.Text, FontSize = size!.Value }, new SceneSize(plate.Width!.Value, size.Value * 1.5)));
+            Assert.Null(reference.TextStyle!.FontName);
+        });
+        // Full screen has room for it at the design's size.
+        Assert.All(ScriptureSlides.Pages(Look("kjv", "1 Thess 4:13-18"), Theme, new(), Wraps), p => Assert.Null(p.ReferenceFontSize));
+    }
+
+    [Fact]
     public void GeneratedPresentationsAreValidSharedDocuments()
     {
         foreach (var layout in Enum.GetValues<ScriptureLayout>())
         {
-            var deck = ScriptureSlides.Build(Look("web", "Psalm 23"), Theme, new() { Layout = layout });
-            var json = MxuJson.Serialize(deck);
-            var back = MxuJson.Deserialize<Presentation>(json);
-            Assert.Equal(json, MxuJson.Serialize(back));
-            SharedSchema.Validate("Presentation", JsonDocument.Parse(json).RootElement);
+            foreach (var beside in new[] { null, Look("kjv", "Psalm 23") })
+            {
+                var deck = ScriptureSlides.Build(Look("web", "Psalm 23"), Theme, new() { Layout = layout }, beside: beside);
+                var json = MxuJson.Serialize(deck);
+                var back = MxuJson.Deserialize<Presentation>(json);
+                Assert.Equal(json, MxuJson.Serialize(back));
+                SharedSchema.Validate("Presentation", JsonDocument.Parse(json).RootElement);
+            }
         }
     }
 }
