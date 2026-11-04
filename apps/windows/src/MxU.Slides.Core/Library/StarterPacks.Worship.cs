@@ -258,18 +258,27 @@ public static partial class StarterPacks
             {
                 LyricsSlide(), PointsSlide(), SectionTitleSlide(), VerseSlide(), PointSlide(), QuoteSlide(),
                 CallToActionSlide(), CountdownSlide(),
+            };
+            slides.AddRange(PhotoDesigns("Full Slide"));
+            slides.AddRange(
+            [
                 FromOverlay(PointLowerThird($"{ThemeId}.lowerDefault", simple: true), "lowerDefault", "Lower Third", "Lower Thirds"),
                 FromOverlay(LyricsLowerThird($"{ThemeId}.lyricsLower"), "lyricsLower", "Lyrics (Lower Third)", "Lower Thirds"),
                 FromOverlay(NamePlate($"{ThemeId}.name", timed: false), "name", "Name + Title", "Lower Thirds"),
                 FromOverlay(VerseLowerThird($"{ThemeId}.verseLower"), "verseLower", "Verse + Reference (Lower Third)", "Lower Thirds"),
                 FromOverlay(PointLowerThird($"{ThemeId}.pointLower"), "pointLower", "Point (Lower Third)", "Lower Thirds"),
                 FromOverlay(CallToActionLower($"{ThemeId}.ctaLower"), "ctaLower", "Call to Action (Lower Third)", "Lower Thirds"),
+            ]);
+            slides.AddRange(PhotoDesigns("Lower Thirds"));
+            slides.AddRange(
+            [
                 FromOverlay(PointSideThird($"{ThemeId}.sideDefault", simple: true), "sideDefault", "Side Third", "Side Thirds"),
                 FromOverlay(LyricsSideThird($"{ThemeId}.lyricsSide"), "lyricsSide", "Lyrics (Side Third)", "Side Thirds"),
                 FromOverlay(PointSideThird($"{ThemeId}.pointSide"), "pointSide", "Point (Side Third)", "Side Thirds"),
                 FromOverlay(VerseSideThird($"{ThemeId}.verseSide"), "verseSide", "Verse + Reference (Side Third)", "Side Thirds"),
                 FromOverlay(CallToActionSide($"{ThemeId}.ctaSide"), "ctaSide", "Call to Action (Side Third)", "Side Thirds"),
-            };
+            ]);
+            slides.AddRange(PhotoDesigns("Side Thirds"));
             return new Theme
             {
                 Id = ThemeId, Name = pack.Title(), FontFamily = look.Body, FontSize = 72,
@@ -304,6 +313,100 @@ public static partial class StarterPacks
         {
             Id = $"{ThemeId}.{item}", Name = name, Objects = objects, BackgroundFill = Fill(look.Backdrop), AnimationOrder = order, Folder = "Full Slide",
         };
+
+        // MARK: Photo designs
+
+        /// <summary>
+        /// The Mac's picture designs (same ids, names, places and spots as StarterPacks.cs), in this
+        /// look's colours and motion, so Make Slides finds a photo design in every starter theme.
+        /// </summary>
+        private List<Slide> PhotoDesigns(string folder)
+        {
+            const string caption = "Baptism Sunday";
+            SlideObject Spot(string id, double x, double y, double w, double h, List<AnimationStep> steps, double? radius = null)
+            {
+                var spot = Block(id, "Photo", x, y, w, h, color: look.Plate2, radius: radius, steps: steps);
+                spot.PhotoSpot = true;
+                return spot;
+            }
+            Slide Design(string item, string name, List<SlideObject> objects, List<string> order, bool full) => new()
+            {
+                Id = $"{ThemeId}.{item}", Name = name, Objects = objects, AnimationOrder = order, Folder = folder,
+                BackgroundFill = full ? Fill(look.Backdrop) : null,
+            };
+            switch (folder)
+            {
+                case "Full Slide":
+                {
+                    Slide Photos(string item, string name, (double X, double Y, double W, double H)[] frames)
+                    {
+                        var b = $"{ThemeId}.{item}";
+                        var ins = frames.Select((_, i) => PlateIn($"{b}.spot{i}.in", delay: i == 0 ? null : 0.12 * i)).ToList();
+                        var objects = frames.Select((f, i) => Spot($"{b}.spot{i}", f.X, f.Y, f.W, f.H, ins[i])).ToList();
+                        return Design(item, name, objects, Ids([.. ins]), full: true);
+                    }
+                    var t = $"{ThemeId}.photoText";
+                    var spotIn = PlateIn($"{t}.spot.in");
+                    var textIn = TextIn($"{t}.text.in", AnimationTrigger.AfterPrevious, -0.05);
+                    var photoText = Design("photoText", "Photo + Text",
+                    [
+                        Spot($"{t}.spot", 100, 100, 1000, 880, spotIn),
+                        Label($"{t}.text", "Text", caption, 1180, 140, 640, 800, 72, look.Display, caps: look.Caps, lineHeight: 1.08, steps: textIn),
+                    ], Ids(spotIn, textIn), full: true);
+                    return
+                    [
+                        Photos("photo", "Photo", [(120, 90, 1680, 900)]),
+                        photoText,
+                        Photos("photo2", "2 Photos", [(100, 170, 840, 740), (980, 170, 840, 740)]),
+                        Photos("photo3", "3 Photos", [(100, 240, 550, 600), (685, 240, 550, 600), (1270, 240, 550, 600)]),
+                    ];
+                }
+                case "Lower Thirds":
+                {
+                    var b = $"{ThemeId}.photoTextLower";
+                    var bandIn = PlateIn($"{b}.band.in", edge: AnimationEdge.Bottom);
+                    var spotIn = PopIn($"{b}.spot.in", delay: -0.05);
+                    var textIn = TextIn($"{b}.text.in", AnimationTrigger.AfterPrevious, -0.2);
+                    var photoText = Design("photoTextLower", "Photo + Text (Lower Third)",
+                    [
+                        Block($"{b}.band", "Band", 0, 760, 1920, 240, fill: Floor(), radius: 0, steps: bandIn),
+                        Spot($"{b}.spot", 160, 785, 190, 190, spotIn),
+                        Label($"{b}.text", "Text", "Scan to give, or visit our website", 390, 800, 1370, 160, 48, look.Display,
+                            caps: look.Caps, lineHeight: 1.08, shrink: true, page: true, steps: textIn),
+                    ], Ids(bandIn, spotIn, textIn), full: false);
+                    var f = $"{ThemeId}.photoLower";
+                    var frameIn = PlateIn($"{f}.frame.in", edge: AnimationEdge.Right);
+                    var tileIn = PopIn($"{f}.spot.in", delay: -0.05);
+                    var photo = Design("photoLower", "Photo (Lower Third)",
+                    [
+                        Block($"{f}.frame", "Frame", 1540, 640, 300, 300, color: look.Plate, steps: frameIn),
+                        Spot($"{f}.spot", 1556, 656, 268, 268, tileIn),
+                    ], Ids(frameIn, tileIn), full: false);
+                    return [photoText, photo];
+                }
+                default:
+                {
+                    var s = $"{ThemeId}.photoSide";
+                    var (sideIn, _) = PanelSteps(s);
+                    sideIn[0].Id = $"{s}.spot.in";
+                    var photo = Design("photoSide", "Photo (Side Third)", [Spot($"{s}.spot", 1280, 0, 640, 1080, sideIn, radius: 0)], Ids(sideIn), full: false);
+                    var b = $"{ThemeId}.photoTextSide";
+                    var (panelIn, _) = PanelSteps(b);
+                    var barIn = RuleIn($"{b}.bar.in", delay: -0.3, edge: AnimationEdge.Top, duration: 0.9);
+                    var spotPop = PopIn($"{b}.spot.in", delay: -0.3, from: 0.8);
+                    var textIn = TextIn($"{b}.text.in", AnimationTrigger.AfterPrevious, -0.05);
+                    var photoText = Design("photoTextSide", "Photo + Text (Side Third)",
+                    [
+                        Panel(b, panelIn),
+                        Block($"{b}.bar", "Bar", 1280, 0, Arena ? 12 : 4, 1080, color: look.Accent, radius: 0, steps: barIn),
+                        Spot($"{b}.spot", 1340, 120, 520, 440, spotPop),
+                        Label($"{b}.text", "Text", caption, 1340, 600, 520, 380, 44, look.Display, valign: TextVerticalAlignment.Top,
+                            caps: look.Caps, lineHeight: 1.1, shrink: true, page: true, steps: textIn),
+                    ], Ids(panelIn, barIn, spotPop, textIn), full: false);
+                    return [photo, photoText];
+                }
+            }
+        }
 
         // MARK: Full-slide designs
 
