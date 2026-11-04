@@ -158,11 +158,15 @@ public sealed class AutoAdvanceWindow : Window
             window.Refresh();
         };
         window.Reach = () => reach;
+        window.ApplyTo = applyTo;
         return window;
     }
 
     /// <summary>Which slides the sheet reaches now (the self-test sets the picker and reads this).</summary>
     internal Func<AutoAdvanceEditing.Reach>? Reach { get; private set; }
+
+    /// <summary>The slides sheet's "Apply to" picker (the self-test sets it).</summary>
+    internal ComboBox? ApplyTo { get; private set; }
 
     /// <summary>A presentation's Slide Show: every slide moves on by itself (slides with their own Auto Advance keep theirs).</summary>
     public static AutoAdvanceWindow ForPresentation(Window? owner, MainViewModel model, Presentation presentation) =>

@@ -24,7 +24,7 @@ public sealed partial class MainViewModel
     private double GainFor(string mediaId) => MediaLookFor(mediaId).Volume;
 
     /// <summary>The scene with every full-screen media item dressed in its effects and look.</summary>
-    private AnimatedScene DressMedia(AnimatedScene scene) =>
+    internal AnimatedScene DressMedia(AnimatedScene scene) =>
         MediaDressing.Dress(scene, id => Library.Get<MediaItem>(id) is { } item ? new MediaDress(item.Effects, MediaLooks.For(item)) : null);
 
     /// <summary>
