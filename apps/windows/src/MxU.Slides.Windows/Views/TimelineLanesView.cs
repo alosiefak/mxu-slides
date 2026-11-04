@@ -586,6 +586,12 @@ public sealed class TimelineLanesView : FrameworkElement
 
     private (TimelineRow? Row, bool Takes) DropTarget(DragEventArgs e)
     {
+        // An item dragged from the main window's bins (TimelineEditorViewModel.Drops.cs).
+        if (EditorDragDrop.LibraryItem(e.Data) is { } item)
+        {
+            var under = vm.Layout.RowAt(e.GetPosition(this).Y);
+            return under is { Kind: TimelineRowKind.Lane, Lane: { } lane } && vm.TakesDrop(item, lane) ? (under, true) : (null, false);
+        }
         var files = Files(e);
         if (files.Length == 0 || !vm.CanEdit) return (null, false);
         var row = vm.Layout.RowAt(e.GetPosition(this).Y);
@@ -627,8 +633,14 @@ public sealed class TimelineLanesView : FrameworkElement
         dropLane = null;
         InvalidateVisual();
         if (!takes || row is null) return;
-        var files = Files(e);
         var at = vm.Layout.TimeAt(Content(e.GetPosition(this)).X);
+        if (EditorDragDrop.LibraryItem(e.Data) is { } item && row.Lane is { } lane)
+        {
+            vm.DropLibraryItem(item, lane, at);
+            e.Handled = true;
+            return;
+        }
+        var files = Files(e);
         if (row.Kind == TimelineRowKind.Lane) vm.ImportMusic(files, at);
         else vm.ImportStems(files, at, row.Kind == TimelineRowKind.Track ? row.ChannelId : null);
         e.Handled = true;

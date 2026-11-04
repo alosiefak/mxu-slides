@@ -551,7 +551,7 @@
                     <!-- Filmstrip (Edit mode) -->
                     <Border DockPanel.Dock="Top" Padding="10,8,10,0" Visibility="{Binding IsEditing, Converter={StaticResource Visible}}">
                         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                            <ItemsControl ItemsSource="{Binding Slides}">
+                            <ItemsControl x:Name="Filmstrip" ItemsSource="{Binding Slides}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <StackPanel Orientation="Horizontal" />

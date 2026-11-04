@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using MxU.Slides.Core.Editing;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Windows.ViewModels;
 using MxU.Slides.Windows.Views;
@@ -33,6 +34,7 @@ public sealed partial class SelfTest
             await UndoChecks(copy);
             await ClipboardChecks(copy);
             await LayersChecks(copy);
+            await DragDropChecks(copy);
         }
         finally
         {
@@ -319,6 +321,8 @@ public sealed partial class SelfTest
         model.AddBoxCommand.Execute(null);
         model.AddCircleCommand.Execute(null);
         model.FlushPendingSave();
+        // What one click does is one step: let this piece of work end before the next "click".
+        await Delay(100);
         var slide = model.CurrentPresentation!.Slides.First(s => s.Id == model.SelectedSlide!.Slide.Id);
         var box = slide.Objects[^2];
         var circle = slide.Objects[^1];
@@ -376,6 +380,88 @@ public sealed partial class SelfTest
         {
             RoutedEvent = System.Windows.Input.Keyboard.KeyDownEvent,
         });
+    }
+
+    // MARK: Drag and drop
+
+    private async Task DragDropChecks(Presentation song)
+    {
+        model.Open(model.Library.Get<Presentation>(song.Id)!, null, null);
+        model.IsEditing = true;
+        await Delay(300);
+        var deck = model.CurrentPresentation!;
+        var ids = deck.Slides.Select(s => s.Id).ToList();
+
+        // Two picked slides dragged to before the sixth.
+        model.SelectedSlide = model.Slides[1];
+        model.PickTile(model.Slides[1], ctrl: false, shift: false);
+        model.PickTile(model.Slides[2], ctrl: true, shift: false);
+        EditorDragDrop.PreviewGridDrop(window.Filmstrip, 5, onTile: false);
+        await Step("50-drag-slides-line", () => { }, settle: 400);
+        DropFeedback.For(window.Filmstrip)?.Clear();
+        Check("drag: dragging two picked slides moves both, in order",
+            model.MoveSlidesTo([ids[1], ids[2]], ids[5]) && deck.Slides.Select(s => s.Id).SequenceEqual(new[] { ids[0], ids[3], ids[4], ids[1], ids[2], ids[5] }.Concat(ids.Skip(6))));
+        Check("drag: the moved slides join the group they land in", deck.Slides[3].SectionId == deck.Slides[5].SectionId);
+        Check("drag: they stay picked", model.PickedSlideIds.SequenceEqual([ids[1], ids[2]]));
+        await Delay(100);
+        Check("drag: the move is one undo step (the Mac's \"Move Slide\")", model.UndoMenuText == "Undo Move Slide");
+        model.UndoEditCommand.Execute(null);
+        await Delay(200);
+        Check("drag: undo puts them back", model.CurrentPresentation!.Slides.Select(s => s.Id).SequenceEqual(ids));
+
+        // Media from the bin: on a tile it's the background, between tiles a new slide, on the canvas a picture.
+        var media = model.MediaItems.FirstOrDefault(m => m.Item.MediaKind == MediaKind.Image)?.Item;
+        if (media is null)
+        {
+            Skip("drag: media from the bin", "no pictures in the Media bin");
+        }
+        else
+        {
+            deck = model.CurrentPresentation!;
+            EditorDragDrop.PreviewGridDrop(window.Filmstrip, 3, onTile: true);
+            await Step("51-drag-media-on-tile", () => { }, settle: 300);
+            DropFeedback.For(window.Filmstrip)?.Clear();
+            Check("drag: media dropped on a slide becomes its background", model.DropMediaOnSlide(ids[3], media.Id)
+                && model.CurrentPresentation!.Slides.First(s => s.Id == ids[3]).Background?.MediaId == media.Id);
+            var count = model.CurrentPresentation!.Slides.Count;
+            model.InsertMediaSlides([media], ids[2]);
+            var made = model.CurrentPresentation.Slides[2];
+            Check("drag: media dropped between slides makes a slide there", model.CurrentPresentation.Slides.Count == count + 1
+                && made.Background?.MediaId == media.Id && made.Name == media.Name);
+
+            model.SelectedSlide = model.Slides.First(t => t.Slide.Id == ids[4]);
+            await Delay(200);
+            var slide = model.CurrentPresentation.Slides.First(s => s.Id == ids[4]);
+            var before = slide.Objects.Count;
+            model.DropMediaOnCanvas(media.Id, new Core.Scene.EditorGeometry.Point(400, 300));
+            Check("drag: media dropped on an empty part of the canvas is a picture box there", slide.Objects.Count == before + 1
+                && slide.Objects[^1].Fill?.MediaId == media.Id);
+            model.AddBoxCommand.Execute(null);
+            var box = slide.Objects[^1];
+            model.DropMediaOnCanvas(media.Id, new Core.Scene.EditorGeometry.Point((box.X ?? 0) + 50, (box.Y ?? 0) + 50));
+            Check("drag: media dropped on a shape fills it", box.Fill?.FillKind == FillKind.Media && box.Fill.MediaId == media.Id);
+            await Step("52-drag-media-on-canvas", () => { }, settle: 500);
+
+            // The service list: media dropped at the top, then dragged to the end; an overlay can't go in.
+            if (model.SelectedService is { } service)
+            {
+                model.IsEditing = false;
+                var rows = service.Items.Count;
+                EditorDragDrop.PreviewServiceDrop(window.ServiceList, 0);
+                await Step("53-drag-into-service", () => { }, settle: 300);
+                DropFeedback.For(window.ServiceList)?.Clear();
+                Check("drag: media dropped into the service is a row where it was dropped",
+                    model.DropIntoService(new LibraryDrag(typeof(MediaItem), media.Id), 0) && model.Library.Get<Service>(service.Id)!.Items[0].RefId == media.Id);
+                var row = model.Library.Get<Service>(service.Id)!.Items[0].Id;
+                model.MoveServiceItemBefore(row, null);
+                Check("drag: a row dragged to the end lands there", model.Library.Get<Service>(service.Id)!.Items[^1].Id == row);
+                Check("drag: an overlay can't go into a service", model.Overlays.FirstOrDefault() is not { } overlay
+                    || !model.DropIntoService(new LibraryDrag(typeof(Overlay), overlay.Overlay.Id), 0));
+                model.RemoveServiceItemCommand.Execute(model.ServiceItems.FirstOrDefault(r => r.Item.Id == row));
+                Check("drag: the service is as it was", model.Library.Get<Service>(service.Id)!.Items.Count == rows);
+            }
+        }
+        model.IsEditing = false;
     }
 
     /// <summary>The library's copy as it is on disk now.</summary>

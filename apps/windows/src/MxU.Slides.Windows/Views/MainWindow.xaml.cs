@@ -460,35 +460,10 @@ public partial class MainWindow : Window
         DragDrop.DoDragDrop(this, new DataObject(format, payload), DragDropEffects.Copy | DragDropEffects.Move);
     }
 
-    private void ServiceList_DragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = e.Data.GetDataPresent("mxu/presentation") ? DragDropEffects.Copy
-            : e.Data.GetDataPresent("mxu/service-item") ? DragDropEffects.Move
-            : e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy
-            : DragDropEffects.None;
-        e.Handled = true;
-    }
+    // Rows, songs, media, music and files dropped into the service, with a line where they'll land (Views/EditorDragDrop.cs).
+    private void ServiceList_DragOver(object sender, DragEventArgs e) => EditorDragDrop.ServiceDragOver(ServiceList, model, e);
 
-    private void ServiceList_Drop(object sender, DragEventArgs e)
-    {
-        var target = (e.OriginalSource as FrameworkElement)?.DataContext as ServiceItemViewModel;
-        if (e.Data.GetData("mxu/presentation") is string presentationId && model.Library.Get<Presentation>(presentationId) is { } p)
-        {
-            model.SelectedServiceItem = target;
-            model.Open(p, null, null);
-            model.AddCurrentToServiceCommand.Execute(null);
-        }
-        else if (e.Data.GetData("mxu/service-item") is string itemId && model.SelectedService is { } service)
-        {
-            var index = target is null ? service.Items.Count - 1 : service.Items.FindIndex(i => i.Id == target.Item.Id);
-            model.MoveServiceItemTo(itemId, index);
-        }
-        else if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
-        {
-            // Asks about duplicates once the drop has finished (MainViewModel.MediaImport.cs).
-            _ = model.ImportMediaFilesAsync(files, addToService: true);
-        }
-    }
+    private void ServiceList_Drop(object sender, DragEventArgs e) => EditorDragDrop.ServiceDrop(ServiceList, model, e);
 
     private void ServiceList_DoubleClick(object sender, MouseButtonEventArgs e)
     {

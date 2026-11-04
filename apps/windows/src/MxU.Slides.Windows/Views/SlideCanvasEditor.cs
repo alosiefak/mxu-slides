@@ -160,6 +160,15 @@ public sealed class SlideCanvasEditor : Grid
         return new(origin.X + p.X * scale, origin.Y + p.Y * scale);
     }
 
+    /// <summary>The slide point under a point of this control (for drops).</summary>
+    public EditorGeometry.Point ScenePointAt(Point viewPoint) => ToScene(viewPoint);
+
+    /// <summary>Where a slide rectangle shows on this control (for drop outlines).</summary>
+    public Rect ViewRectOf(SceneRect r) => ToView(r);
+
+    /// <summary>The object a drop at this slide point would land on, if any (locked ones let it through).</summary>
+    public SlideObject? ObjectAt(EditorGeometry.Point scenePoint) => Slide is null ? null : HitObject(scenePoint, Pickable, Template);
+
     private Rect ToView(SceneRect r)
     {
         var (scale, origin) = Fit();
