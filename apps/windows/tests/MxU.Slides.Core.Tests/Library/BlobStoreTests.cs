@@ -40,10 +40,13 @@ public sealed class BlobStoreTests : ScratchFolderTest
         File.Delete(resolved);
         Assert.Null(blobs.Find(hash));
 
-        // Another store (another part of the app) adds a file; this one finds it.
+        // Another store (another part of the app) adds a file; this one finds it. Within 50 ms of its
+        // last listing the store doesn't list again for a miss (a hundred missing tiles must not mean a
+        // hundred listings), and the folder's stamp may not have moved on in the same clock tick: so it
+        // finds it a moment later, which is what a fast PC hit here in 9 ms.
         var other = NewStore();
         var hash2 = other.Store(WriteFile("in2.txt", "world"));
-        Assert.NotNull(blobs.Find(hash2));
+        Assert.True(SpinWait.SpinUntil(() => blobs.Find(hash2) is not null, TimeSpan.FromSeconds(3)), "the other store's file is found");
     }
 
     [Fact]
