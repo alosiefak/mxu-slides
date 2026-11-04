@@ -12,7 +12,7 @@ namespace MxU.Slides.Core.Model;
 
 public static partial class SchemaInfo
 {
-    public const int SchemaVersion = 149;
+    public const int SchemaVersion = 161;
 }
 
 [JsonConverter(typeof(SlideObjectKindJsonConverter))]
@@ -300,6 +300,7 @@ public enum MediaScaleMode
     Fill,
     Fit,
     Stretch,
+    ScaleAndBlur,
 }
 
 public sealed class MediaScaleModeJsonConverter : JsonConverter<MediaScaleMode>
@@ -309,6 +310,7 @@ public sealed class MediaScaleModeJsonConverter : JsonConverter<MediaScaleMode>
         MediaScaleMode.Fill => "fill",
         MediaScaleMode.Fit => "fit",
         MediaScaleMode.Stretch => "stretch",
+        MediaScaleMode.ScaleAndBlur => "scaleAndBlur",
         _ => throw new JsonException($"Unknown MediaScaleMode value: {value}"),
     };
 
@@ -319,6 +321,7 @@ public sealed class MediaScaleModeJsonConverter : JsonConverter<MediaScaleMode>
             case "fill": value = MediaScaleMode.Fill; return true;
             case "fit": value = MediaScaleMode.Fit; return true;
             case "stretch": value = MediaScaleMode.Stretch; return true;
+            case "scaleAndBlur": value = MediaScaleMode.ScaleAndBlur; return true;
             default: value = default; return false;
         }
     }
@@ -960,6 +963,8 @@ public sealed partial class TextStyleRun
     public string? HighlightColorHex { get; set; }
     [JsonPropertyName("tracking")]
     public double? Tracking { get; set; }
+    [JsonPropertyName("textTransform")]
+    public TextTransform? TextTransform { get; set; }
 }
 
 public sealed partial class KeepFromSlideOptions
@@ -1565,6 +1570,8 @@ public sealed partial class SlideObject
     public double? SkewY { get; set; }
     [JsonPropertyName("keystoneMode")]
     public KeystoneMode? KeystoneMode { get; set; }
+    [JsonPropertyName("photoSpot")]
+    public bool? PhotoSpot { get; set; }
 }
 
 [JsonConverter(typeof(KeystoneModeJsonConverter))]
@@ -1717,6 +1724,42 @@ public sealed class CueMediaModeJsonConverter : JsonConverter<CueMediaMode>
         writer.WriteStringValue(ToRaw(value));
 }
 
+[JsonConverter(typeof(MediaEndFadeJsonConverter))]
+public enum MediaEndFade
+{
+    Black,
+    Clear,
+}
+
+public sealed class MediaEndFadeJsonConverter : JsonConverter<MediaEndFade>
+{
+    public static string ToRaw(MediaEndFade value) => value switch
+    {
+        MediaEndFade.Black => "black",
+        MediaEndFade.Clear => "clear",
+        _ => throw new JsonException($"Unknown MediaEndFade value: {value}"),
+    };
+
+    public static bool TryParse(string? raw, out MediaEndFade value)
+    {
+        switch (raw)
+        {
+            case "black": value = MediaEndFade.Black; return true;
+            case "clear": value = MediaEndFade.Clear; return true;
+            default: value = default; return false;
+        }
+    }
+
+    public override MediaEndFade Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var raw = reader.GetString();
+        return TryParse(raw, out var value) ? value : throw new JsonException($"Unknown MediaEndFade value: {raw}");
+    }
+
+    public override void Write(Utf8JsonWriter writer, MediaEndFade value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(ToRaw(value));
+}
+
 public sealed partial class CueMedia
 {
     [JsonPropertyName("mediaId"), JsonRequired]
@@ -1729,6 +1772,12 @@ public sealed partial class CueMedia
     public bool? Loops { get; set; }
     [JsonPropertyName("classification")]
     public MediaClassification? Classification { get; set; }
+    [JsonPropertyName("scaleMode")]
+    public MediaScaleMode? ScaleMode { get; set; }
+    [JsonPropertyName("endFade")]
+    public MediaEndFade? EndFade { get; set; }
+    [JsonPropertyName("layerId")]
+    public string? LayerId { get; set; }
 }
 
 public sealed partial class Slide
@@ -2251,6 +2300,22 @@ public sealed partial class MediaItem
     public List<SlideAction>? Actions { get; set; }
     [JsonPropertyName("autoAdvance")]
     public AutoAdvance? AutoAdvance { get; set; }
+    [JsonPropertyName("marks")]
+    public List<VideoMark>? Marks { get; set; }
+}
+
+public sealed partial class VideoMark
+{
+    [JsonPropertyName("id"), JsonRequired]
+    public string Id { get; set; } = "";
+    [JsonPropertyName("name"), JsonRequired]
+    public string Name { get; set; } = "";
+    [JsonPropertyName("at"), JsonRequired]
+    public double At { get; set; }
+    [JsonPropertyName("actions"), JsonRequired]
+    public List<SlideAction> Actions { get; set; } = new();
+    [JsonPropertyName("colorHex")]
+    public string? ColorHex { get; set; }
 }
 
 public sealed partial class AudioItem
@@ -2758,6 +2823,10 @@ public sealed partial class OutputPreset
     public string Name { get; set; } = "";
     [JsonPropertyName("assignments"), JsonRequired]
     public List<OutputAssignment> Assignments { get; set; } = new();
+    [JsonPropertyName("placements")]
+    public List<LayerPlacement>? Placements { get; set; }
+    [JsonPropertyName("layers")]
+    public List<CustomLayer>? Layers { get; set; }
 }
 
 [JsonConverter(typeof(MIDIDeviceItemDirectionJsonConverter))]
@@ -3173,6 +3242,10 @@ public sealed partial class StreamRecordPreset
     public int? FrameRate { get; set; }
     [JsonPropertyName("videoBitrateKbps")]
     public int? VideoBitrateKbps { get; set; }
+    [JsonPropertyName("adaptBitrate")]
+    public bool? AdaptBitrate { get; set; }
+    [JsonPropertyName("minBitrateKbps")]
+    public int? MinBitrateKbps { get; set; }
     [JsonPropertyName("canvasScreenId")]
     public string? CanvasScreenId { get; set; }
     [JsonPropertyName("recordWhileStreaming")]
@@ -3952,6 +4025,7 @@ public enum TextSourceKind
     CurrentPresentation,
     NextServiceTitle,
     Timecode,
+    VideoMarkName,
 }
 
 public sealed class TextSourceKindJsonConverter : JsonConverter<TextSourceKind>
@@ -3972,6 +4046,7 @@ public sealed class TextSourceKindJsonConverter : JsonConverter<TextSourceKind>
         TextSourceKind.CurrentPresentation => "currentPresentation",
         TextSourceKind.NextServiceTitle => "nextServiceTitle",
         TextSourceKind.Timecode => "timecode",
+        TextSourceKind.VideoMarkName => "videoMarkName",
         _ => throw new JsonException($"Unknown TextSourceKind value: {value}"),
     };
 
@@ -3993,6 +4068,7 @@ public sealed class TextSourceKindJsonConverter : JsonConverter<TextSourceKind>
             case "currentPresentation": value = TextSourceKind.CurrentPresentation; return true;
             case "nextServiceTitle": value = TextSourceKind.NextServiceTitle; return true;
             case "timecode": value = TextSourceKind.Timecode; return true;
+            case "videoMarkName": value = TextSourceKind.VideoMarkName; return true;
             default: value = default; return false;
         }
     }
@@ -4046,6 +4122,45 @@ public sealed class TimerTextFormatJsonConverter : JsonConverter<TimerTextFormat
         writer.WriteStringValue(ToRaw(value));
 }
 
+[JsonConverter(typeof(VideoCountdownTargetJsonConverter))]
+public enum VideoCountdownTarget
+{
+    End,
+    NextMark,
+    NamedMark,
+}
+
+public sealed class VideoCountdownTargetJsonConverter : JsonConverter<VideoCountdownTarget>
+{
+    public static string ToRaw(VideoCountdownTarget value) => value switch
+    {
+        VideoCountdownTarget.End => "end",
+        VideoCountdownTarget.NextMark => "nextMark",
+        VideoCountdownTarget.NamedMark => "namedMark",
+        _ => throw new JsonException($"Unknown VideoCountdownTarget value: {value}"),
+    };
+
+    public static bool TryParse(string? raw, out VideoCountdownTarget value)
+    {
+        switch (raw)
+        {
+            case "end": value = VideoCountdownTarget.End; return true;
+            case "nextMark": value = VideoCountdownTarget.NextMark; return true;
+            case "namedMark": value = VideoCountdownTarget.NamedMark; return true;
+            default: value = default; return false;
+        }
+    }
+
+    public override VideoCountdownTarget Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var raw = reader.GetString();
+        return TryParse(raw, out var value) ? value : throw new JsonException($"Unknown VideoCountdownTarget value: {raw}");
+    }
+
+    public override void Write(Utf8JsonWriter writer, VideoCountdownTarget value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(ToRaw(value));
+}
+
 public sealed partial class TextLink
 {
     [JsonPropertyName("source"), JsonRequired]
@@ -4072,6 +4187,12 @@ public sealed partial class TextLink
     public TimerTextFormat? TimerFormat { get; set; }
     [JsonPropertyName("timerPattern")]
     public string? TimerPattern { get; set; }
+    [JsonPropertyName("videoTarget")]
+    public VideoCountdownTarget? VideoTarget { get; set; }
+    [JsonPropertyName("videoMarkName")]
+    public string? VideoMarkName { get; set; }
+    [JsonPropertyName("countsUp")]
+    public bool? CountsUp { get; set; }
 }
 
 [JsonConverter(typeof(MultiViewSplitAxisJsonConverter))]
@@ -4256,6 +4377,8 @@ public sealed partial class NoteRun
     public string? SlideType { get; set; }
     [JsonPropertyName("slideId")]
     public string? SlideId { get; set; }
+    [JsonPropertyName("slideState")]
+    public string? SlideState { get; set; }
     [JsonPropertyName("commentId")]
     public string? CommentId { get; set; }
 }
@@ -4413,6 +4536,14 @@ public sealed partial class NoteBlock
     public string? Filename { get; set; }
     [JsonPropertyName("slide")]
     public NoteSlideRef? Slide { get; set; }
+    [JsonPropertyName("slideGroup")]
+    public string? SlideGroup { get; set; }
+    [JsonPropertyName("slideType")]
+    public string? SlideType { get; set; }
+    [JsonPropertyName("slideId")]
+    public string? SlideId { get; set; }
+    [JsonPropertyName("slideState")]
+    public string? SlideState { get; set; }
 }
 
 public sealed partial class NoteBody
@@ -4541,6 +4672,28 @@ public sealed partial class NoteDocument
     public bool? MarkedByStructure { get; set; }
     [JsonPropertyName("pendingUpdates")]
     public List<NotePendingUpdate>? PendingUpdates { get; set; }
+    [JsonPropertyName("mediaImports")]
+    public List<NoteMediaImport>? MediaImports { get; set; }
+    [JsonPropertyName("buildMode")]
+    public string? BuildMode { get; set; }
+    [JsonPropertyName("skippedUpdates")]
+    public List<NoteSkippedUpdate>? SkippedUpdates { get; set; }
+}
+
+public sealed partial class NoteSkippedUpdate
+{
+    [JsonPropertyName("id"), JsonRequired]
+    public string Id { get; set; } = "";
+    [JsonPropertyName("text"), JsonRequired]
+    public string Text { get; set; } = "";
+}
+
+public sealed partial class NoteMediaImport
+{
+    [JsonPropertyName("key"), JsonRequired]
+    public string Key { get; set; } = "";
+    [JsonPropertyName("mediaId"), JsonRequired]
+    public string MediaId { get; set; } = "";
 }
 
 public sealed partial class StationSettings
@@ -4649,4 +4802,30 @@ public sealed partial class TrackSet
     public double? Tempo { get; set; }
     [JsonPropertyName("source")]
     public string? Source { get; set; }
+}
+
+public sealed partial class LayerPlacement
+{
+    [JsonPropertyName("layerId"), JsonRequired]
+    public string LayerId { get; set; } = "";
+    [JsonPropertyName("x"), JsonRequired]
+    public double X { get; set; }
+    [JsonPropertyName("y"), JsonRequired]
+    public double Y { get; set; }
+    [JsonPropertyName("width"), JsonRequired]
+    public double Width { get; set; }
+    [JsonPropertyName("height"), JsonRequired]
+    public double Height { get; set; }
+    [JsonPropertyName("scale")]
+    public MediaScaleMode? Scale { get; set; }
+}
+
+public sealed partial class CustomLayer
+{
+    [JsonPropertyName("id"), JsonRequired]
+    public string Id { get; set; } = "";
+    [JsonPropertyName("name"), JsonRequired]
+    public string Name { get; set; } = "";
+    [JsonPropertyName("above")]
+    public string? Above { get; set; }
 }
