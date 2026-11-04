@@ -89,7 +89,8 @@ public sealed partial class SelfTest
         await Delay(300);
         var button = Descendants<Button>(window).FirstOrDefault(b => b.Content as string == "Motion templates…");
         Check("the Overlays bin has a Motion templates… button", button is not null);
-        button?.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        // As a click does: the button runs its command (a raised Click event alone doesn't).
+        if (button?.Command is { } command && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
         await Delay(500);
         var editor = Application.Current.Windows.OfType<MotionTemplatesWindow>().FirstOrDefault();
         Check("it opens the motion templates window", editor is not null);
@@ -147,7 +148,6 @@ public sealed partial class SelfTest
         Save(editor, "mt-03-fields-filled-in");
         Check("filling in a field changes the preview's values", editor.Values.TryGetValue("text:L0", out var typed) && typed == "Pastor Grace Okafor");
 
-        var up = ShowState.HostClock();
         var added = await editor.AddAsync(goLive: true) as Overlay;
         Check("Add and go live adds an overlay to the library", added is not null && model.Library.Get<Overlay>(added.Id) is not null);
         if (added is null) return null;
@@ -155,6 +155,8 @@ public sealed partial class SelfTest
         var live = model.Show.LiveOverlays.FirstOrDefault(o => o.Id == added.Id);
         Check("it's up, as its live animation (not the still)", live is not null && live.Objects.Any(o => o.MediaId == pictureId)
             && model.MotionPlayers[pictureId] is not null);
+        // Timed from the moment it really went up (adding it first made its still, which takes a moment).
+        var up = model.MotionPlayers[pictureId]?.UpAt ?? ShowState.HostClock();
         var shown = await Until(() => model.Media.MotionFramesShown(pictureId), n => n >= 5, 10000);
         Check($"the screens are showing its frames ({shown} so far)", shown >= 5);
 
@@ -212,8 +214,9 @@ public sealed partial class SelfTest
         var down = ShowState.HostClock();
         model.ClearOverlaysCommand.Execute(null);
         Check("F4 starts its Out instead of cutting it", model.Show.IsLeaving(overlay.Id) && model.MotionPlayers[pictureId]?.DownAt is not null);
-        await WhenShown(() => ShowState.HostClock() >= down + 0.22, 5);
-        var leaving = await FrameAfter(sink, down + 0.22);
+        // Its Out eases in (slow, then fast): 0.4 s into the half-second Out the plate has moved about 275 pixels.
+        await WhenShown(() => ShowState.HostClock() >= down + 0.4, 5);
+        var leaving = await FrameAfter(sink, down + 0.4);
         if (model.Outputs?[OutputRole.Audience] is { } audience) Save(audience, "mt-07-live-out");
         if (leaving is not null)
         {
@@ -265,13 +268,14 @@ public sealed partial class SelfTest
             tile is not null && model.SelectedOverlayPack == MotionTemplateStore.Pack && model.SelectedOverlayIsMotion);
         Save(window, "mt-09-bin");
         if (tile is null) return;
-        window.HoverOverlayTile(tile);
+        // Pinned: the real mouse (wherever it is) mustn't move the preview off while the test looks.
+        window.HoverOverlayTile(tile, pinned: true);
         var id = window.HoveredMotionPreview;
         var frames = id is null ? 0 : await Until(() => model.Media.MotionFramesShown(id), n => n >= 5, 8000);
         Check("pointing at its tile plays it there", frames >= 5);
         await Delay(300);
         Save(window, "mt-10-bin-hover");
-        window.HoverOverlayTile(null);
+        window.HoverOverlayTile(null, pinned: true);
     }
 
     private async Task MotionEditWindowCheck(Overlay overlay)
@@ -301,7 +305,7 @@ public sealed partial class SelfTest
         await Delay(300);
         Save(editor, "mt-12-exporting");
         var item = await Within(started.Done, TimeSpan.FromMinutes(2));
-        var expected = 30 + 30 + 30; // In 0.5 s, a 1 s hold, Out 0.5 s, at 30 fps
+        var expected = 15 + 30 + 15; // In 0.5 s, a 1 s hold, Out 0.5 s, at 30 fps
         Check("it's an H.264 video in the Media bin, as long as the play-through",
             item is { MediaKind: MediaKind.Video, FileStatus: MediaFileStatus.Ready, Classification: MediaClassification.Foreground, PixelWidth: 480 }
             && Math.Abs((item.DurationSeconds ?? 0) - expected / 30.0) < 0.1);

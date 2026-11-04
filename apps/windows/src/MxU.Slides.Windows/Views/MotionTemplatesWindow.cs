@@ -62,6 +62,10 @@ internal sealed class MotionTemplatesWindow : Window
     private readonly Button cancel;
     private readonly StackPanel useRow = new() { Orientation = Orientation.Horizontal };
     private readonly DockPanel nameRow;
+    private readonly TextBlock addSection = EditorKit.Section("ADD");
+    private readonly TextBlock hint = EditorKit.Muted("Point at a template to play it; click to pick it. Drop .json or .lottie files here to import them.");
+    // How to show a value set from code in its field's box (the self-test, and edits from elsewhere).
+    private readonly Dictionary<string, Action<string>> showValue = [];
     private string filter = "All";
     private MotionTemplateInfo? template;
     private LottieDocument? lottie;
@@ -174,7 +178,6 @@ internal sealed class MotionTemplatesWindow : Window
         var middle = new DockPanel();
         DockPanel.SetDock(top, Dock.Top);
         middle.Children.Add(top);
-        var hint = EditorKit.Muted("Point at a template to play it; click to pick it. Drop .json or .lottie files here to import them.");
         DockPanel.SetDock(hint, Dock.Bottom);
         middle.Children.Add(hint);
         middle.Children.Add(new ScrollViewer { Content = tileGrid, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
@@ -200,7 +203,7 @@ internal sealed class MotionTemplatesWindow : Window
         useRow.Children.Add(asOverlay);
         useRow.Children.Add(asBackground);
         right.Children.Add(useRow);
-        right.Children.Add(EditorKit.Section("ADD"));
+        right.Children.Add(addSection);
         right.Children.Add(nameRow);
         var actions = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
         actions.Children.Add(add);
@@ -213,6 +216,8 @@ internal sealed class MotionTemplatesWindow : Window
         {
             useSection.Visibility = Visibility.Collapsed;
             useRow.Visibility = Visibility.Collapsed;
+            addSection.Text = "SHOW";
+            hint.Text = "Changing this use's fields changes it everywhere it's used, and on the screen if it's up. To use another template, add a new one.";
             nameRow.Visibility = Visibility.Collapsed;
             add.Visibility = Visibility.Collapsed;
             live.Content = editingMedia is not null ? "Show it now" : "Go live";
@@ -275,7 +280,7 @@ internal sealed class MotionTemplatesWindow : Window
 
     private void RebuildTiles()
     {
-        foreach (var (_, tile) in tiles) previews.Stop(tile.Preview);
+        foreach (var (_, tile) in tiles) previews.Remove(tile.Preview);
         tiles.Clear();
         tileGrid.Children.Clear();
         foreach (var info in model.MotionStore.All().Where(t => filter switch
@@ -358,6 +363,8 @@ internal sealed class MotionTemplatesWindow : Window
     /// <summary>Picks a template: its preview, its fields (at their defaults), how it plays and what it's for.</summary>
     public void Pick(string templateId)
     {
+        // A use keeps its template: the gallery is for looking while one is being edited.
+        if (editing is not null || editingMedia is not null) return;
         if (model.MotionStore.Get(templateId) is not { } info || model.MotionStore.Lottie(info.LottieHash) is not { } document) return;
         template = info;
         lottie = document;
@@ -441,6 +448,7 @@ internal sealed class MotionTemplatesWindow : Window
     private void RebuildFields(IReadOnlyList<MotionField> list)
     {
         fields.Children.Clear();
+        showValue.Clear();
         if (list.Count == 0) fields.Children.Add(EditorKit.Muted("This template has no text, colours or pictures to change."));
         foreach (var field in list)
         {
@@ -454,6 +462,11 @@ internal sealed class MotionTemplatesWindow : Window
                     {
                         if (!updating) SetValue(field.Id, box.Text.Replace("\r\n", "\n"));
                     };
+                    // Only when it differs: setting the text while someone types would move their cursor.
+                    showValue[field.Id] = text =>
+                    {
+                        if (box.Text.Replace("\r\n", "\n") != text) box.Text = text;
+                    };
                     control = box;
                     break;
                 case MotionFieldKind.Color:
@@ -462,6 +475,10 @@ internal sealed class MotionTemplatesWindow : Window
                     {
                         if (!updating && MotionFields.NormalHex(picker.Hex) is { } hex) SetValue(field.Id, hex);
                     });
+                    showValue[field.Id] = hex =>
+                    {
+                        if (MotionFields.NormalHex(picker.Hex) != hex) picker.Hex = hex + "FF";
+                    };
                     control = picker;
                     break;
                 default:
@@ -514,10 +531,15 @@ internal sealed class MotionTemplatesWindow : Window
         if (field is null) return;
         if (value == field.Default && field.Kind != MotionFieldKind.Image) values.Remove(fieldId);
         else values[fieldId] = value;
-        if (!nameTyped)
+        updating = true;
+        try
         {
-            updating = true;
-            nameBox.Text = SuggestedName();
+            // The field's own box shows it too (it already does when the value was typed there).
+            if (field.Kind != MotionFieldKind.Image && showValue.TryGetValue(fieldId, out var show)) show(value);
+            if (!nameTyped) nameBox.Text = SuggestedName();
+        }
+        finally
+        {
             updating = false;
         }
         var filled = model.FilledIn(template.LottieHash, lottie, values);

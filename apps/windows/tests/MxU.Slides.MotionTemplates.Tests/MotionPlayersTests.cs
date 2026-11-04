@@ -59,6 +59,24 @@ public sealed class MotionPlayersTests
     }
 
     [Fact]
+    public void AScreenThatCopiedAnEarlierPlayGetsAllOfTheNewOne()
+    {
+        // The same id started again (a lower third put up again, a preview looping round): the screen's
+        // version belongs to the old animation, so it must copy everything, not an empty "change".
+        using var players = Players();
+        players.Start("motion::a", StarterMotionTemplates.NameStrap(), Timeline(), 480, 270, upAt: 0);
+        var version = 0;
+        for (var t = 0.0; t < 0.5; t += 0.05) players.DrawNow(t);
+        players.CopyLatest("motion::a", ref version, (_, _) => { });
+        Assert.True(version > 3);
+        players.Start("motion::a", StarterMotionTemplates.NameStrap(), Timeline(), 480, 270, upAt: 10);
+        players.DrawNow(10.3);
+        PixelRect region = default;
+        Assert.True(players.CopyLatest("motion::a", ref version, (_, r) => region = r));
+        Assert.Equal(new PixelRect(0, 0, 480, 270), region);
+    }
+
+    [Fact]
     public void HoldingStillMakesNoNewPictures()
     {
         using var players = Players();

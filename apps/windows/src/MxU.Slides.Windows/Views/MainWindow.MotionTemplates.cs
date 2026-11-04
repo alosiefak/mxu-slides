@@ -24,6 +24,7 @@ public partial class MainWindow
     private OverlayTileViewModel? hovered;
     private DispatcherTimer? binLoop;
     private Action? restartBinPreview;
+    private bool hoverPinned;
 
     private void MotionTemplates_Loaded(object sender, RoutedEventArgs e)
     {
@@ -31,8 +32,14 @@ public partial class MainWindow
         motionTemplatesHooked = true;
         AddHandler(ContextMenuOpeningEvent, new ContextMenuEventHandler(OnMotionTemplateMenuOpening), handledEventsToo: true);
         // Mouse moves tunnel down from the window, so it sees every tile without each one being wired up.
-        PreviewMouseMove += (_, args) => HoverOverlayTile((args.OriginalSource as DependencyObject) is { } at ? TileUnder(at) : null);
-        MouseLeave += (_, _) => HoverOverlayTile(null);
+        PreviewMouseMove += (_, args) =>
+        {
+            if (!hoverPinned) HoverOverlayTile((args.OriginalSource as DependencyObject) is { } at ? TileUnder(at) : null);
+        };
+        MouseLeave += (_, _) =>
+        {
+            if (!hoverPinned) HoverOverlayTile(null);
+        };
     }
 
     private static OverlayTileViewModel? TileUnder(DependencyObject at)
@@ -45,9 +52,13 @@ public partial class MainWindow
         return null;
     }
 
-    /// <summary>Plays a motion template in its bin tile while the mouse is over it (and stops the last one).</summary>
-    internal void HoverOverlayTile(OverlayTileViewModel? tile)
+    /// <summary>
+    /// Plays a motion template in its bin tile while the mouse is over it (and stops the last one).
+    /// <paramref name="pinned"/> (the self-test) holds it there until it's unpinned, whatever the mouse does.
+    /// </summary>
+    internal void HoverOverlayTile(OverlayTileViewModel? tile, bool pinned = false)
     {
+        hoverPinned = pinned && tile is not null;
         if (ReferenceEquals(tile, hovered)) return;
         if (hovered is { } last)
         {

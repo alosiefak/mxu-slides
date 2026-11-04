@@ -20,7 +20,9 @@ namespace MxU.Slides.Windows.ViewModels;
 public sealed class MotionTemplateJob
 {
     private readonly CancellationTokenSource cancel = new();
+    private readonly Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
 
+    /// <summary>Made on the UI thread: its reports are always raised there.</summary>
     internal MotionTemplateJob(string title) => Title = title;
 
     public string Title { get; }
@@ -51,10 +53,20 @@ public sealed class MotionTemplateJob
 
     internal void Report(double? fraction, string status)
     {
+        // A report from a render thread is handed to the UI thread (windows show it).
+        if (!dispatcher.CheckAccess())
+        {
+            dispatcher.BeginInvoke(() => Report(fraction, status));
+            return;
+        }
         Fraction = fraction;
         Status = status;
         Progressed?.Invoke();
     }
+
+    /// <summary>A render's progress, as this job's; made on the UI thread so its reports arrive there.</summary>
+    internal IProgress<MotionRenderProgress> RenderProgress() =>
+        new Progress<MotionRenderProgress>(p => Report(p.Fraction, $"{Title}: {p.Fraction:P0}"));
 }
 
 /// <summary>
@@ -283,6 +295,7 @@ public sealed partial class MainViewModel
     {
         return RunMotionJob($"Making “{name}”", async job =>
         {
+            var progress = job.RenderProgress();
             var item = await OffUiThread<MediaItem>(() =>
             {
                 var lottie = MotionStore.Lottie(template.LottieHash) ?? throw new IOException("The template's animation isn't in the library any more");
@@ -291,7 +304,7 @@ public sealed partial class MainViewModel
                     TemplateId = template.Id, LottieHash = template.LottieHash, Use = MotionUse.Background, Values = new(values), Playback = playback,
                     FallbackMediaId = "", BackgroundColor = MotionFields.NormalHex(backgroundColor) ?? "#000000",
                 };
-                var file = RenderBackgroundVideo(lottie, use, name, job, size);
+                var file = RenderBackgroundVideo(lottie, use, name, job, progress, size);
                 var item = LottieVideoMaker.FileIntoLibrary(Library, file, name, background: true);
                 use = use with { FallbackMediaId = item.Id };
                 MotionStore.SaveUse(item, use with { FallbackStamp = MotionTemplateStore.FallbackStamp(use) });
@@ -305,13 +318,13 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>A background's video: one pass of its loop (no markers) or In, a 10 s hold and Out, over its colour. Off the UI thread.</summary>
-    private string RenderBackgroundVideo(LottieDocument lottie, MotionTemplateUse use, string name, MotionTemplateJob job, (int Width, int Height)? size = null)
+    private string RenderBackgroundVideo(LottieDocument lottie, MotionTemplateUse use, string name, MotionTemplateJob job,
+        IProgress<MotionRenderProgress> progress, (int Width, int Height)? size = null)
     {
         var filled = MotionFields.Apply(lottie, use.Values, ImageUri);
         var timeline = MotionTimeline.For(lottie, use.Playback);
         var (w, h) = size ?? LottieRenderer.FittedSize(lottie, 1920, 1080);
         var path = Path.Combine(LottieVideoMaker.WorkFolder(Library.Root), LottieVideoMaker.FileName(name));
-        var progress = new Progress<MotionRenderProgress>(p => job.Report(p.Fraction, $"{job.Title}: {p.Fraction:P0}"));
         LottieVideoMaker.Render(filled, timeline, new MotionExportOptions(w & ~1, h & ~1, 30, use.BackgroundColor, HoldSeconds: 10), path, MotionFonts, progress, job.Token);
         return path;
     }
@@ -393,10 +406,11 @@ public sealed partial class MainViewModel
                 // A background's video takes a while: it's a job, with progress in the notice bar.
                 var job = RunMotionJob($"Updating “{item.Name}”", async job =>
                 {
+                    var progress = job.RenderProgress();
                     var remade = await OffUiThread<MediaItem>(() =>
                     {
                         var lottie = MotionStore.Lottie(use.LottieHash) ?? throw new IOException("The template's animation isn't in the library any more");
-                        var file = RenderBackgroundVideo(lottie, use, item.Name, job);
+                        var file = RenderBackgroundVideo(lottie, use, item.Name, job, progress);
                         var replaced = LottieVideoMaker.FileIntoLibrary(Library, file, item.Name, background: true, replaceId: item.Id);
                         MotionStore.SaveUse(replaced, use with { FallbackStamp = MotionTemplateStore.FallbackStamp(use) });
                         return replaced;
@@ -598,10 +612,11 @@ public sealed partial class MainViewModel
     {
         return RunMotionJob($"Rendering “{name}”", async job =>
         {
+            // Made here, on the UI thread, so its reports arrive here too.
+            var progress = job.RenderProgress();
             var item = await OffUiThread<MediaItem?>(() =>
             {
                 var path = Path.Combine(LottieVideoMaker.WorkFolder(Library.Root), LottieVideoMaker.FileName(name));
-                var progress = new Progress<MotionRenderProgress>(p => job.Report(p.Fraction, $"{job.Title}: {p.Fraction:P0}"));
                 LottieVideoMaker.Render(filled, timeline, options, path, MotionFonts, progress, job.Token);
                 if (copyTo is not null) File.Copy(path, copyTo, overwrite: true);
                 if (!addToMedia)
@@ -662,11 +677,12 @@ public sealed partial class MainViewModel
         var outputModule = Settings.AfterEffectsOutputModule ?? Aerender.H264;
         return RunMotionJob($"After Effects is rendering “{name}”", async job =>
         {
+            // Made here, on the UI thread, so its reports arrive here too.
+            var progress = new Progress<AerenderStatus>(s => job.Report(s.Fraction,
+                s.TotalFrames is { } total ? $"{job.Title}: frame {s.FramesDone} of {total}" : $"{job.Title}: {s.LastLine ?? "starting"}"));
             var item = await OffUiThread<MediaItem>(() =>
             {
                 var output = Path.Combine(AfterEffectsWork, LottieVideoMaker.FileName(name));
-                var progress = new Progress<AerenderStatus>(s => job.Report(s.Fraction,
-                    s.TotalFrames is { } total ? $"{job.Title}: frame {s.FramesDone} of {total}" : $"{job.Title}: {s.LastLine ?? "starting"}"));
                 var result = new AfterEffectsBridge(install, AfterEffectsWork).Render(aep, composition, changes, output, progress, job.Token, outputModule);
                 job.Token.ThrowIfCancellationRequested();
                 if (!result.Succeeded) throw new IOException(result.Problem);

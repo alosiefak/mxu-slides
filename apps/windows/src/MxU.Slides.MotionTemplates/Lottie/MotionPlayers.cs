@@ -140,10 +140,14 @@ public sealed class LiveMotion
         Interlocked.Increment(ref framesDrawn);
     }
 
-    /// <summary>The part that changed between picture <paramref name="since"/> and now (all of it when that's too long ago). Call under <see cref="Gate"/>.</summary>
+    /// <summary>
+    /// The part that changed between picture <paramref name="since"/> and now: all of it when that's
+    /// too long ago, or when <paramref name="since"/> isn't one of this animation's (the screen last
+    /// copied an earlier animation under the same id, which started again). Call under <see cref="Gate"/>.
+    /// </summary>
     internal PixelRect ChangedSince(int since)
     {
-        if (since <= 0 || version - since >= changes.Length) return new PixelRect(0, 0, Width, Height);
+        if (since <= 0 || since > version || version - since >= changes.Length) return new PixelRect(0, 0, Width, Height);
         var union = default(PixelRect);
         for (var v = since + 1; v <= version; v++) union = union.Union(changes[v % changes.Length]);
         return union;

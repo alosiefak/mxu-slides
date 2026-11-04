@@ -71,6 +71,7 @@ internal sealed class MotionPreviews : IDisposable
         preview.RestartAt = double.NaN;
         var (w, h) = LottieRenderer.FittedSize(document, preview.Width, preview.Height);
         players.Start(preview.Id, document, preview.Timeline, w, h, ShowState.HostClock());
+        preview.Version = 0;
         preview.IsPlaying = true;
         Hook();
     }
@@ -80,6 +81,13 @@ internal sealed class MotionPreviews : IDisposable
     {
         preview.Document = document;
         if (preview.IsPlaying) players.Update(preview.Id, document);
+    }
+
+    /// <summary>Stops it and forgets it (its tile is gone).</summary>
+    public void Remove(Preview preview)
+    {
+        Stop(preview);
+        previews.Remove(preview);
     }
 
     /// <summary>Stops it, leaving its last picture showing.</summary>
