@@ -24,6 +24,17 @@ public sealed class MacFormatTests
     }
 
     [Fact]
+    public void TheDllNeedsNothingButWindowsItself()
+    {
+        // Built with Microsoft's C runtime linked in (native/automerge-ffi/.cargo/config.toml): a DLL
+        // that imports VCRUNTIME140.dll wouldn't load on a PC without the Visual C++ Redistributable.
+        var dll = Path.Combine(AppContext.BaseDirectory, "automerge.dll");
+        var text = System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(dll));
+        Assert.DoesNotContain("VCRUNTIME", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("KERNEL32.dll", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TheEmbeddedSchemaIsTheOneTheModelsWereGeneratedFrom()
     {
         Assert.Equal(SchemaInfo.SchemaVersion, MacSchema.Shared.Version);

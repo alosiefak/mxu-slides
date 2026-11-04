@@ -4,7 +4,7 @@ automerge.dll: the Automerge core used by MxU Slides for Windows to sync the lib
 Built from source by apps/windows/tools/build-automerge.ps1 with rustc 1.99.1 (58cf8f9c3 2026-10-13).
 It is the "automerge" crate 0.7.2 (https://github.com/automerge/automerge, MIT), the version the
 Mac's automerge-swift 0.7.2 builds, wrapped in a small C interface
-(apps/windows/native/automerge-ffi). SHA-256 of this build: 2addfd662cdd642dd37490401a9f1fcc9c2f93817cc208cb609bb4e524141390
+(apps/windows/native/automerge-ffi). SHA-256 of this build: a65c286aaceb89717a94f764366c09f6db8fd02b2228005595fb74e25de102f4
 
 Automerge's licence
 -------------------

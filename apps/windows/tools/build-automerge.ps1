@@ -31,11 +31,23 @@ if (-not $cargo) { $cargo = Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe' }
 if (-not (Test-Path $cargo)) { throw 'cargo was not found. Install Rust from https://rustup.rs (stable, MSVC) first.' }
 $rustc = Join-Path (Split-Path $cargo) 'rustc.exe'
 
-& $cargo build --release --locked --manifest-path (Join-Path $crate 'Cargo.toml')
-if ($LASTEXITCODE -ne 0) { throw "cargo build failed ($LASTEXITCODE)" }
+# Built from the crate's own folder: cargo reads its settings (.cargo/config.toml, which links
+# Microsoft's C runtime into the DLL) from the folder it's run in, not from the manifest's.
+Push-Location $crate
+try {
+    & $cargo build --release --locked
+    if ($LASTEXITCODE -ne 0) { throw "cargo build failed ($LASTEXITCODE)" }
+}
+finally {
+    Pop-Location
+}
 
 New-Item -ItemType Directory -Force $native | Out-Null
 $built = Join-Path $crate 'target\release\mxu_automerge.dll'
+# A DLL that needs the Visual C++ Redistributable wouldn't load on a PC without it.
+if ([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($built)) -match 'VCRUNTIME') {
+    throw "$built needs VCRUNTIME*.dll: the static C runtime (.cargo/config.toml) wasn't used"
+}
 $dll = Join-Path $native 'automerge.dll'
 Copy-Item $built $dll -Force
 $hash = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
