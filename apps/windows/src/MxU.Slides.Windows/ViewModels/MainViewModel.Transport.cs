@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MxU.Slides.Core.Automation;
@@ -6,6 +7,7 @@ using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Core.Stage;
+using MxU.Slides.Windows.Rendering;
 
 namespace MxU.Slides.Windows.ViewModels;
 
@@ -160,6 +162,67 @@ public sealed partial class MainViewModel
     /// <summary>Set while the operator drags the scrub bar, so the refresh doesn't fight the thumb.</summary>
     public bool TransportScrubbing { get; set; }
 
+    // MARK: Video marks on the strip (MxU's update #12)
+
+    /// <summary>A video mark on the scrub bar: where it is (a share of the pass), its name and colour (yellow when it has none, as on the Mac).</summary>
+    public sealed record TransportMark(double Fraction, string Name, string? ColorHex)
+    {
+        public SolidColorBrush Brush => Painting.Brush(ColorHex, MarkYellow);
+    }
+
+    /// <summary>The Mac's VideoMarkColor default (systemYellow).</summary>
+    private static readonly SceneColor MarkYellow = new(1, 0.8, 0);
+
+    /// <summary>The target video's marks, drawn on the scrub bar.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<TransportMark> TransportMarks { get; set; } = [];
+
+    /// <summary>"· Next: Chorus 0:12" beside the name while a marked video plays; empty past its last mark.</summary>
+    [ObservableProperty]
+    public partial string TransportNextMark { get; set; } = "";
+
+    [ObservableProperty]
+    public partial SolidColorBrush? TransportNextMarkBrush { get; set; }
+
+    private string? transportNextMarkHex;
+
+    /// <summary>
+    /// A media item's marks in the pass (the Mac's VideoMarks.points): moved by the in point, only
+    /// those inside the pass, in time order. Kept here until Core's VideoMarks (the engine
+    /// catch-up, wt/up-core) lands; integration swaps this for VideoMarks.Points, the same rule.
+    /// </summary>
+    public static IReadOnlyList<VideoMark> MarksInPass(IReadOnlyList<VideoMark>? marks, double? inPoint, double length)
+    {
+        var offset = inPoint ?? 0;
+        return
+        [
+            .. (marks ?? [])
+                .Select(m => new VideoMark { Id = m.Id, Name = m.Name, At = m.At - offset, ColorHex = m.ColorHex, Actions = m.Actions })
+                .Where(m => m.At >= 0 && m.At <= length)
+                .OrderBy(m => m.At).ThenBy(m => m.Id, StringComparer.Ordinal),
+        ];
+    }
+
+    /// <summary>The next-mark caption: the mark's name (cut to 16 letters, as on the Mac) and the time until it.</summary>
+    public static string NextMarkCaption(VideoMark next, double position) =>
+        $"· Next: {(next.Name.Length <= 16 ? next.Name : next.Name[..16] + "…")} {TransportClock(next.At - position)}";
+
+    /// <summary>The marks on the bar (republished only when they change) and the next one's caption.</summary>
+    private void ShowTransportMarks(MediaTransportState? state, string? mediaId, DateTimeOffset now)
+    {
+        var item = mediaId is null ? null : Library.Get<MediaItem>(mediaId);
+        var length = state?.Duration ?? 0;
+        var points = length > 0 && item?.Marks is { Count: > 0 } ? MarksInPass(item.Marks, item.InPoint, length) : [];
+        IReadOnlyList<TransportMark> marks = [.. points.Select(p => new TransportMark(p.At / length, p.Name, p.ColorHex))];
+        if (!marks.SequenceEqual(TransportMarks)) TransportMarks = marks;
+        var position = state?.PositionAt(now) ?? 0;
+        var next = points.FirstOrDefault(p => p.At > position);
+        TransportNextMark = next is null ? "" : NextMarkCaption(next, position);
+        if (next is null) TransportNextMarkBrush = null;
+        else if (TransportNextMarkBrush is null || transportNextMarkHex != next.ColorHex) TransportNextMarkBrush = Painting.Brush(next.ColorHex, MarkYellow);
+        transportNextMarkHex = next?.ColorHex;
+    }
+
     /// <summary>Brings the strip up to date (four times a second while anything is live).</summary>
     private void RefreshTransport()
     {
@@ -172,6 +235,7 @@ public sealed partial class MainViewModel
         TransportLayerName = (row?.Candidate.Layer ?? TransportViewedLayer).DisplayName();
         if (row is null)
         {
+            ShowTransportMarks(null, null, DateTimeOffset.Now);
             TransportShowsControls = false;
             TransportName = "No video playing";
             TransportElapsedText = TransportTotalText = "0:00";
@@ -191,6 +255,7 @@ public sealed partial class MainViewModel
         TransportElapsedText = TransportClock(state.PositionAt(now));
         TransportTotalText = TransportClock(state.Duration);
         TransportRemainingText = $"{TransportClock(state.RemainingAt(now))} left";
+        ShowTransportMarks(state, row.Candidate.MediaId, now);
     }
 
     /// <summary>m:ss, rounded down, as the Mac's scrub bar shows it.</summary>
