@@ -98,6 +98,7 @@ public partial class MainWindow
         menu.Items.Add(EditBar.Item($"Copy{slides}", "Ctrl+C", count > 0, () => model.Copy(EditTarget.Slides)));
         menu.Items.Add(EditBar.Item("Paste", "Ctrl+V", AppClipboard.HasAnything(), () => _ = model.Paste(EditTarget.Slides)));
         menu.Items.Add(EditBar.Item($"Duplicate{slides}", "Ctrl+D", count > 0, () => model.Duplicate(EditTarget.Slides)));
+        if (count > 1) menu.Items.Add(EditBar.Item($"Merge{slides}", null, true, () => model.MergePickedSlides()));
         menu.Items.Add(EditBar.Item($"Delete{slides}", model.IsEditing ? "Delete" : null, count > 0, () => model.DeletePickedSlides()));
     }
 }

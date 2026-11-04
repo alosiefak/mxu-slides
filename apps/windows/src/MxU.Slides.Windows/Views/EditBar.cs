@@ -95,6 +95,8 @@ public sealed class EditBar : StackPanel
         menu.Items.Add(Item("Paste", "Ctrl+V", model.HasPresentation && Infrastructure.AppClipboard.HasAnything(), () => _ = model.Paste(target)));
         menu.Items.Add(Item("Duplicate" + what, "Ctrl+D", any, () => model.Duplicate(target)));
         menu.Items.Add(Item("Select All Slides", "Ctrl+A", model.IsEditing && model.HasPresentation, () => model.SelectAllSlidesCommand.Execute(null)));
+        var picked = model.PickedSlideIds.Count;
+        menu.Items.Add(Item(picked > 1 ? $"Merge {picked} Slides" : "Merge Slides", null, picked > 1, () => model.MergePickedSlides()));
         menu.Items.Add(new Separator());
         menu.Items.Add(ArrangeMenu(model));
         menu.Items.Add(new Separator());

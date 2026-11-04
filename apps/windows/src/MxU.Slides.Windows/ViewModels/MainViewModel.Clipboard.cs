@@ -77,6 +77,21 @@ public sealed partial class MainViewModel
         return true;
     }
 
+    /// <summary>
+    /// Merges the picked slides into the first of them, words and chords along (MxU's Merge Slides,
+    /// Core/Editing/SlideMerge.cs). Needs two or more picked. One undo step.
+    /// </summary>
+    public bool MergePickedSlides()
+    {
+        if (CurrentPresentation is not { } presentation || PickedSlideIds is not { Count: > 1 } ids) return false;
+        FlushPendingSave();
+        if (SlideMerge.MergeSlides([.. ids], presentation) is not { } survivor) return false;
+        SavePresentation(presentation);
+        RebuildSlides();
+        SelectedSlide = Slides.FirstOrDefault(t => t.Slide.Id == survivor) ?? SelectedSlide;
+        return true;
+    }
+
     /// <summary>Duplicates the picked slides, each copy straight after its slide, with new ids.</summary>
     public bool DuplicatePickedSlides()
     {

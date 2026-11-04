@@ -60,25 +60,29 @@ public static class TextStyleRuns
 
     // MARK: Styles
 
-    private sealed record RunStyle(bool? Underline, bool? Strikethrough, string? FontName, double? FontSize, string? ColorHex, string? HighlightColorHex, double? Tracking)
+    // All Caps on part of the text (the run's textTransform) came with MxU's schema v161.
+    private sealed record RunStyle(
+        bool? Underline, bool? Strikethrough, string? FontName, double? FontSize, string? ColorHex, string? HighlightColorHex, double? Tracking,
+        TextTransform? TextTransform)
     {
-        public static readonly RunStyle None = new(null, null, null, null, null, null, null);
+        public static readonly RunStyle None = new(null, null, null, null, null, null, null, null);
 
         public static RunStyle Of(TextStyleRun run) =>
-            new(run.Underline, run.Strikethrough, run.FontName, run.FontSize, run.ColorHex, run.HighlightColorHex, run.Tracking);
+            new(run.Underline, run.Strikethrough, run.FontName, run.FontSize, run.ColorHex, run.HighlightColorHex, run.Tracking, run.TextTransform);
 
         public bool IsEmpty => this == None;
 
         /// <summary>A later run's values win where it has them.</summary>
         public RunStyle Fold(RunStyle other) => new(
             other.Underline ?? Underline, other.Strikethrough ?? Strikethrough, other.FontName ?? FontName, other.FontSize ?? FontSize,
-            other.ColorHex ?? ColorHex, other.HighlightColorHex ?? HighlightColorHex, other.Tracking ?? Tracking);
+            other.ColorHex ?? ColorHex, other.HighlightColorHex ?? HighlightColorHex, other.Tracking ?? Tracking,
+            other.TextTransform ?? TextTransform);
 
         public TextStyleRun Run(int line, int column, int length) => new()
         {
             Line = line, Column = column, Length = length,
             Underline = Underline, Strikethrough = Strikethrough, FontName = FontName, FontSize = FontSize,
-            ColorHex = ColorHex, HighlightColorHex = HighlightColorHex, Tracking = Tracking,
+            ColorHex = ColorHex, HighlightColorHex = HighlightColorHex, Tracking = Tracking, TextTransform = TextTransform,
         };
     }
 

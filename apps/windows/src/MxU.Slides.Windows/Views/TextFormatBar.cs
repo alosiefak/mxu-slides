@@ -30,6 +30,7 @@ public sealed class TextFormatBar : WrapPanel
     private readonly Button italic;
     private readonly Button underline;
     private readonly Button strike;
+    private readonly Button caps;
     private readonly ColorPicker colour = new() { ToolTip = "Colour of the selected words" };
     private readonly TextBox size = new() { Width = 42, ToolTip = "Size of the selected words (Enter)" };
     private readonly TextBox spacing = new() { Width = 42, ToolTip = "Letter spacing of the selected words (Enter)" };
@@ -44,11 +45,15 @@ public sealed class TextFormatBar : WrapPanel
         italic.FontStyle = FontStyles.Italic;
         underline = Toggle("U", "Underline the selected words", i => i.ToggleUnderline);
         strike = Toggle("S", "Strike through the selected words", i => i.ToggleStrikethrough);
+        caps = Toggle("AA", "All Caps for the selected words", i => i.ToggleCaps);
+        caps.Width = 30;
+        caps.FontSize = 10;
         Children.Add(new TextBlock { Text = "Words:", Style = EditorKit.Res<Style>("Muted"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0), ToolTip = "Select words in the text above, then style just them" });
         Children.Add(bold);
         Children.Add(italic);
         Children.Add(underline);
         Children.Add(strike);
+        Children.Add(caps);
         colour.Margin = new Thickness(4, 0, 6, 0);
         DependencyPropertyDescriptor.FromProperty(ColorPicker.HexProperty, typeof(ColorPicker)).AddValueChanged(colour, (_, _) =>
         {
@@ -124,6 +129,7 @@ public sealed class TextFormatBar : WrapPanel
             Light(italic, inspector.IsItalicAt(box.SelectionStart, box.SelectionLength));
             Light(underline, run?.Underline == true);
             Light(strike, run?.Strikethrough == true);
+            Light(caps, inspector.IsCapsAt(box.SelectionStart, box.SelectionLength));
             colour.Hex = run?.ColorHex ?? "";
             size.Text = run?.FontSize is { } s ? Math.Round(s, 1).ToString(CultureInfo.CurrentCulture) : "";
             spacing.Text = run?.Tracking is { } t ? Math.Round(t, 1).ToString(CultureInfo.CurrentCulture) : "";

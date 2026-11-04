@@ -26,6 +26,15 @@ public sealed class TextStyleRunsTests
         Assert.Equal("0:8+5#FF0000FF", Show(TextStyleRuns.Applying(r => r.ColorHex = "#FF0000FF", [], "Amazing grace", new Range(8, 13))));
 
     [Fact]
+    public void AllCapsOnASelectionRoundTrips()
+    {
+        var runs = TextStyleRuns.Applying(r => r.TextTransform = TextTransform.Uppercase, [], "Amazing grace", new Range(0, 7));
+        Assert.Equal((0, 0, 7, TextTransform.Uppercase), (runs.Single().Line, runs[0].Column, runs[0].Length, runs[0].TextTransform));
+        Assert.Equal(TextTransform.Uppercase, TextStyleRuns.EffectiveRun(3, runs, "Amazing grace")?.TextTransform);
+        Assert.Empty(TextStyleRuns.Applying(r => r.TextTransform = null, runs, "Amazing grace", new Range(0, 7)));
+    }
+
+    [Fact]
     public void OverlappingSelectionSplitsExistingRuns() =>
         Assert.Equal("0:0+2u 0:2+4u#00FF00FF 0:6+1u",
             Show(TextStyleRuns.Applying(r => r.ColorHex = "#00FF00FF", [Run(0, 0, 7, underline: true)], "Amazing grace", new Range(2, 6))));

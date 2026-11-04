@@ -24,6 +24,8 @@
                         <r:SceneView StaticScene="{Binding Scene}" Letterbox="#000000"
                                      Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource SixteenByNine}}" />
                         <v:MediaBadge Compact="True" Text="{Binding MissingMedia}" Detail="{Binding MissingMedia}" />
+                        <!-- What the slide does when it goes live; a pause over a badge names it (Views/TileActionBadges.cs) -->
+                        <v:TileActionBadges Slide="{Binding Slide}" />
                     </Grid>
                     <Grid Background="{Binding GroupBrush}" Height="22">
                         <Grid.ColumnDefinitions>

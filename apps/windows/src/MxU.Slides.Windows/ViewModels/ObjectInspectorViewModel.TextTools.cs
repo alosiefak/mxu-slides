@@ -1,6 +1,7 @@
 using System.Globalization;
 using MxU.Slides.Core.Editing;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Scene;
 using MxU.Slides.Windows.Rendering;
 
 namespace MxU.Slides.Windows.ViewModels;
@@ -71,12 +72,29 @@ public sealed partial class ObjectInspectorViewModel
         StyleSelection(utf16Start, utf16Length, r => r.Strikethrough = on ? null : true);
     }
 
+    /// <summary>
+    /// All Caps on or off for the selected words (MxU's update: "All Caps applies to the selected text,
+    /// not only the whole box"). What's "on" reads the placeholder's case too, as the Mac's Selection
+    /// strip does: turning it off in a box whose theme writes capitals stores "none", not nothing.
+    /// </summary>
+    public void ToggleCaps(int utf16Start, int utf16Length)
+    {
+        var baseCaps = Effective.Transform == SceneTextTransform.Uppercase;
+        var on = IsCapsAt(utf16Start, utf16Length);
+        StyleSelection(utf16Start, utf16Length, r => r.TextTransform = !on ? TextTransform.Uppercase : baseCaps ? TextTransform.None : null);
+    }
+
+    public bool IsCapsAt(int utf16Start, int utf16Length) =>
+        (RunAt(utf16Start, utf16Length)?.TextTransform ?? (Effective.Transform == SceneTextTransform.Uppercase ? TextTransform.Uppercase : TextTransform.None))
+            == TextTransform.Uppercase;
+
     /// <summary>Takes the selected words' own styling away (they take the box's again).</summary>
     public void ClearSelectionStyle(int utf16Start, int utf16Length) => StyleSelection(utf16Start, utf16Length, r =>
     {
         r.Underline = r.Strikethrough = null;
         r.FontName = r.ColorHex = r.HighlightColorHex = null;
         r.FontSize = r.Tracking = null;
+        r.TextTransform = null;
     });
 
     /// <summary>The box has styled words (to show a "has styling" hint and the Clear button).</summary>
