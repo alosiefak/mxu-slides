@@ -97,6 +97,12 @@ public sealed class EditBar : StackPanel
         menu.Items.Add(Item("Select All Slides", "Ctrl+A", model.IsEditing && model.HasPresentation, () => model.SelectAllSlidesCommand.Execute(null)));
         menu.Items.Add(new Separator());
         menu.Items.Add(ArrangeMenu(model));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Find and Replace…", "Ctrl+H", true, () =>
+        {
+            if (Window.GetWindow(menu.PlacementTarget) is { } owner) FindReplaceWindow.Open(owner, model);
+            else if (Application.Current.MainWindow is { } main) FindReplaceWindow.Open(main, model);
+        }));
         foreach (var extra in MenuSections) extra(model, menu);
         return menu;
     }

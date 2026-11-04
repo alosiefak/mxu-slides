@@ -43,7 +43,10 @@
                           ToolTip="Typed text is a field you fill in before putting the overlay up; the others fill themselves in" />
             </DockPanel>
             <TextBox x:Name="InspectorText" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True"
-                     TextWrapping="Wrap" MinHeight="48" Margin="0,0,0,6" Visibility="{Binding IsTyped, Converter={StaticResource Visible}}" />
+                     TextWrapping="Wrap" MinHeight="48" Margin="0,0,0,6" Visibility="{Binding IsTyped, Converter={StaticResource Visible}}"
+                     SpellCheck.IsEnabled="True" />
+            <!-- Style just the selected words (Views/TextFormatBar.cs) -->
+            <v:TextFormatBar Target="{Binding ElementName=InspectorText}" Visibility="{Binding IsTyped, Converter={StaticResource Visible}}" />
             <DockPanel Margin="0,0,0,6">
                 <ToggleButton DockPanel.Dock="Right" IsChecked="{Binding Italic}" Content="I" FontStyle="Italic" Width="30" ToolTip="Italic" />
                 <ToggleButton DockPanel.Dock="Right" IsChecked="{Binding Bold}" Content="B" FontWeight="Bold" Width="30" Margin="0,0,2,0" ToolTip="Bold" />
@@ -75,6 +78,18 @@
                 <CheckBox Content="Shadow" IsChecked="{Binding Shadow}" Margin="0,0,10,4" />
                 <TextBlock Text="Outline" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,4" />
                 <v:ColorPicker Hex="{Binding OutlineColor}" Margin="0,0,0,4" />
+            </WrapPanel>
+            <!-- Text fit, as the Mac's typography section has it -->
+            <WrapPanel>
+                <CheckBox Content="Balanced wrap" IsChecked="{Binding BalancedWrap}" Margin="0,0,10,4"
+                          ToolTip="When a line wraps, spread its words evenly: never one lone word on the last row" />
+                <CheckBox Content="Page on click" IsChecked="{Binding PageOnClick}" Margin="0,0,10,4"
+                          ToolTip="Text that still doesn't fit continues on the next click, as the next page" />
+                <CheckBox Content="Keep lines whole" IsChecked="{Binding KeepLinesWhole}" Margin="0,0,10,4" IsEnabled="{Binding AutoShrink}"
+                          ToolTip="Shrink further so no line breaks mid-phrase" />
+                <TextBlock Text="Min" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,4" />
+                <TextBox Text="{Binding MinFontSize, UpdateSourceTrigger=LostFocus}" Width="44" Margin="0,0,0,4" KeyDown="NumberBox_KeyDown"
+                         IsEnabled="{Binding AutoShrink}" ToolTip="The smallest size shrinking may go to" />
             </WrapPanel>
         </StackPanel>
 

@@ -28,6 +28,13 @@ public partial class MainWindow
     {
         if (UndoWindows.HandleKey(e, model.UndoScope, editor: false)) return true;
         var focused = Keyboard.FocusedElement;
+        // Find and replace, from anywhere: with words selected in a text box, it looks for them.
+        if (Keyboard.Modifiers == ModifierKeys.Control && (e.Key == Key.System ? e.SystemKey : e.Key) == Key.H)
+        {
+            FindReplaceWindow.Open(this, model, (focused as TextBox)?.SelectedText);
+            e.Handled = true;
+            return true;
+        }
         // A text box keeps its own clipboard; a list (the service, the library) isn't the slides.
         if (focused is TextBoxBase or PasswordBox or ComboBox or ListBoxItem or ListBox) return false;
         var key = e.Key == Key.System ? e.SystemKey : e.Key;

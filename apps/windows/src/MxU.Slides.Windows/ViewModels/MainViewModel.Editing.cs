@@ -23,7 +23,8 @@ public sealed partial class SlideTextFieldViewModel(SlideObject target, Action c
         {
             var normalized = value.Replace("\r\n", "\n");
             if (Object.Text == normalized) return;
-            Object.Text = normalized;
+            // Styled words and chords stay on their words as the text is typed (Core/Editing/TextStyleRuns.cs).
+            Core.Editing.ObjectText.SetText(Object, normalized);
             OnPropertyChanged();
             changed();
         }

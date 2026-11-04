@@ -439,7 +439,7 @@
                                                 <StackPanel Margin="0,0,0,8">
                                                     <TextBlock Text="{Binding Name}" Style="{StaticResource Muted}" FontSize="11" Margin="0,0,0,3" />
                                                     <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
-                                                             MinHeight="56" FontSize="14" VerticalScrollBarVisibility="Auto" />
+                                                             MinHeight="56" FontSize="14" VerticalScrollBarVisibility="Auto" SpellCheck.IsEnabled="True" />
                                                 </StackPanel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
@@ -447,7 +447,8 @@
                                 </ScrollViewer>
                                 <StackPanel Grid.Column="2">
                                     <TextBlock Text="Notes (shown to you, never to the room)" Style="{StaticResource Muted}" FontSize="11" Margin="0,0,0,3" />
-                                    <TextBox Text="{Binding SlideNotes, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
+                                    <TextBox Text="{Binding SlideNotes, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80"
+                                             SpellCheck.IsEnabled="True" />
                                 </StackPanel>
                                 <ScrollViewer Grid.Column="6" VerticalScrollBarVisibility="Auto">
                                     <Grid>
@@ -478,7 +479,9 @@
                                                         <!-- Text -->
                                                         <StackPanel Visibility="{Binding IsText, Converter={StaticResource Visible}}">
                                                             <TextBox x:Name="InspectorText" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True"
-                                                                     TextWrapping="Wrap" MinHeight="48" Margin="0,0,0,6" />
+                                                                     TextWrapping="Wrap" MinHeight="48" Margin="0,0,0,6" SpellCheck.IsEnabled="True" />
+                                                            <!-- Style just the selected words (Views/TextFormatBar.cs) -->
+                                                            <v:TextFormatBar Target="{Binding ElementName=InspectorText}" />
                                                             <WrapPanel Margin="0,0,0,6">
                                                                 <ComboBox ItemsSource="{Binding FontChoices}" SelectedItem="{Binding FontFamily}"
                                                                           Width="160" Margin="0,0,6,0" ToolTip="Font" />
@@ -512,6 +515,18 @@
                                                                 <CheckBox Content="Shadow" IsChecked="{Binding Shadow}" Margin="0,0,10,0" />
                                                                 <TextBlock Text="Outline" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
                                                                 <v:ColorPicker Hex="{Binding OutlineColor}" />
+                                                            </WrapPanel>
+                                                            <!-- Text fit, as the Mac's typography section has it -->
+                                                            <WrapPanel Margin="0,6,0,0">
+                                                                <CheckBox Content="Balanced wrap" IsChecked="{Binding BalancedWrap}" Margin="0,0,10,0"
+                                                                          ToolTip="When a line wraps, spread its words evenly: never one lone word on the last row" />
+                                                                <CheckBox Content="Page on click" IsChecked="{Binding PageOnClick}" Margin="0,0,10,0"
+                                                                          ToolTip="Text that still doesn't fit continues on the next click, as the next page" />
+                                                                <CheckBox Content="Keep lines whole" IsChecked="{Binding KeepLinesWhole}" Margin="0,0,10,0"
+                                                                          IsEnabled="{Binding AutoShrink}" ToolTip="Shrink further so no line breaks mid-phrase" />
+                                                                <TextBlock Text="Min" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                                <TextBox Text="{Binding MinFontSize, UpdateSourceTrigger=LostFocus}" Width="42" KeyDown="NumberBox_KeyDown"
+                                                                         IsEnabled="{Binding AutoShrink}" ToolTip="The smallest size shrinking may go to" />
                                                             </WrapPanel>
                                                             <TextBlock Text="This text takes its look from the theme until you change something here."
                                                                        Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
