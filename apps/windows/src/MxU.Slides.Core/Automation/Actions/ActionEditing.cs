@@ -52,6 +52,9 @@ public sealed record ActionChoices
 
     /// <summary>A combo's icon name, so a Fire Combo step can wear its combo's icon.</summary>
     public Func<string, string?>? ComboIcon { get; init; }
+
+    /// <summary>The output presets' custom layers (Screen Map), which a Clear step can clear too.</summary>
+    public IReadOnlyList<CustomLayer> CustomLayers { get; init; } = [];
 }
 
 /// <summary>Where a picker's entries come from.</summary>
@@ -280,6 +283,29 @@ public static class ActionEditing
     /// <summary>"C3 · 60": the Note stepper shows the note's name and number.</summary>
     public static string NoteDisplay(int number) => $"{MidiCommandMap.NoteName(number)} · {number.ToString(CultureInfo.InvariantCulture)}";
 
+    // MARK: The layers a step can clear
+
+    /// <summary>
+    /// Every layer, top first, with the output presets' custom layers where they composite: each just
+    /// above the layer it names (above the slide when that's missing). What the Layer picker and the
+    /// Clear menu list. Port of ActionEditors.swift's <c>router.layerStack</c> (ShowState's
+    /// <c>layerStackTopFirst</c> over RenderScene's <c>insertCustomLayer</c>).
+    /// </summary>
+    public static IReadOnlyList<EditorChoice> LayerStack(ActionChoices choices)
+    {
+        var bottomFirst = LayerKinds.All.Select(l => new EditorChoice(l.Raw(), l.DisplayName())).ToList();
+        foreach (var custom in choices.CustomLayers)
+        {
+            if (bottomFirst.Any(l => l.Id == custom.Id)) continue;
+            var anchor = bottomFirst.FindIndex(l => l.Id == custom.Above);
+            if (anchor < 0) anchor = bottomFirst.FindIndex(l => l.Id == LayerKind.Slide.Raw());
+            if (anchor < 0) anchor = bottomFirst.Count - 1;
+            bottomFirst.Insert(anchor + 1, new EditorChoice(custom.Id, custom.Name));
+        }
+        bottomFirst.Reverse();
+        return bottomFirst;
+    }
+
     // MARK: Picker entries
 
     /// <summary>
@@ -292,7 +318,7 @@ public static class ActionEditing
         var list = new List<EditorChoice> { new("", field.EmptyLabel) };
         list.AddRange(field.Source switch
         {
-            ActionPickSource.Layer => ActionCombos.ClearableLayers.Select(l => new EditorChoice(l.Raw(), l.DisplayName())),
+            ActionPickSource.Layer => LayerStack(choices),
             ActionPickSource.LiveInputLayer => ActionCombos.ClearableLayers.Where(l => l != LayerKind.VideoInput)
                 .Select(l => new EditorChoice(l.Raw(), l.DisplayName())),
             ActionPickSource.LiveInput => choices.LiveInputs.Select(c => c with { Id = LiveInputTokens.ItemToken(c.Id) }),
@@ -395,7 +421,7 @@ public static class ActionEditing
         [
             Command("Clear All", SlideActionKind.ClearAll),
             ActionMenuItem.Separator,
-            .. ActionCombos.ClearableLayers.Select(layer => Command(layer.DisplayName(), SlideActionKind.ClearLayer, a => a.Layer = layer.Raw())),
+            .. LayerStack(choices).Select(layer => Command(layer.Name, SlideActionKind.ClearLayer, a => a.Layer = layer.Id)),
             ActionMenuItem.Separator,
             Command("Clear Music", SlideActionKind.ClearAudio),
         ]));

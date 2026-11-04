@@ -115,6 +115,36 @@ public class StageLayoutEditingTests
     }
 
     [Fact]
+    public void TheUsualBoxesFitAStageScreenWithoutOverlapping()
+    {
+        var canvas = SceneSize.Hd;
+        var objects = new List<SlideObject>();
+        foreach (var kind in (StageBoxKind[])[StageBoxKind.CurrentSlide, StageBoxKind.NextSlide, StageBoxKind.Clock, StageBoxKind.Notes, StageBoxKind.ServiceTimer])
+            objects.AddRange(StageLayoutEditing.MakeBox(kind, canvas, objects, timerId: kind == StageBoxKind.ServiceTimer ? "service_tracking.item.remaining" : null));
+        var cards = objects.Where(o => o.ObjectKind == SlideObjectKind.Shape)
+            .Select(o => new SceneRect(o.X!.Value, o.Y!.Value, o.Width!.Value, o.Height!.Value + 18)).ToList();
+        Assert.Equal(5, cards.Count);
+        for (var i = 0; i < cards.Count; i++)
+            for (var j = i + 1; j < cards.Count; j++)
+                Assert.False(cards[i].X < cards[j].Right && cards[j].X < cards[i].Right && cards[i].Y < cards[j].Bottom && cards[j].Y < cards[i].Bottom, $"cards {i} and {j} overlap");
+        Assert.Empty(StageLayoutEditing.OutsideSafeArea(objects, StageLayoutEditing.SafeArea(canvas, 0.05)));
+    }
+
+    [Fact]
+    public void AFullScreenMakesSmallerBoxesBeforePilingThemUp()
+    {
+        var canvas = SceneSize.Hd;
+        var objects = new List<SlideObject>();
+        foreach (var kind in (StageBoxKind[])[StageBoxKind.CurrentSlide, StageBoxKind.NextSlide, StageBoxKind.Notes, StageBoxKind.Clock, StageBoxKind.Timer, StageBoxKind.Timecode])
+            objects.AddRange(StageLayoutEditing.MakeBox(kind, canvas, objects));
+        var extra = StageLayoutEditing.MakeBox(StageBoxKind.StageMessage, canvas, objects);
+        Assert.True(extra[0].Width < 1100); // shrunk to find room
+        var card = new SceneRect(extra[0].X!.Value, extra[0].Y!.Value, extra[0].Width!.Value, extra[0].Height!.Value);
+        Assert.DoesNotContain(objects.Where(o => o.ObjectKind == SlideObjectKind.Shape), o =>
+            card.X < o.X + o.Width && o.X < card.Right && card.Y < o.Y + o.Height && o.Y < card.Bottom);
+    }
+
+    [Fact]
     public void SafeAreasAndWhatPokesOutOfThem()
     {
         var safe = StageLayoutEditing.SafeArea(SceneSize.Hd, 0.1);

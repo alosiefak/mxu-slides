@@ -167,8 +167,10 @@ public static class StageLayoutEditing
     /// </summary>
     public static List<SlideObject> MakeBox(StageBoxKind kind, SceneSize canvas, IReadOnlyList<SlideObject> existing, string? timerId = null)
     {
-        var (width, height) = DefaultSize(kind, canvas);
-        var (x, y) = FreeSpot(width, height, canvas, existing);
+        var (fullWidth, fullHeight) = DefaultSize(kind, canvas);
+        // A card's caption hangs half over its bottom edge: the footprint is a little taller than the card.
+        var hang = kind == StageBoxKind.Label ? 0 : CaptionHang;
+        var (x, y, width, height) = FreeFrame(fullWidth, fullHeight, hang, canvas, existing);
         if (kind == StageBoxKind.Label)
         {
             return
@@ -233,23 +235,48 @@ public static class StageLayoutEditing
     {
         var (w, h) = kind switch
         {
-            StageBoxKind.CurrentSlide or StageBoxKind.Chords => (1200.0, 520.0),
-            StageBoxKind.NextSlide or StageBoxKind.Notes => (1200.0, 300.0),
-            StageBoxKind.StageMessage => (1200.0, 200.0),
-            StageBoxKind.Label => (600.0, 90.0),
-            StageBoxKind.SlidePosition or StageBoxKind.GroupName or StageBoxKind.CurrentItem or StageBoxKind.NextItem => (560.0, 150.0),
-            _ => (560.0, 220.0),
+            // Sized so the usual set fits a 1080p screen side by side: current, next and notes down
+            // the left, clocks and timers down the right.
+            StageBoxKind.CurrentSlide or StageBoxKind.Chords => (1100.0, 440.0),
+            StageBoxKind.NextSlide => (1100.0, 240.0),
+            StageBoxKind.Notes => (1100.0, 220.0),
+            StageBoxKind.StageMessage => (1100.0, 160.0),
+            StageBoxKind.Label => (520.0, 90.0),
+            StageBoxKind.SlidePosition or StageBoxKind.GroupName or StageBoxKind.CurrentItem or StageBoxKind.NextItem => (520.0, 130.0),
+            _ => (520.0, 200.0),
         };
         var scale = Math.Min(canvas.Width / 1920, canvas.Height / 1080);
         if (scale <= 0) scale = 1;
         return (Math.Round(Math.Min(w * scale, canvas.Width - 80), 1), Math.Round(Math.Min(h * scale, canvas.Height - 80), 1));
     }
 
+    /// <summary>How far a card's caption reaches below the card (it sits across the bottom edge).</summary>
+    private const double CaptionHang = 18;
+
     /// <summary>
     /// Where a new box goes: the first spot (in rows from the top-left, inside the safe margin) that
     /// overlaps no box already there; if the canvas is full, cascaded down from the top-left.
     /// </summary>
-    public static (double X, double Y) FreeSpot(double width, double height, SceneSize canvas, IReadOnlyList<SlideObject> existing)
+    public static (double X, double Y) FreeSpot(double width, double height, SceneSize canvas, IReadOnlyList<SlideObject> existing) =>
+        Spot(width, height, canvas, existing) ?? Cascade(width, height, canvas, existing);
+
+    /// <summary>
+    /// A free spot for a box of this size (its footprint <paramref name="hang"/> taller, for its
+    /// caption), or for a smaller one when the screen is getting full; cascaded at full size when
+    /// even the smallest doesn't fit.
+    /// </summary>
+    private static (double X, double Y, double Width, double Height) FreeFrame(double width, double height, double hang, SceneSize canvas, IReadOnlyList<SlideObject> existing)
+    {
+        foreach (var scale in (double[])[1, 0.8, 0.6, 0.45])
+        {
+            var (w, h) = (Math.Round(width * scale, 1), Math.Round(height * scale, 1));
+            if (Spot(w, h + hang, canvas, existing) is { } spot) return (spot.X, spot.Y, w, h);
+        }
+        var (x, y) = Cascade(width, height, canvas, existing);
+        return (x, y, width, height);
+    }
+
+    private static (double X, double Y)? Spot(double width, double height, SceneSize canvas, IReadOnlyList<SlideObject> existing)
     {
         var safe = SafeArea(canvas, 0.05);
         var taken = existing.Where(o => o.X is not null && o.Y is not null && o.Width is not null && o.Height is not null)
@@ -261,6 +288,12 @@ public static class StageLayoutEditing
                 var candidate = new SceneRect(x, y, width, height);
                 if (!taken.Any(t => Overlaps(t, candidate))) return (Math.Round(x), Math.Round(y));
             }
+        return null;
+    }
+
+    private static (double X, double Y) Cascade(double width, double height, SceneSize canvas, IReadOnlyList<SlideObject> existing)
+    {
+        var safe = SafeArea(canvas, 0.05);
         var cascade = Math.Min(existing.Count, 10) * 30;
         return (Math.Round(Math.Min(safe.X + cascade, Math.Max(0, canvas.Width - width))), Math.Round(Math.Min(safe.Y + cascade, Math.Max(0, canvas.Height - height))));
     }

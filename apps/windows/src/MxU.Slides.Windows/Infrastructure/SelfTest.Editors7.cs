@@ -190,7 +190,7 @@ public sealed partial class SelfTest
                 {
                     vm.TrimmedTo((0.1, 0.8));
                     vm.PlayRate = vm.RateChoices.First(c => Math.Abs(c.Value - 1.5) < 1e-9);
-                    vm.Volume = 0.5;
+                    vm.Volume = 50;
                     vm.Flush();
                     var stored = model.Library.Get<MediaItem>(video.Id);
                     Check("dragging the trim handles sets in and out points", stored?.InPoint is { } inPoint && Math.Abs(inPoint - vm.Duration * 0.1) < 0.2

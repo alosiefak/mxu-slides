@@ -126,7 +126,8 @@ public static class SlideActions
         IReadOnlyList<(string Id, string Name)>? Timers = null,
         IReadOnlyList<(string Id, string Name)>? ConfidenceScreens = null,
         Func<SlideAction, string?>? LiveInput = null,
-        Func<string, string?>? AudioInput = null);
+        Func<string, string?>? AudioInput = null,
+        IReadOnlyList<(string Id, string Name)>? Layers = null);
 
     /// <summary>
     /// The one-line label a step shows in the Actions menu and the slide's tooltip
@@ -167,7 +168,7 @@ public static class SlideActions
         return action.Kind switch
         {
             SlideActionKind.SwitchOutputPreset => $"Switch Output Preset: {EntryName(action.PresetId)}",
-            SlideActionKind.ClearLayer => $"Clear {LayerKinds.Parse(action.Layer)?.DisplayName() ?? "Layer"}",
+            SlideActionKind.ClearLayer => $"Clear {(string.IsNullOrEmpty(action.Layer) ? null : (names.Layers ?? []).FirstOrDefault(l => l.Id == action.Layer).Name ?? LayerKinds.Parse(action.Layer)?.DisplayName()) ?? "Layer"}",
             SlideActionKind.ClearAll => "Clear All",
             SlideActionKind.ClearAudio => "Clear Music",
             SlideActionKind.FireMedia => $"Fire Media: {EntryName(action.MediaId)}",

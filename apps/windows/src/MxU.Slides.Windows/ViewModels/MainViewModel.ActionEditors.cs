@@ -60,6 +60,7 @@ public sealed partial class MainViewModel
             MidiDevices = [.. this.MidiDevices.Where(d => d.WantsOutput).Select(d => new EditorChoice(d.Id, d.Device.Name))],
             SlideCount = id => Library.Get<Presentation>(id)?.Slides.Count,
             ComboIcon = id => Library.Get<ActionCombo>(id)?.IconName,
+            CustomLayers = Core.Media.CueMediaEditing.CustomLayers(Library.All<OutputPreset>()),
         };
     }
 
@@ -72,7 +73,8 @@ public sealed partial class MainViewModel
             library.Name,
             [.. choices.Timers.Select(t => (t.Id, t.Name))],
             [.. choices.ConfidenceScreens.Select(s => (s.Id, s.Name))],
-            action => action.LiveInputId is { Length: > 0 } id ? choices.LiveInputs.FirstOrDefault(i => i.Id == id)?.Name : null);
+            action => action.LiveInputId is { Length: > 0 } id ? choices.LiveInputs.FirstOrDefault(i => i.Id == id)?.Name : null,
+            Layers: [.. choices.CustomLayers.Select(l => (l.Id, l.Name))]);
     }
 
     /// <summary>The presentation holding a slide: the open one if it's there, else any in the library.</summary>

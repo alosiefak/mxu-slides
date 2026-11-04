@@ -178,6 +178,7 @@ public sealed partial class MediaEditorViewModel : ObservableObject, IDisposable
             var next = value == 1 ? MediaClassification.Foreground : MediaClassification.Background;
             if (next == Item.Classification) return;
             Item.Classification = next;
+            OnPropertyChanged();
             ItemChanged(savesNow: true);
         }
     }
@@ -189,6 +190,7 @@ public sealed partial class MediaEditorViewModel : ObservableObject, IDisposable
         {
             if (value == Item.Loops) return;
             Item.Loops = value;
+            OnPropertyChanged();
             ItemChanged(savesNow: true);
         }
     }
@@ -205,6 +207,7 @@ public sealed partial class MediaEditorViewModel : ObservableObject, IDisposable
             var stored = MediaTrimEdit.StoredRate(value.Value);
             if (stored == Item.PlayRate) return;
             Item.PlayRate = stored;
+            OnPropertyChanged();
             OnPropertyChanged(nameof(PlaysText));
             ApplyPreviewRate();
             ItemChanged(savesNow: true);
@@ -424,6 +427,7 @@ public sealed partial class MediaEditorViewModel : ObservableObject, IDisposable
             var fit = (MediaLookFit)Math.Clamp(value, 0, 2);
             if (fit == look.Fit) return;
             look = look with { Fit = fit };
+            OnPropertyChanged();
             LookChanged();
         }
     }

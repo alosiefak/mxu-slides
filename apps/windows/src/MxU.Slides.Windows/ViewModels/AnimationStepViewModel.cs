@@ -102,12 +102,15 @@ public sealed partial class AnimationStepViewModel : ObservableObject
 
     public bool IsMorph => Step.Kind == AnimationKind.Morph;
 
-    public IReadOnlyList<Choice<AnimationKind>> Kinds { get; } =
-    [
-        new(AnimationKind.In, "Bring in"),
-        new(AnimationKind.Out, "Take out"),
-        new(AnimationKind.Emphasis, "Emphasize"),
-    ];
+    /// <summary>The kinds a step can be switched between; a Change (morph) shows as itself and stays one.</summary>
+    public IReadOnlyList<Choice<AnimationKind>> Kinds => IsMorph
+        ? [new(AnimationKind.Morph, "Change")]
+        :
+        [
+            new(AnimationKind.In, "Bring in"),
+            new(AnimationKind.Out, "Take out"),
+            new(AnimationKind.Emphasis, "Emphasize"),
+        ];
 
     /// <summary>The kind of step; changing it keeps the effect when the new kind has it, else uses the first one.</summary>
     public Choice<AnimationKind>? Kind
