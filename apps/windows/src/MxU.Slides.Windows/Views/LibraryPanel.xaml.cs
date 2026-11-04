@@ -92,6 +92,8 @@ public partial class LibraryPanel : UserControl
     private void List_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (restoring || model is null) return;
+        // The rows being replaced (a redraw) takes their selection with them: that isn't the operator unpicking.
+        if (e.AddedItems.Count == 0 && e.RemovedItems.Cast<object>().All(row => !LibraryList.Items.Contains(row))) return;
         pickedIds = PickedPresentationIds().ToHashSet(StringComparer.Ordinal);
         ShowPicked();
         if (LibraryList.SelectedItems.Count != 1) return; // several picked: nothing opens
@@ -117,7 +119,7 @@ public partial class LibraryPanel : UserControl
     {
         var count = pickedIds.Count;
         PickedNote.Visibility = count > 1 ? Visibility.Visible : Visibility.Collapsed;
-        PickedNote.Text = $"{count} picked · right-click for what to do with them · Esc to unpick";
+        PickedNote.Text = $"{count} picked · right-click for actions · Esc unpicks";
     }
 
     private void List_PreviewKeyDown(object sender, KeyEventArgs e)

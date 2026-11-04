@@ -19,7 +19,7 @@ public sealed partial class MainViewModel
     /// <summary>The bin's order. New media first unless chosen otherwise (the bin always opened that way).</summary>
     public LibrarySort MediaSortOrder
     {
-        get => Settings.LibrarySorts?.GetValueOrDefault(MediaList) ?? LibrarySort.DateAdded;
+        get => Settings.LibrarySorts is { } sorts && sorts.TryGetValue(MediaList, out var sort) ? sort : LibrarySort.DateAdded;
         set
         {
             if (value == MediaSortOrder) return;

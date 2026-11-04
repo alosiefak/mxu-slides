@@ -32,13 +32,12 @@ internal sealed class FileHandoff : IDisposable
     public static FileHandoff Listen(string instanceName, Action<IReadOnlyList<string>> received) => new(instanceName, received);
 
     /// <summary>
-    /// From a second copy: sends <paramref name="files"/> to the running one. True when it took them
-    /// (this copy should then quit quietly); false when there were none or the running copy didn't
-    /// answer within a few seconds.
+    /// From a second copy: sends <paramref name="files"/> to the running one (none at all just brings
+    /// it to the front). True when it took them (this copy should then quit quietly); false when the
+    /// running copy didn't answer within a few seconds.
     /// </summary>
     public static bool SendToRunningCopy(string instanceName, IReadOnlyList<string> files)
     {
-        if (files.Count == 0) return false;
         try
         {
             using var pipe = new NamedPipeClientStream(".", OpenRequests.PipeName(instanceName), PipeDirection.InOut, PipeOptions.None);
@@ -68,9 +67,9 @@ internal sealed class FileHandoff : IDisposable
                 var files = OpenRequests.Decode(pipe);
                 pipe.WriteByte(files is null ? (byte)0 : (byte)1);
                 pipe.Flush();
-                if (files is { Count: > 0 })
+                if (files is not null)
                 {
-                    Log.Info($"Opened from Explorer: {string.Join(", ", files.Select(Path.GetFileName))}");
+                    if (files.Count > 0) Log.Info($"Opened from Explorer: {string.Join(", ", files.Select(Path.GetFileName))}");
                     received(files);
                 }
             }

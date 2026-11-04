@@ -18,14 +18,21 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // A self-test runs only on a throwaway library (Infrastructure/AppStartup.cs).
+        if (AppStartup.RefusesUnsafeSelfTest(e.Args))
+        {
+            Shutdown(3);
+            return;
+        }
 
         // One copy per data folder: two copies writing one library would fight, but a self-test
         // (on its own throwaway folders) can run beside the real app, and the other way round.
         singleInstance = new Mutex(true, InstanceName(), out var isFirst);
         if (!isFirst)
         {
+            // A second copy (a .mxuslides double-clicked in Explorer) hands its files to the running one and goes.
             // A self-test never waits on a dialog nobody will answer.
-            if (SelfTest.FolderFromArgs(e.Args) is null)
+            if (SelfTest.FolderFromArgs(e.Args) is null && !AppStartup.HandedToRunningCopy(InstanceName(), e.Args))
                 MessageBox.Show("MxU Slides is already running.", "MxU Slides", MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown(2);
             return;
@@ -71,6 +78,8 @@ public partial class App : Application
                 };
             }
             window.Show();
+            // The hang watch, files from Explorer, automatic backups and the welcome guide (Infrastructure/AppStartup.cs).
+            AppStartup.AfterWindow(window, model, e.Args, InstanceName());
         }
         catch (Exception ex)
         {
@@ -106,14 +115,7 @@ public partial class App : Application
             // Kinetic builds on theme lyrics (lines rising in turn) are Windows extras beside the themes.
             Core.Animation.KineticText.BuildFor = new KineticExtras(library.Extras).For;
             foreach (var problem in library.LoadProblems) Log.Warn($"Library: {problem}");
-            try
-            {
-                if (library.BackupIfDue() is { } backup) Log.Info($"Backed up the library to {backup}");
-            }
-            catch (Exception ex)
-            {
-                Log.Warn($"Daily backup skipped: {ex.Message}");
-            }
+            // Backups are made once the window is up, off the UI thread (MainViewModel.Backup.cs).
             return library;
         }
         catch (Exception ex)

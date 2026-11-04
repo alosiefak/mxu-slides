@@ -108,6 +108,13 @@
                     </StackPanel>
                 </Button>
 
+                <!-- Help: the welcome guide, keys, diagnostics, Check this PC, report a problem (Views/HelpMenu.cs). -->
+                <Button x:Name="HelpButton" DockPanel.Dock="Right" Click="Help_Click" ToolTip="The welcome guide, keys, diagnostics and Report a Problem" Margin="6,0,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE897;" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Help" />
+                    </StackPanel>
+                </Button>
                 <Button DockPanel.Dock="Right" Click="Settings_Click" ToolTip="Screens and settings">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE7F8;" Margin="0,0,6,0" VerticalAlignment="Center" />

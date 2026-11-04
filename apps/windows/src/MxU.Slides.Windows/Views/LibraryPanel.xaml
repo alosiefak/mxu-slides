@@ -69,7 +69,7 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </DockPanel>
-            <TextBlock x:Name="PickedNote" DockPanel.Dock="Bottom" Style="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0" Visibility="Collapsed" />
+            <TextBlock x:Name="PickedNote" DockPanel.Dock="Bottom" Style="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0" Visibility="Collapsed" TextWrapping="Wrap" />
             <ListBox x:Name="LibraryList" ItemsSource="{Binding LibraryRows}" SelectionMode="Extended"
                      SelectionChanged="List_SelectionChanged" PreviewMouseLeftButtonDown="List_PreviewMouseDown" PreviewMouseMove="List_PreviewMouseMove"
                      MouseDoubleClick="List_DoubleClick" ContextMenuOpening="List_ContextMenuOpening" PreviewKeyDown="List_PreviewKeyDown"

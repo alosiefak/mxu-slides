@@ -74,7 +74,7 @@ public sealed partial class SelfTest
             model.LibraryRows.OfType<LibraryFolderRowViewModel>().Select(f => (f.Name, f.Count)).SequenceEqual([("Hymns", 2), ("Modern", 2)]));
         Check("…and an “All songs and presentations” row, then the songs in no folder",
             model.LibraryRows.FirstOrDefault() is LibraryAllRowViewModel && model.LibraryItems.Any(e => e.Name == "Amazing Grace"));
-        SaveElement(panel, "100-library-folders");
+        SaveControl(panel, "100-library-folders");
 
         model.OpenLibraryFolder(["Hymns"]);
         await Delay(300);
@@ -82,13 +82,15 @@ public sealed partial class SelfTest
             model.LibraryItems.Select(e => e.Name).SequenceEqual(["How Great Thou Art"])
             && model.LibraryRows.OfType<LibraryFolderRowViewModel>().Single().Name == "Classic"
             && model.LibraryCrumbs.Select(c => c.Name).SequenceEqual(["Library", "Hymns"]));
-        SaveElement(panel, "101-library-in-a-folder");
+        SaveControl(panel, "101-library-in-a-folder");
         model.OpenLibraryFolder([]);
 
         // Recently used: what went live last comes first.
         var oceans = model.Library.All<Presentation>().First(p => p.Name == "Oceans");
         var cornerstone = model.Library.All<Presentation>().First(p => p.Name == "Cornerstone");
-        model.Catalog.Usage.Touch(cornerstone.Id, DateTimeOffset.Now.AddMinutes(-5));
+        // Cornerstone used just now (after the basics' songs), then Oceans goes live after it.
+        model.Catalog.Usage.Touch(cornerstone.Id);
+        await Delay(50);
         model.Open(oceans, null, null);
         model.GoLiveCommand.Execute(model.Slides.FirstOrDefault());
         await Delay(500);
@@ -101,7 +103,7 @@ public sealed partial class SelfTest
         model.LibrarySortOrder = LibrarySort.Name;
         await Delay(200);
         Check("sorting by Name is A to Z", model.LibraryItems.Select(e => e.Name).SequenceEqual(model.LibraryItems.Select(e => e.Name).Order(StringComparer.CurrentCultureIgnoreCase)));
-        SaveElement(panel, "102-library-everything-by-name");
+        SaveControl(panel, "102-library-everything-by-name");
         model.LibraryShowsAll = false;
 
         // Search: words in a lyric, a CCLI number, an author, media.
@@ -109,7 +111,7 @@ public sealed partial class SelfTest
         await Delay(400);
         var lyricHit = model.LibraryItems.FirstOrDefault();
         Check("searching words of a lyric finds the song, with the line it matched", lyricHit?.Name == "Amazing Grace" && lyricHit.Snippet?.Contains("once was lost", StringComparison.OrdinalIgnoreCase) == true);
-        SaveElement(panel, "103-library-search-lyrics");
+        SaveControl(panel, "103-library-search-lyrics");
         model.LibrarySearch = "6428767";
         await Delay(300);
         Check("a CCLI number finds its song", model.LibraryItems.FirstOrDefault()?.Name == "Oceans" && model.LibraryItems.First().Line.Contains("CCLI 6428767"));
@@ -119,7 +121,7 @@ public sealed partial class SelfTest
         model.LibrarySearch = "deep blue";
         await Delay(300);
         Check("media is found by name too", model.LibraryRows.OfType<LibraryMediaHitViewModel>().Any(h => h.Name == "Deep Blue"));
-        SaveElement(panel, "104-library-search-media");
+        SaveControl(panel, "104-library-search-media");
         model.LibrarySearch = "";
 
         // Favourites and tags.
@@ -130,7 +132,7 @@ public sealed partial class SelfTest
         Check("a tag shows only what has it", model.LibraryItems.Select(e => e.Name).Order().SequenceEqual(["Cornerstone", "Oceans"]));
         Check("a favourite has its star, and the song file itself is unchanged (a Windows extra)",
             model.LibraryItems.First(e => e.Name == "Oceans").IsFavorite && !File.ReadAllText(model.Library.DocumentPath(typeof(Presentation), oceans.Id)).Contains("Modern worship"));
-        SaveElement(panel, "105-library-tag-filter");
+        SaveControl(panel, "105-library-tag-filter");
         model.LibraryTag = null;
         model.LibraryFavoritesOnly = true;
         await Delay(300);
@@ -189,13 +191,15 @@ public sealed partial class SelfTest
         model.DeletePresentations(ids);
         Check("deleting songs still in a service warns, naming the service", LastHeadline == "Delete 3 items?");
         Check("…then moves them to the Trash", ids.All(id => model.Library.Get<Presentation>(id) is null));
+        ExpectDialog("Delete 3 Items", ""); // several at once always ask
         model.DeletePresentations([.. copies.Select(c => c.Id)]);
         if (service is not null) model.SelectedService = service;
 
         // Folders: rename, then delete (what was in it moves up).
+        var worship = DepthSong("Here I Am to Worship", "Verse 1\nLight of the world you stepped down into darkness", folder: "Modern");
         model.RenamePresentationFolder(["Modern"], "Contemporary");
         await Delay(300);
-        Check("renaming a folder refiles what's in it", model.LibraryRows.OfType<LibraryFolderRowViewModel>().Any(f => f.Name == "Contemporary") || !model.LibraryShowsAll);
+        Check("renaming a folder refiles what's in it", model.Library.Get<Presentation>(worship.Id)?.Folder == "Contemporary");
         model.DeletePresentationFolder(["Hymns"]);
         await Delay(300);
         var vision = model.Library.All<Presentation>().FirstOrDefault(p => p.Name == "How Great Thou Art");
@@ -203,7 +207,7 @@ public sealed partial class SelfTest
         model.LibraryShowsAll = false;
         panel.LibraryList.SelectedItems.Clear();
         await Delay(300);
-        SaveElement(panel, "109-library-after-batch");
+        SaveControl(panel, "109-library-after-batch");
     }
 
     // MARK: The media bin
@@ -290,6 +294,35 @@ public sealed partial class SelfTest
         finally { ExportWindow.Opened -= OnOpened; }
         Check("the export window opens with the formats", shown);
         await Delay(200);
+    }
+
+    /// <summary>
+    /// A picture of one control in its window. Rendering a control straight into a bitmap draws it
+    /// where it sits in the window, mostly outside the picture; painting it with a VisualBrush
+    /// draws just it, from its own top-left corner.
+    /// </summary>
+    private void SaveControl(FrameworkElement element, string name)
+    {
+        try
+        {
+            if (element.ActualWidth < 1) return;
+            var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(element);
+            var size = new Size(element.ActualWidth, element.ActualHeight);
+            var drawing = new System.Windows.Media.DrawingVisual();
+            using (var dc = drawing.RenderOpen())
+            {
+                dc.DrawRectangle(EditorKit.Res<System.Windows.Media.Brush>("BasePlane"), null, new Rect(size));
+                dc.DrawRectangle(new System.Windows.Media.VisualBrush(element) { Stretch = System.Windows.Media.Stretch.None, AlignmentX = System.Windows.Media.AlignmentX.Left, AlignmentY = System.Windows.Media.AlignmentY.Top }, null, new Rect(size));
+            }
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(size.Width * dpi.DpiScaleX), (int)Math.Ceiling(size.Height * dpi.DpiScaleY),
+                dpi.PixelsPerInchX, dpi.PixelsPerInchY, System.Windows.Media.PixelFormats.Pbgra32);
+            bitmap.Render(drawing);
+            Write(bitmap, name);
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine($"NOTE  couldn't capture {name}: {ex.Message}");
+        }
     }
 
     /// <summary>A file that starts as a PDF does and ends with its marker; its page count read from the page tree.</summary>

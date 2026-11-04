@@ -94,7 +94,7 @@ public partial class SettingsWindow : Window
         NewKeyScope.ItemsSource = ApiScopes.All;
         NewKeyScope.SelectedItem = ApiScope.Control;
         LoadKeys();
-        LibraryPath.Text = $"Your songs, services and media live in {s.LibraryPath}. Every day the first launch copies the documents into Backups (the last 14 days are kept).";
+        LibraryPath.Text = $"Your songs, services and media live in {s.LibraryPath}. Backups are below.";
     }
 
     private void LoadDisplays()
