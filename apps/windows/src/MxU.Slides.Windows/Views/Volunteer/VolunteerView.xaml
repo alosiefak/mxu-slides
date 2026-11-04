@@ -86,11 +86,40 @@
             </DockPanel>
         </Border>
 
-        <!-- The bins volunteers keep: overlays, media, music and combos (click to run, nothing to edit). -->
+        <!-- The bins volunteers keep: presentations, overlays, media, music and combos (click to run, nothing to edit). -->
         <Border x:Name="Bins" DockPanel.Dock="Bottom" Style="{StaticResource Panel}" Margin="8,0,8,8" Height="150">
             <DockPanel>
                 <StackPanel x:Name="BinTabs" DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6" />
                 <Grid>
+                    <!-- The library's decks (the Mac's "Libraries volunteers keep"): one shows on its own, the service stays as it is. -->
+                    <DockPanel x:Name="PresentationBin">
+                        <StackPanel DockPanel.Dock="Left" Width="180" Margin="0,0,8,0">
+                            <TextBox x:Name="DeckSearch" Tag="Find a song or deck…" TextChanged="DeckSearch_TextChanged" />
+                            <TextBlock Text="Picks one to show on its own. The service stays as it is." Style="{StaticResource Muted}" FontSize="10"
+                                       TextWrapping="Wrap" Margin="0,6,0,0" />
+                        </StackPanel>
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                            <ItemsControl x:Name="Decks">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:LibraryEntryViewModel}">
+                                        <Button Width="150" Height="56" Margin="0,0,8,0" Click="Deck_Click" ToolTip="Show its slides on their own, ready to take live">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis">
+                                                    <Run Text="{Binding Kind, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Detail, Mode=OneWay}" />
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
                     <ScrollViewer x:Name="OverlayBin" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                         <ItemsControl ItemsSource="{Binding Overlays}" ItemTemplate="{StaticResource OverlayTile}">
                             <ItemsControl.ItemsPanel>

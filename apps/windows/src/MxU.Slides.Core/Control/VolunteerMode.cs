@@ -97,7 +97,13 @@ public static class VolunteerMode
 /// The panels and bins a volunteer keeps in volunteer mode (the Mac's "Tabs volunteers keep").
 /// The live controls (preview, Next, Previous, the clears) are always there.
 /// </summary>
-public enum VolunteerPanel { Timers, Alerts, ServiceTracking, StageMessage, Overlays, Media, Music, Combos }
+/// <summary>
+/// The panels and bins volunteer mode keeps. <see cref="Presentations"/> is the Mac's newer
+/// "Libraries volunteers keep" (Presentations, with Overlays, Media and Music already bins here):
+/// a volunteer can play a deck from the library that isn't in the service, but not edit it.
+/// New values go at the end (they're saved by name, so the order only sets how they're listed).
+/// </summary>
+public enum VolunteerPanel { Timers, Alerts, ServiceTracking, StageMessage, Overlays, Media, Music, Combos, Presentations }
 
 public static class VolunteerPanels
 {
@@ -130,7 +136,7 @@ public static class VolunteerPanels
 public enum OperatorAction
 {
     // Running the show: always allowed.
-    FireSlide, NextPrevious, GoToSlide, StepServiceItem, SelectServiceItem, SelectService, ChooseServiceVersion, ChoosePlanTime,
+    FireSlide, NextPrevious, GoToSlide, StepServiceItem, SelectServiceItem, SelectService, ChooseServiceVersion, ChoosePlanTime, PlayFromLibrary,
     Clear, VideoTransport, StartPauseResetTimer, FireAlert, SendStageMessage, ToggleOverlay, FireMedia, PlayMusic, RunCombo,
     ShowCheatSheet, OpenPreviewWindow, ScrollAndView,
 

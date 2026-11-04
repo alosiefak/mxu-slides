@@ -1,4 +1,5 @@
 using MxU.Slides.Core.Control;
+using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Windows.Infrastructure;
 
@@ -119,6 +120,20 @@ public sealed partial class MainViewModel
         Notice = RunOnly.LockedNotice;
         Log.Info($"Volunteer mode: blocked {action}");
         return false;
+    }
+
+    /// <summary>
+    /// Shows a deck from the library on its own, as picking it in the library does: its slides take
+    /// the middle, ready to fire (the Mac's "Libraries volunteers keep", where Presentations is one).
+    /// It doesn't add it to the service or change it. False when it's gone or the bin isn't kept.
+    /// </summary>
+    public bool PresentFromLibrary(string presentationId)
+    {
+        if (!Permit(OperatorAction.PlayFromLibrary) || Library.Get<Presentation>(presentationId) is not { } deck) return false;
+        if (IsVolunteer && !VolunteerKeeps(VolunteerPanel.Presentations)) return false;
+        SelectedServiceItem = null;
+        Open(deck, null, null);
+        return true;
     }
 
     /// <summary>F-key, MIDI and remote "Clear Inputs" (the Clear bar's Inputs button does the same).</summary>

@@ -25,7 +25,10 @@ public partial class VolunteerView : UserControl
         InitializeComponent();
         Preview.Media = model.Media;
         foreach (var (panel, bin) in new (VolunteerPanel, FrameworkElement)[]
-                 { (VolunteerPanel.Overlays, OverlayBin), (VolunteerPanel.Media, MediaBin), (VolunteerPanel.Music, MusicBin), (VolunteerPanel.Combos, ComboBin) })
+                 {
+                     (VolunteerPanel.Presentations, PresentationBin), (VolunteerPanel.Overlays, OverlayBin), (VolunteerPanel.Media, MediaBin),
+                     (VolunteerPanel.Music, MusicBin), (VolunteerPanel.Combos, ComboBin),
+                 })
         {
             var tab = new ToggleButton { Content = panel.Title(), Padding = new Thickness(12, 3, 12, 3), Margin = new Thickness(0, 0, 4, 0) };
             tab.Click += (_, _) => ShowBin(panel);
@@ -33,9 +36,42 @@ public partial class VolunteerView : UserControl
             bins[panel] = (tab, bin);
         }
         ApplyPanels();
+        ShowDecks();
         model.VolunteerChanged += ApplyPanels;
-        Unloaded += (_, _) => model.VolunteerChanged -= ApplyPanels;
+        model.Library.Changed += OnLibraryChanged;
+        Unloaded += (_, _) =>
+        {
+            model.VolunteerChanged -= ApplyPanels;
+            model.Library.Changed -= OnLibraryChanged;
+        };
         Loaded += (_, _) => ShowOutputStatus();
+    }
+
+    // MARK: The library's decks
+
+    /// <summary>The decks in the Presentations bin, A to Z, narrowed by the search box (the self-test reads these).</summary>
+    internal IReadOnlyList<LibraryEntryViewModel> ShownDecks => (Decks.ItemsSource as IReadOnlyList<LibraryEntryViewModel>) ?? [];
+
+    private void OnLibraryChanged(Type type, string id)
+    {
+        if (type == typeof(Core.Model.Presentation)) Dispatcher.BeginInvoke(ShowDecks);
+    }
+
+    private void ShowDecks()
+    {
+        var query = DeckSearch.Text.Trim();
+        Decks.ItemsSource = model.Library.All<Core.Model.Presentation>()
+            .Where(p => query.Length == 0 || p.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase))
+            .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(p => new LibraryEntryViewModel(p))
+            .ToList();
+    }
+
+    private void DeckSearch_TextChanged(object sender, TextChangedEventArgs e) => ShowDecks();
+
+    private void Deck_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is LibraryEntryViewModel deck) model.PresentFromLibrary(deck.Presentation.Id);
     }
 
     /// <summary>Shows the panels and bins volunteers keep, and only those.</summary>

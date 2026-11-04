@@ -76,6 +76,18 @@ public class VolunteerModeTests
         Assert.Equal("Service Tracking", VolunteerPanel.ServiceTracking.Title());
     }
 
+    // The Mac's "Libraries volunteers keep" (LibraryPresentLogic.volunteerKinds): kept by default,
+    // and a list saved before it existed stays as the operator chose it.
+    [Fact]
+    public void VolunteersKeepTheLibrarysDecksUnlessTheOperatorChoseOtherwise()
+    {
+        Assert.Contains(VolunteerPanel.Presentations, VolunteerPanels.Parse(null));
+        Assert.DoesNotContain(VolunteerPanel.Presentations, VolunteerPanels.Parse("timers,overlays,media,music"));
+        Assert.Equal("overlays,presentations", VolunteerPanels.Format([VolunteerPanel.Presentations, VolunteerPanel.Overlays]));
+        Assert.Equal([VolunteerPanel.Presentations], VolunteerPanels.Parse("presentations"));
+        Assert.True(RunOnly.Allows(OperatorAction.PlayFromLibrary, runOnly: true));
+    }
+
     [Fact]
     public void RunOnlyRunsTheShowAndChangesNothing()
     {
