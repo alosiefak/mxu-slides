@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Control;
 using MxU.Slides.Core.Library;
@@ -68,6 +70,7 @@ public sealed partial class SelfTest
         model.Library.Save(service);
         model.RefreshServices();
         var before = model.SelectedService;
+        var problemBefore = model.Problem;
         model.SelectedService = model.Services.FirstOrDefault(s => s.Id == service.Id);
         await Delay(400);
         try
@@ -78,6 +81,7 @@ public sealed partial class SelfTest
             await VolunteerCheck();
             await ServiceListExtrasCheck(service);
             await OperatorExtrasCheck();
+            Check("nothing went wrong along the way (no error banner)", model.Problem == problemBefore);
         }
         finally
         {
@@ -470,7 +474,7 @@ public sealed partial class SelfTest
         {
             var line = DropLine.Show(card, DropEdge.Top);
             await Delay(200);
-            SaveElement(timers, "p8o-18-timers-drop-line");
+            SaveWithAdorners(timers, "p8o-18-timers-drop-line");
             line?.Remove();
             Check("timer rows take drops", true);
         }
@@ -548,6 +552,39 @@ public sealed partial class SelfTest
             menu.IsOpen = false;
         }
         foreach (var id in made) model.Library.Delete<ConfidenceLayout>(id);
+    }
+
+    /// <summary>
+    /// A picture of an element with what's drawn over it (a drag's line lives on the window's
+    /// adorner layer, which a picture of the element alone leaves out): the layer's whole area,
+    /// cut down to the element.
+    /// </summary>
+    private void SaveWithAdorners(FrameworkElement element, string name)
+    {
+        try
+        {
+            if (AdornerLayer.GetAdornerLayer(element) is not { } layer || VisualTreeHelper.GetParent(layer) is not FrameworkElement host || element.ActualWidth < 1)
+            {
+                SaveElement(element, name);
+                return;
+            }
+            var dpi = VisualTreeHelper.GetDpi(host);
+            var whole = new RenderTargetBitmap((int)Math.Ceiling(host.ActualWidth * dpi.DpiScaleX), (int)Math.Ceiling(host.ActualHeight * dpi.DpiScaleY),
+                dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+            var backdrop = new DrawingVisual();
+            using (var dc = backdrop.RenderOpen())
+                dc.DrawRectangle(EditorKit.Res<Brush>("BasePlane"), null, new Rect(0, 0, host.ActualWidth, host.ActualHeight));
+            whole.Render(backdrop);
+            whole.Render(host);
+            var bounds = element.TransformToAncestor(host).TransformBounds(new Rect(0, 0, element.ActualWidth, element.ActualHeight));
+            bounds.Intersect(new Rect(0, 0, host.ActualWidth, host.ActualHeight));
+            var crop = new Int32Rect((int)(bounds.X * dpi.DpiScaleX), (int)(bounds.Y * dpi.DpiScaleY), (int)(bounds.Width * dpi.DpiScaleX), (int)(bounds.Height * dpi.DpiScaleY));
+            Write(new CroppedBitmap(whole, crop), name);
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine($"NOTE  couldn't capture {name}: {ex.Message}");
+        }
     }
 
     private static T? FirstDescendant<T>(DependencyObject root, Func<T, bool> match) where T : DependencyObject

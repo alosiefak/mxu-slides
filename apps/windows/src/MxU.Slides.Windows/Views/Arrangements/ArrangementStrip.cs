@@ -254,9 +254,13 @@ public sealed class ArrangementStrip : UserControl
         e.Handled = true;
     }
 
+    private int? markedBefore;
+
     private void ShowDropMark(int before)
     {
+        if (markedBefore == before && dropMark is not null) return;
         ClearDropMark();
+        markedBefore = before;
         var movable = pills.Children.OfType<Border>().ToList();
         if (movable.Count == 0) return;
         dropMark = before < movable.Count ? DropLine.Show(movable[before], DropEdge.Left) : DropLine.Show(movable[^1], DropEdge.Right);
@@ -266,5 +270,6 @@ public sealed class ArrangementStrip : UserControl
     {
         dropMark?.Remove();
         dropMark = null;
+        markedBefore = null;
     }
 }

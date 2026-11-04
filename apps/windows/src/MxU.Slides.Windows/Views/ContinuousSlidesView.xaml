@@ -43,11 +43,14 @@
 
         <!-- One section of a song: its name (in its colour) over its slides. -->
         <DataTemplate x:Key="Section" DataType="{x:Type vm:ContinuousSectionViewModel}">
-            <StackPanel Margin="0,0,0,4">
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,6" Visibility="{Binding HasName, Converter={StaticResource Visible}}">
-                    <Border Width="9" Height="9" CornerRadius="4.5" Background="{Binding Brush}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedText}" />
-                </StackPanel>
+            <StackPanel Margin="0,0,6,4">
+                <!-- The name's row is there even without a name, so side-by-side sections line up. -->
+                <Grid Height="16" Margin="0,0,0,6">
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding HasName, Converter={StaticResource Visible}}">
+                        <Border Width="9" Height="9" CornerRadius="4.5" Background="{Binding Brush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
                 <ItemsControl ItemsSource="{Binding Tiles}" ItemTemplate="{StaticResource Tile}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -90,8 +93,16 @@
                             </DockPanel>
                         </Border>
                         <Grid Margin="12,10,2,2">
+                            <!-- Sections sit side by side and wrap, so a song of one-slide sections stays compact;
+                                 a long section wraps its own slides. -->
                             <ItemsControl ItemsSource="{Binding Sections}" ItemTemplate="{StaticResource Section}"
-                                          Visibility="{Binding IsSlides, Converter={StaticResource Visible}}" />
+                                          Visibility="{Binding IsSlides, Converter={StaticResource Visible}}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
                             <Border Width="{Binding DataContext.Settings.ThumbnailSize, RelativeSource={RelativeSource AncestorType=v:ContinuousSlidesView}}"
                                     HorizontalAlignment="Left" CornerRadius="6" Background="#141414" Margin="0,0,0,8" Cursor="Hand" MouseLeftButtonUp="CardHeader_Click"
                                     Visibility="{Binding IsMedia, Converter={StaticResource Visible}}" ToolTip="Click to show it">

@@ -122,7 +122,9 @@ public sealed class LiveToolbar : UserControl
             // Any kind the Windows app plays, since Phase 6 (Views/Transitions).
             var choice = model.RoomTransitionChoice(isMedia);
             var text = WindowsTransitions.ChipCaption(choice);
-            OperatorKit.SetChipText(chip, text);
+            // The length is beside the chip, on its slider, so the chip names the kind (and its direction).
+            var length = " " + TransitionEdit.Label(choice.DurationSeconds);
+            OperatorKit.SetChipText(chip, WindowsTransitions.HasDuration(choice.Kind) && text.EndsWith(length, StringComparison.Ordinal) ? text[..^length.Length] : text);
             chip.ToolTip = $"{(isMedia ? "Backgrounds and videos" : "Slides")}: {text}: this layer's default; items with their own always win";
             if (isMedia) MediaText = text;
             else SlidesText = text;

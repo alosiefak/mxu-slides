@@ -153,5 +153,5 @@ public static class RunOnly
     public static bool IsRunningTheShow(OperatorAction action) => action < OperatorAction.EditSlides;
 
     /// <summary>What the app says when something is locked.</summary>
-    public const string LockedNotice = "That's locked in Volunteer Mode. Leave Volunteer Mode (top left) to change it.";
+    public const string LockedNotice = "That's locked in Volunteer Mode. Leave Volunteer Mode (top right) to change it.";
 }

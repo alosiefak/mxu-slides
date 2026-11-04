@@ -13,16 +13,16 @@ namespace MxU.Slides.Windows.Views;
 /// The service picker beside SERVICE (Phase 8). It lists this week's service first: today's and
 /// later ones in date order, then the undated ones, twelve at a time ("Show 12 more"); older
 /// services wait under "Earlier", newest first. Each row has its date in a column. When the
-/// service came from a Planning Center plan with several times, a chip beside it picks the time
-/// this PC runs. Port of the Mac's servicePickerPopup (AppShell.swift); the grouping is Core's
-/// (<see cref="ServicePicking"/>), and the plan-time chip is Windows-only (<see cref="ServicePlanTimes"/>).
+/// service came from a Planning Center plan with several times, the list ends with the times to
+/// choose from, and the picker's label names the one this PC runs ("Sunday · 11:00"). Port of the
+/// Mac's servicePickerPopup (AppShell.swift); the grouping is Core's (<see cref="ServicePicking"/>),
+/// and the plan times are Windows-only (<see cref="ServicePlanTimes"/>).
 /// </summary>
 public sealed class ServicePicker : UserControl
 {
     private readonly Button picker;
     private readonly TextBlock name = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-    private readonly TextBlock date = new() { FontSize = 10.5, Margin = new Thickness(8, 1, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-    private readonly Button time;
+    private readonly TextBlock time = new() { FontSize = 11, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
     private MainViewModel? model;
     private int shownCurrent = ServicePicking.Page;
     private int shownEarlier = ServicePicking.Page;
@@ -31,23 +31,18 @@ public sealed class ServicePicker : UserControl
 
     public ServicePicker()
     {
-        date.Foreground = EditorKit.Res<Brush>("FaintText");
+        time.Foreground = EditorKit.Res<Brush>("Accent");
         var label = new DockPanel();
         var chevron = new TextBlock { Text = "", FontFamily = EditorKit.IconFont, FontSize = 8, Margin = new Thickness(6, 1, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = EditorKit.Res<Brush>("FaintText") };
         DockPanel.SetDock(chevron, Dock.Right);
-        DockPanel.SetDock(date, Dock.Right);
-        label.Children.Add(chevron);
-        label.Children.Add(date);
-        label.Children.Add(name);
-        picker = new Button { Content = label, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(8, 3, 8, 3), ToolTip = "Choose the service" };
-        picker.Click += (_, _) => Open();
-        time = OperatorKit.Chip("", "All times", "Which of the plan's times this computer runs: its rows and their order", chip => OpenTimes(chip));
-        time.Margin = new Thickness(4, 0, 0, 0);
-        var row = new DockPanel();
         DockPanel.SetDock(time, Dock.Right);
-        row.Children.Add(time);
-        row.Children.Add(picker);
-        Content = row;
+        label.Children.Add(chevron);
+        label.Children.Add(time);
+        label.Children.Add(name);
+        // The left column is narrow, so the name has the room: the date is in the tooltip and the list.
+        picker = new Button { Content = label, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(8, 3, 8, 3) };
+        picker.Click += (_, _) => Open();
+        Content = picker;
         DataContextChanged += (_, _) => Attach(OperatorKit.Model(this));
     }
 
@@ -65,7 +60,7 @@ public sealed class ServicePicker : UserControl
     }
 
     /// <summary>The label and the time chip as they are now (the self-test reads these).</summary>
-    internal string LabelText => $"{name.Text} {date.Text}".Trim();
+    internal string LabelText => $"{name.Text} {time.Text}".Trim();
 
     internal string TimeText { get; private set; } = "";
 
@@ -78,11 +73,11 @@ public sealed class ServicePicker : UserControl
         }
         var service = model?.SelectedService;
         name.Text = service?.Name ?? "Choose a service…";
-        date.Text = service is null ? "" : ServicePicking.DateColumnLabel(service.ServiceDate);
-        var times = model?.SelectedServicePlanTimes ?? [];
-        time.Visibility = times.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        picker.ToolTip = service is null ? "Choose the service" : $"{service.Name} · {ServicePicking.DateColumnLabel(service.ServiceDate)}";
         TimeText = model?.SelectedServicePlanTime is { } chosen ? ServicePlanTimes.Label(chosen) : "All times";
-        OperatorKit.SetChipText(time, TimeText);
+        // The label names the plan time only when this PC runs one of several.
+        time.Text = (model?.SelectedServicePlanTimes.Count ?? 0) > 1 && model?.SelectedServicePlanTime is not null ? TimeText : "";
+        time.Visibility = time.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // MARK: The list
@@ -114,6 +109,13 @@ public sealed class ServicePicker : UserControl
         if (groups.Current.Count + groups.Earlier.Count == 0) rows.Children.Add(EditorKit.Muted("No services yet.", 11, 4));
         var panel = new StackPanel();
         panel.Children.Add(new ScrollViewer { Content = rows, MaxHeight = 360, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        // A plan with several times: which one this PC runs (a volunteer may choose: it's running the show).
+        if (model.SelectedService is { } current && ServicePlanTimes.Times(current) is { Count: > 1 } times)
+        {
+            panel.Children.Add(new Border { Height = 1, Background = EditorKit.Res<Brush>("Border"), Margin = new Thickness(0, 6, 0, 6) });
+            panel.Children.Add(new TextBlock { Text = "THIS COMPUTER RUNS", Style = EditorKit.Res<Style>("SectionLabel"), Margin = new Thickness(6, 0, 0, 4) });
+            foreach (var (title, id, chosen) in TimeChoices(current, times)) panel.Children.Add(TimeRow(title, id, chosen));
+        }
         if (!model.IsVolunteer)
         {
             panel.Children.Add(new Border { Height = 1, Background = EditorKit.Res<Brush>("Border"), Margin = new Thickness(0, 6, 0, 6) });
@@ -215,22 +217,41 @@ public sealed class ServicePicker : UserControl
 
     // MARK: Plan times
 
-    internal ContextMenu? OpenTimes(FrameworkElement under)
+    /// <summary>"All times" and each of the plan's times, with how many rows it leaves out.</summary>
+    private List<(string Title, string? Id, bool Chosen)> TimeChoices(Service service, IReadOnlyList<MxUPlanTime> times)
     {
-        if (model?.SelectedService is not { } service) return null;
-        var chosen = model.SelectedServicePlanTime?.HexId;
-        List<object> items = [OperatorKit.Choice("All times (every row)", chosen is null, () => model.ChoosePlanTime(null))];
-        items.Add(EditorKit.Separator());
-        foreach (var planTime in ServicePlanTimes.Times(service))
+        var chosen = model?.SelectedServicePlanTime?.HexId;
+        List<(string, string?, bool)> choices = [("All times (every row)", null, chosen is null)];
+        foreach (var planTime in times)
         {
             var left = ServicePlanTimes.LeftOut(service, planTime.HexId);
-            var title = ServicePlanTimes.Label(planTime) + (left > 0 ? $"  ·  {left} row{(left == 1 ? "" : "s")} not in it" : "");
-            items.Add(OperatorKit.Choice(title, chosen == planTime.HexId, () => model.ChoosePlanTime(planTime.HexId)));
+            choices.Add((ServicePlanTimes.Label(planTime) + (left > 0 ? $"  ·  {left} row{(left == 1 ? "" : "s")} not in it" : ""), planTime.HexId, chosen == planTime.HexId));
         }
-        var menu = OperatorKit.Menu(items);
-        OperatorKit.Open(menu, under);
-        return menu;
+        return choices;
     }
 
-    internal ContextMenu? OpenTimes() => OpenTimes(time);
+    private Border TimeRow(string title, string? id, bool chosen)
+    {
+        var row = new DockPanel();
+        row.Children.Add(new TextBlock
+        {
+            Text = chosen ? "\uE73E" : "", FontFamily = EditorKit.IconFont, FontSize = 10, Width = 16, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = EditorKit.Res<Brush>("Accent"),
+        });
+        row.Children.Add(new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center, FontWeight = chosen ? FontWeights.SemiBold : FontWeights.Normal });
+        return RowFrame(row, () =>
+        {
+            Close();
+            model?.ChoosePlanTime(id);
+        }, "Which of the plan's times this computer runs: its rows and their order");
+    }
+
+    /// <summary>The plan's times as a menu under the picker (the self-test pictures it).</summary>
+    internal ContextMenu? OpenTimes()
+    {
+        if (model?.SelectedService is not { } service || ServicePlanTimes.Times(service) is not { Count: > 1 } times) return null;
+        var menu = OperatorKit.Menu(TimeChoices(service, times).Select(c => (object)OperatorKit.Choice(c.Title, c.Chosen, () => model.ChoosePlanTime(c.Id))));
+        OperatorKit.Open(menu, picker);
+        return menu;
+    }
 }

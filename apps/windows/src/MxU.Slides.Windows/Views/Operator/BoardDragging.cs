@@ -21,6 +21,7 @@ internal sealed class BoardDragging(string board, Func<bool> allowed, Action<Boa
     // Each board has its own format, so a timer can't be dropped on the alerts.
     private readonly string format = "mxu/board/" + board;
     private DropLine? line;
+    private FrameworkElement? lineOn;
     private Point start;
     private FrameworkElement? pressed;
 
@@ -62,8 +63,11 @@ internal sealed class BoardDragging(string board, Func<bool> allowed, Action<Boa
                 return;
             }
             e.Effects = DragDropEffects.Move;
+            // The same place as last time: leave the line be (drags report many moves a second).
+            if (lineOn == element) return;
             ClearLine();
             line = DropLine.Show(element, edge ?? (target is BoardDropTarget.OntoFolder ? DropEdge.Around : DropEdge.Top));
+            lineOn = element;
         };
         element.DragLeave += (_, _) => ClearLine();
         element.Drop += (_, e) =>
@@ -95,6 +99,7 @@ internal sealed class BoardDragging(string board, Func<bool> allowed, Action<Boa
     {
         line?.Remove();
         line = null;
+        lineOn = null;
     }
 
     /// <summary>Presses on a button, a text box or a picker work those, not a drag.</summary>
