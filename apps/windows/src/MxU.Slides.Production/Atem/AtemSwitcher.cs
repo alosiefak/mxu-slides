@@ -132,6 +132,16 @@ public sealed class AtemSwitcher : ProductionDevice
         }
         // The receive thread sets Done when the ack comes (or the session is lost). Resends run there too.
         var waited = sent.Done.Wait(ResendAfter * (MaxResends + 2));
+        if (!waited)
+        {
+            // On a busy PC this wait can run out before the session thread has made its resends and
+            // dropped the session. Drop it here, so the commands queued behind this one are skipped at
+            // once, instead of each going out to a switcher that has gone and waiting in turn.
+            lock (gate)
+            {
+                if (inFlight.Contains(sent)) Lost("The switcher didn't confirm a command");
+            }
+        }
         if (!waited || !sent.Acked) Note($"{what}: the switcher didn't confirm it");
         else Note($"sent {what}");
         return waited && sent.Acked;
