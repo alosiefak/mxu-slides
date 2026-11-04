@@ -89,14 +89,14 @@ public sealed class DocumentDiffTests
     public void AnArrangementWrittenWholeKeepsFieldsANewerMacAdded()
     {
         using var document = MacSimulator.Create(Samples.Song(), Kind);
-        document.Apply(new AmEdit().Put(AmPath.Root.Then("arrangements").Then(0), "futureColor", AmWrite.String("#FF0000FF")), null, DateTimeOffset.UtcNow);
+        document.Apply(new AmEdit().Put(AmPath.Root.Then("arrangements").Then(0), "windowsTestFutureField", AmWrite.String("#FF0000FF")), null, DateTimeOffset.UtcNow);
         var song = MacSimulator.Read<Presentation>(document, Kind);
         song.Arrangements![0].SectionIds = ["c", "v1"];
         song.Arrangements.Add(new Arrangement { Id = "a2", Name = "Short", SectionIds = ["c"] });
         MacDocuments.Shared.Edit(document, MacDocuments.ToJson(song), Kind, DateTimeOffset.UtcNow);
         Assert.True(MxuJson.StructurallyEqual(song, MacSimulator.Read<Presentation>(document, Kind)));
         var first = (AmMap)((AmList)document.Read()["arrangements"]!).Items[0];
-        Assert.Equal(AmScalar.Of("#FF0000FF"), first["futureColor"]);
+        Assert.Equal(AmScalar.Of("#FF0000FF"), first["windowsTestFutureField"]);
     }
 
     [Fact]

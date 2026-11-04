@@ -93,7 +93,8 @@ public sealed partial class SelfTest
 
             // A song from a newer Mac, with a kind this version doesn't know: never read, never written.
             var newer = WriteMacDocument(macFolder, MacKind.ForWindowsType(typeof(Presentation))!, MacSong("NEWER-MAC-SONG", "From a newer Mac"),
-                edit => edit.Put(AmPath.Root, "presentationKind", AmWrite.String("medley")));
+                // A kind of presentation no schema will ever have: whatever version these models are, a Mac can be one ahead.
+                edit => edit.Put(AmPath.Root, "presentationKind", AmWrite.String("windowsTestFutureCase")));
             var newerBytes = File.ReadAllBytes(newer);
             await Settle(engine);
             Check("sync: a document this version can't read stops sync to ask", engine.Attention?.Kind == AttentionKind.Unreadable);
