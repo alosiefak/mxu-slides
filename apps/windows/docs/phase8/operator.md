@@ -38,7 +38,7 @@ A song's **sections** are its parts (Verse 1, Chorus, Bridge). An **arrangement*
 
 ### What you can do
 
-The small switch under the slides (beside the thumbnail size slider) picks **Grid** (one presentation at a time, as before) or **Continuous**: the whole service as one long scroll. Each row is a card: a header is its name over a rule, a song shows its slides in its sections (with its arrangement's name), a video shows its picture, music and plan rows say what they are. It behaves like the grid:
+The small switch under the slides (beside the thumbnail size slider) picks **Grid** (one presentation at a time, as before) or **Continuous**: the whole service as one long scroll. Each row is a card: a header is its name over a rule, a song shows its slides in its sections (with its arrangement's name; short sections sit side by side), a video shows its picture, music and plan rows say what they are. It behaves like the grid:
 
 - Click a slide to take it live from its row. Next and Previous walk on through the service, and the scroll keeps the live slide in sight.
 - Picking a row in the service list scrolls to its card.
@@ -99,8 +99,8 @@ The defaults are the keys the window always had: F1–F6 clear, →, Space, Ente
 
 - **Collapse a header**: click the chevron in front of its name (or double-click it). Its rows fold away in the list; Next still walks through them, and when a folded row goes live its group opens so you can see where the service is. The header's menu has Collapse All / Expand All.
 - **Several rows at once**: Ctrl-click and Shift-click, as in Explorer. Right-click inside the choice for the **bulk menu**: "3 Items", **Transition ›** (how each song hands over to the next in a timeline: Stop, Fade, Overlap, Crossfade, and a length), **Hide**, **Remove from Service**. The service's ⋯ menu has **Set all transitions**.
-- **The service picker** (it replaces the drop-down beside SERVICE) lists today's and later services first, in date order, then undated ones, twelve at a time with "Show 12 more"; **Earlier** opens the older ones, newest first. Each has its date in a column.
-- **Plan times.** A service imported from Planning Center can have several times (9:00 and 11:00), each leaving some rows out or running them in its own order. A chip beside the picker chooses the time this PC runs ("All times" by default). The list, Next, auto-advance, the stage's next item, the service-tracking timers and the remote all follow it.
+- **The service picker** (it replaces the drop-down beside SERVICE) lists today's and later services first, in date order, then undated ones, twelve at a time with "Show 12 more"; **Earlier** opens the older ones, newest first. Each has its date in a column (and in the picker's tooltip: the narrow column gives the name the room).
+- **Plan times.** A service imported from Planning Center can have several times (9:00 and 11:00), each leaving some rows out or running them in its own order. The picker's list then ends with **This computer runs**: All times (the default) or one of them, with how many rows it leaves out. The picker's label names the time chosen ("Sunday · 11:00"). The list, Next, auto-advance, the stage's next item, the service-tracking timers and the remote all follow it.
 
 ### How it works
 
@@ -112,7 +112,7 @@ The defaults are the keys the window always had: F1–F6 clear, →, Space, Ente
 
 - **Dragging on the boards.** Alerts, timers, action combos and the scheduler's triggers drag: above a row moves it there (into that row's folder if it's in one), onto a folder's name files it in the folder, and below the last row moves it to the end; folders drag too. A blue line shows where it will land. `Core/Automation/BoardDrops.cs` turns each drop into one of the board's own moves (the Mac's `handleControlBoardRowDrop` and friends), so nothing is ever lost or doubled, and the Service Tracking timers stay in their folder. `Views/Operator/BoardDragging.cs` is the one helper all four boards use; `DropLine.cs` draws the line on WPF's adorner layer, so the list doesn't move while you drag.
 - **The preview keeps its target's shape.** Point the live preview at a 4:3 projector and it previews 4:3; a tall stage layout previews tall (up to 1.25 × its width, so the column stays usable). `Views/Operator/PreviewShape.cs` is an attached property set on the preview.
-- **The transition chips' sliders.** Beside each room-default chip (Media, Slides) is a small slider for its length, 0.1 to 3 seconds, saved when you let go (the Mac's mini slider). Longer lengths are typed in the chip's popover.
+- **The transition chips' sliders.** Beside each room-default chip (Media, Slides) is a small slider for its length, 0.1 to 3 seconds, saved when you let go (the Mac's mini slider), with the length written after it; the chip itself now names just the kind. Longer lengths are typed in the chip's popover.
 - **The Stage panel's folder submenus.** A stage screen's layout chip lists Built-in Layout, the layouts in no folder, then a submenu per folder (and folders inside folders), using `Core/Library/FolderTree.cs`, a port of the Mac's `FolderTreeLogic`.
 
 ## Tests
