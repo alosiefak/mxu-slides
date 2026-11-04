@@ -20,15 +20,17 @@ public sealed partial class MainViewModel
 
     public bool IsBackingUp => backupsRunning > 0;
 
-    /// <summary>"Last backup today at 09:30" (or that there's none), for Settings and the Backups window.</summary>
+    /// <summary>
+    /// "Every night at 3 AM to Backups, keeping the last 7. Last: Sun 03:00." (or why the last one
+    /// didn't finish), for Settings and the Backups window. The Mac's ScheduledBackup.caption.
+    /// </summary>
     public string LastBackupLine
     {
         get
         {
-            var last = BackupFiles.List(BackupFolder).FirstOrDefault(e => e.Kind is BackupFiles.Kind.Automatic or BackupFiles.Kind.Saved);
-            return last is null ? "No backup has been made yet."
-                : last.Created.Date == DateTimeOffset.Now.Date ? $"Last backup today at {last.Created:HH:mm}."
-                : $"Last backup {last.Created:ddd d MMM} at {last.Created:HH:mm}.";
+            var last = Settings.AutoBackupLastRun?.ToLocalTime().DateTime
+                ?? BackupFiles.List(BackupFolder).FirstOrDefault(e => e.Kind is BackupFiles.Kind.Automatic or BackupFiles.Kind.Saved)?.Created.LocalDateTime;
+            return ScheduledBackup.Caption(Settings.AutoBackup, BackupFolder, Settings.AutoBackupKeep, last, Settings.AutoBackupProblem);
         }
     }
 
@@ -39,7 +41,7 @@ public sealed partial class MainViewModel
     /// Makes a backup now, into <paramref name="destination"/>. The documents are read on the
     /// library's own thread, so the window and the show carry on. Null when it failed (the problem is shown).
     /// </summary>
-    public async Task<BackupManifest?> BackUpNowAsync(string destination, bool includeMedia, IProgress<BackupProgress>? progress = null)
+    public async Task<BackupManifest?> BackUpNowAsync(string destination, bool includeMedia, IProgress<BackupProgress>? progress = null, Action<string>? problem = null)
     {
         backupsRunning++;
         OnPropertyChanged(nameof(IsBackingUp));
@@ -54,7 +56,9 @@ public sealed partial class MainViewModel
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             Log.Error($"Backup to {destination} failed", ex);
-            Problem = $"The backup couldn't be saved: {ex.Message}";
+            // An automatic one says so under its setting rather than interrupting the operator.
+            if (problem is not null) problem(ex.Message);
+            else Problem = $"The backup couldn't be saved: {ex.Message}";
             return null;
         }
         finally
@@ -89,12 +93,19 @@ public sealed partial class MainViewModel
     {
         if (IsBackingUp) return null;
         var folder = BackupFolder;
-        var last = await OffUiThread(() => BackupFiles.LastAutomatic(folder));
+        var last = Settings.AutoBackupLastRun ?? await OffUiThread(() => BackupFiles.LastAutomatic(folder));
         if (!BackupFiles.IsDue(Settings.AutoBackup, last, DateTimeOffset.Now, atLaunch)) return null;
         // A big one (with the media) waits until nothing is on screen; the next look tries again.
         if (BackupFiles.ShouldWait(Settings.AutoBackupIncludesMedia, !Show.IsEmpty)) return null;
         var path = Path.Combine(folder, BackupFiles.AutomaticName(DateTimeOffset.Now));
-        if (await BackUpNowAsync(path, Settings.AutoBackupIncludesMedia) is null) return null;
+        var problem = (string?)null;
+        var manifest = await BackUpNowAsync(path, Settings.AutoBackupIncludesMedia, problem: p => problem = p);
+        // As on the Mac, the last run (or why it failed) is remembered and shown under the setting.
+        Settings.AutoBackupProblem = problem;
+        if (manifest is not null) Settings.AutoBackupLastRun = DateTimeOffset.Now;
+        Settings.Save();
+        OnPropertyChanged(nameof(LastBackupLine));
+        if (manifest is null) return null;
         var keep = Math.Max(1, Settings.AutoBackupKeep);
         var gone = await OffUiThread(() => BackupFiles.Prune(folder, keep));
         if (gone > 0) Log.Info($"Removed {gone} old automatic backup{(gone == 1 ? "" : "s")}");

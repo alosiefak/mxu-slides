@@ -21,16 +21,23 @@ public static class DiagnosticsBundle
     public const int RetentionDays = 14;
     public const long ByteCap = 25L * 1024 * 1024;
 
-    /// <summary>The newest files within the window that fit under the cap; a file too big to fit is skipped, smaller ones still go in.</summary>
+    /// <summary>
+    /// The files within the window that fit under the cap: the logs first (every day's, newest
+    /// first), then the rest newest first. A log counts an eighth of its size, as it zips down to
+    /// about that, so a week of logs always goes in. A file too big to fit is skipped; smaller
+    /// ones still go in. (The Mac's rule since "a diagnostics bundle keeps every day's log".)
+    /// </summary>
     public static IReadOnlyList<Candidate> Selection(IEnumerable<Candidate> candidates, DateTimeOffset now, int windowDays = ReportWindowDays, long byteCap = ByteCap)
     {
+        static bool IsLog(Candidate c) => c.Name.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
         var since = now.AddDays(-windowDays);
         long total = 0;
         var chosen = new List<Candidate>();
-        foreach (var candidate in candidates.Where(c => c.Modified >= since).OrderByDescending(c => c.Modified))
+        foreach (var candidate in candidates.Where(c => c.Modified >= since).OrderByDescending(IsLog).ThenByDescending(c => c.Modified))
         {
-            if (total + candidate.Bytes > byteCap) continue;
-            total += candidate.Bytes;
+            var cost = IsLog(candidate) ? candidate.Bytes / 8 : candidate.Bytes;
+            if (total + cost > byteCap) continue;
+            total += cost;
             chosen.Add(candidate);
         }
         return chosen;

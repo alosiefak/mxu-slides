@@ -80,6 +80,34 @@ public sealed class LibraryBrowseTests
         Assert.Equal("Songs/Hymns/Old", songs.Children[0].Children[0].Path);
     }
 
+    [Fact]
+    public void MoveToFolderShowsFoldersWithinFolders()
+    {
+        // The Mac's moveToFolderShowsFoldersWithinFolders (TeamDrivesTests.swift).
+        var tree = LibraryFolders.Tree(["Worship/Lyrics/2026", "youth", "Worship", "Worship/Loops", "Archive/Old"]);
+        Assert.Equal(["Archive", "Worship", "youth"], tree.Select(n => n.Name)); // a parent nobody listed still holds its child
+        Assert.Equal(["Worship/Loops", "Worship/Lyrics"], tree[1].Children.Select(n => n.Path));
+        Assert.Equal(["Worship/Lyrics/2026"], tree[1].Children[1].Children.Select(n => n.Path));
+        Assert.Empty(tree[1].Children[1].Children[0].Children);
+        Assert.Empty(tree[2].Children);
+    }
+
+    [Fact]
+    public void AFolderMovesIntoAnyFolderButItselfAndItsOwn()
+    {
+        var folders = new[] { "Worship", "Worship/Lyrics", "Worship/Lyrics/2026", "Worship/Loops", "Archive" };
+        var lyrics = LibraryFolders.MoveTargets(folders, "Worship/Lyrics");
+        Assert.True(lyrics.TopLevel); // it's inside another folder, so it can go back to the top
+        Assert.Equal("Worship", lyrics.Current); // ticked: where it is now
+        Assert.Equal(["Archive", "Worship", "Worship/Loops"], lyrics.Folders);
+
+        var archive = LibraryFolders.MoveTargets(folders, "Archive");
+        Assert.False(archive.TopLevel); // already at the top
+        Assert.Equal("", archive.Current);
+        Assert.False(LibraryFolders.MoveTargets(["Archive"], "Archive").Any); // nowhere to go: the menu is greyed
+        Assert.True(archive.Any);
+    }
+
     [Theory]
     [InlineData("  Easter  ", "Easter")]
     [InlineData("", null)]

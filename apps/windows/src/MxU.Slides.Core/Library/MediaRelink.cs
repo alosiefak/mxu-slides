@@ -26,6 +26,20 @@ public static class MediaRelink
         return item;
     }
 
+    /// <summary>
+    /// An item whose file was edited in place (opened from the library's Blobs folder and saved): it
+    /// keeps its id, name, file name and settings, and takes the new bytes' hash and what a look at
+    /// them found (length, size, status). With no probe (the file couldn't be read) it keeps the
+    /// facts it had. Port of the Mac's MediaRelink.refingerprinted.
+    /// </summary>
+    public static MediaItem Refingerprinted(MediaItem item, string hash, MediaProbe? probe)
+    {
+        var copy = MxuJson.Clone(item);
+        copy.FileHash = hash;
+        probe?.ApplyTo(copy);
+        return copy;
+    }
+
     /// <summary>The settings made for the old file that now apply to the new one, worth a check ("Trim", "Play Rate"…).</summary>
     public static IReadOnlyList<string> CarriedSettings(MediaItem item)
     {

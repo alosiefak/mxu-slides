@@ -255,8 +255,34 @@ public sealed partial class MainViewModel
     public IReadOnlyList<string> LibraryTags() => Catalog.Marks.AllTags();
 
     /// <summary>The library's folders, for "Move to Folder ›".</summary>
-    public IReadOnlyList<FolderNode> PresentationFolderTree() =>
-        LibraryFolders.Tree(LibraryFolders.Folders(Catalog.Presentations(), Settings.EmptyFolders(PresentationsList)));
+    public IReadOnlyList<FolderNode> PresentationFolderTree() => LibraryFolders.Tree(PresentationFolderPaths());
+
+    /// <summary>Every folder of songs and presentations, in use or kept empty.</summary>
+    public IReadOnlyList<string> PresentationFolderPaths() => LibraryFolders.Folders(Catalog.Presentations(), Settings.EmptyFolders(PresentationsList));
+
+    /// <summary>
+    /// "Show in Library" on a search hit: the search is cleared and the list opens the folder the
+    /// song or presentation is filed in, with it selected. Port of the Mac's showInLibrary.
+    /// </summary>
+    public void ShowInLibrary(string presentationId)
+    {
+        if (Catalog.Presentations().FirstOrDefault(e => e.Id == presentationId) is not { } entry) return;
+        suppressLibrarySelection = true;
+        try
+        {
+            LibrarySearch = "";
+            LibraryFavoritesOnly = false;
+            LibraryTag = null;
+            LibraryShowsAll = false;
+            if (!AdmitsKind(entry)) LibraryFilter = 0;
+        }
+        finally
+        {
+            suppressLibrarySelection = false;
+        }
+        OpenLibraryFolder(FolderPaths.Components(entry.Folder));
+        SelectedLibraryEntry = LibraryItems.FirstOrDefault(e => e.Presentation.Id == presentationId);
+    }
 
     // MARK: A search result that's media
 

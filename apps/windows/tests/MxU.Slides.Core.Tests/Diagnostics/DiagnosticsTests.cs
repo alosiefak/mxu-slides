@@ -20,8 +20,17 @@ public sealed class DiagnosticsTests
     public void TheSelectionIsTheLastWeekNewestFirstUnderTheCap()
     {
         var files = new[] { File("old.log", 9), File("b.log", 2, 40), File("huge-hang.txt", 1, 90), File("a.log", 0.5, 50) };
-        var chosen = DiagnosticsBundle.Selection(files, Now, byteCap: 100);
+        var chosen = DiagnosticsBundle.Selection(files, Now, byteCap: 20);
         Assert.Equal(["a.log", "b.log"], chosen.Select(c => c.Name)); // the file that would pass the cap is skipped, smaller ones still fit
+    }
+
+    [Fact]
+    public void LogsCountZippedAndComeBeforeHangSamples()
+    {
+        // The Mac's diagnosticsLogsCountZippedAndComeBeforeHangSamples: every day's log goes in, a hang sample only if there's room.
+        var files = new[] { File("breadcrumbs-sunday.log", 1, 160), File("breadcrumbs-monday.log", 0.1, 176), File("hang-today.txt", 0.05, 90) };
+        var chosen = DiagnosticsBundle.Selection(files, Now, byteCap: 100);
+        Assert.Equal(["breadcrumbs-monday.log", "breadcrumbs-sunday.log"], chosen.Select(c => c.Name));
     }
 
     [Fact]

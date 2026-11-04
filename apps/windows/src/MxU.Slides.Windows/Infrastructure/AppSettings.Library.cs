@@ -15,8 +15,14 @@ public sealed partial class AppSettings
     /// <summary>How often a backup is made by itself.</summary>
     public BackupFrequency AutoBackup { get; set; } = BackupFrequency.Daily;
 
-    /// <summary>How many automatic backups are kept (the oldest go).</summary>
-    public int AutoBackupKeep { get; set; } = 14;
+    /// <summary>How many automatic backups are kept (the oldest go). Seven, as the Mac keeps.</summary>
+    public int AutoBackupKeep { get; set; } = ScheduledBackup.Keep;
+
+    /// <summary>When the last automatic backup finished (the Mac's "backup.scheduled.lastRun").</summary>
+    public DateTimeOffset? AutoBackupLastRun { get; set; }
+
+    /// <summary>Why the last automatic backup didn't finish, until one does (the Mac's "backup.scheduled.lastProblem").</summary>
+    public string? AutoBackupProblem { get; set; }
 
     /// <summary>Whether automatic backups carry the media files too (much bigger; made only while nothing is on screen).</summary>
     public bool AutoBackupIncludesMedia { get; set; }

@@ -25,6 +25,12 @@ public sealed class MediaImportDedupe
         public sealed record New : Match;
     }
 
+    /// <summary>
+    /// With nobody to ask (an import the app makes by itself), the very same file reuses the item
+    /// already there; anything else is added as new. Port of <c>unattendedUsesExisting</c>.
+    /// </summary>
+    public static bool UnattendedUsesExisting(Match match) => match is Match.SameFile;
+
     private readonly Dictionary<Kind, Dictionary<string, string>> byHash = [];
     private readonly Dictionary<Kind, Dictionary<string, (string Id, string Name)>> byName = [];
 

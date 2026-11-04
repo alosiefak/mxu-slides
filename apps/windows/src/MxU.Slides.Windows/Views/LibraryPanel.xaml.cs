@@ -246,15 +246,22 @@ public partial class LibraryPanel : UserControl
             {
                 var order = LibraryList.Items.OfType<LibraryEntryViewModel>().Select(r => r.Presentation.Id).ToList();
                 var batch = ListMultiSelect.Batch(entry.Presentation.Id, PickedPresentationIds().ToHashSet(StringComparer.Ordinal), order);
+                // A search hit right-clicks like the item in its folder, with Show in Library first (as on the Mac).
+                var hit = model.IsLibrarySearching && batch.Count == 1;
+                if (hit)
+                {
+                    menu.Items.Add(LibraryMenus.Item("Show in Library", () => model.ShowInLibrary(entry.Presentation.Id)));
+                    menu.Items.Add(EditorKit.Separator());
+                }
                 LibraryMenus.ForPresentations(menu, window, model, batch);
-                if (batch.Count == 1 && transition is not null) menu.Items.Insert(Math.Min(4, menu.Items.Count), transition);
+                if (batch.Count == 1 && transition is not null) menu.Items.Insert(Math.Min(hit ? 6 : 4, menu.Items.Count), transition);
                 break;
             }
             case LibraryFolderRowViewModel folder:
                 LibraryMenus.ForFolder(menu, window, model, folder);
                 break;
             case LibraryMediaHitViewModel hit:
-                LibraryMenus.ForMediaHit(menu, model, hit);
+                LibraryMenus.ForMediaHit(menu, window, model, hit);
                 break;
             default:
                 LibraryMenus.ForEmptySpace(menu, window, model);

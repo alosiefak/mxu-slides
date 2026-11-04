@@ -43,8 +43,8 @@ internal static class LibraryDepthDialogs
         var count = groups.Sum(g => g.Uses.Count);
         var dialog = new ChoiceWindow(LibraryDialogs.Owner, "Delete Media", $"Delete {names.Count} media items?",
             count == 0
-                ? "They move to the library's Trash folder. The files themselves are kept."
-                : $"Used in {count} place{(count == 1 ? "" : "s")}. Each spot shows a missing-media warning until the file is restored or replaced. They move to the library's Trash folder.",
+                ? "They move to the library's Trash folder, with each file no other item uses."
+                : $"Used in {count} place{(count == 1 ? "" : "s")}. Each spot shows a missing-media warning until the file is restored or replaced. They move to the library's Trash folder, with each file no other item uses.",
             warning: count > 0);
         if (count > 0) dialog.AddBody(LibraryDialogs.UsesList(groups));
         dialog.AddButton("Cancel", isCancel: true, isDefault: true);

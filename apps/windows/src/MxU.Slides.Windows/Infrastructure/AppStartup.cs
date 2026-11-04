@@ -60,6 +60,7 @@ internal static class AppStartup
         handoff = FileHandoff.Listen(instanceName, files => window.Dispatcher.BeginInvoke(() => window.OpenFromOutside(files)));
         var files = OpenRequests.Files(args, Environment.CurrentDirectory);
         if (files.Count > 0) window.Dispatcher.BeginInvoke(() => window.OpenFromOutside(files), DispatcherPriority.ApplicationIdle);
+        model.StartWatchingMediaFiles();
         if (selfTest) return; // the self-test makes its own backups and opens the guide itself
         model.StartAutomaticBackups();
         if (OnboardingFlow.Needed(model.Library.Root, model.Library.IsNew))

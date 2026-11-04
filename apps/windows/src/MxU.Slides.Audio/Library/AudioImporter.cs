@@ -122,6 +122,9 @@ public sealed class AudioImporter(LibraryStore store)
         return copy;
     }
 
+    /// <summary>How long a music file plays, or null when it can't be read (a file edited in place: MainViewModel.BlobEdits.cs).</summary>
+    public static double? DurationOf(string path) => AudioFileDecoder.ProbeDuration(path);
+
     // Copies a file into Blobs under its SHA-256 (once: the same content is only stored once).
     private (string Hash, string Blob) CopyIn(string sourcePath)
     {

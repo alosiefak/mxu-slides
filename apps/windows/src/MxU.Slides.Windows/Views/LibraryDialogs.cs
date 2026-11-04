@@ -90,7 +90,7 @@ internal static class LibraryDialogs
         var count = groups.Sum(g => g.Uses.Count);
         var dialog = new ChoiceWindow(Owner, "Delete Media", $"Delete “{name}”?",
             $"Used in {count} place{(count == 1 ? "" : "s")}. Each spot shows a missing-media warning until the file is restored or replaced. "
-            + "The item moves to the library's Trash folder.", warning: true);
+            + "The item moves to the library's Trash folder, with its file unless another item uses it.", warning: true);
         dialog.AddBody(UsesList(groups));
         dialog.AddButton("Cancel", isCancel: true, isDefault: true);
         dialog.AddButton("Move to Trash", danger: true);

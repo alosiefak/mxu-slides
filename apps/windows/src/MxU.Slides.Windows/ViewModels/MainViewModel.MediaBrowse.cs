@@ -57,6 +57,25 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>The media folders in use or kept empty, for the bin's folder picker and "Move to Folder ›".</summary>
+    /// <summary>Loop on or off (a search hit's menu, where there's no tile to hand).</summary>
+    public void SetMediaLoops(MediaItem item, bool loops)
+    {
+        if (Library.Get<MediaItem>(item.Id) is not { } current || current.Loops == loops) return;
+        current.Loops = loops;
+        Library.Save(current);
+        RefreshMedia();
+    }
+
+    /// <summary>Background (behind slides, stays) or foreground (cleared by the next slide).</summary>
+    public void SetMediaClassification(MediaItem item, MediaClassification classification)
+    {
+        if (Library.Get<MediaItem>(item.Id) is not { } current || current.Classification == classification) return;
+        current.Classification = classification;
+        Library.Save(current);
+        RefreshMedia();
+        Notice = $"\"{current.Name}\" will play as {(classification == MediaClassification.Background ? "background media behind slides" : "foreground media")}.";
+    }
+
     public IReadOnlyList<string> MediaBinFolders() => LibraryFolders.Folders(Catalog.Media(), Settings.EmptyFolders(MediaList));
 
     public string? NewMediaFolder(string typed)
@@ -148,10 +167,11 @@ public sealed partial class MainViewModel
                 Library.Delete<MediaItem>(item.Id);
                 Media.ForgetFile(item.Id);
             }
+        RemoveUnusedFiles(items.Select(i => i.FileHash));
         ClearMediaPicks();
         RebuildSlides();
         RefreshServiceItems();
-        Notice = $"Moved {items.Count} media items to the library's Trash folder. The files themselves are kept.";
+        Notice = $"Moved {items.Count} media items to the library's Trash folder, with each file no other item uses.";
         return true;
     }
 

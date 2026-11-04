@@ -77,10 +77,8 @@ internal static class LibraryMenus
         {
             if (InputDialog.Ask(window, "Rename Folder", "Name", folder.Name) is { } name) model.RenamePresentationFolder(folder.Path, name);
         }));
-        var tree = model.PresentationFolderTree();
-        menu.Items.Add(FolderMenu(window, tree, "Move Folder Into", null, target =>
-            model.MovePresentationFolder(folder.Path, FolderPaths.Components(target ?? "")), newFolder: null, noneTitle: "The top of the library",
-            excluding: string.Join("/", folder.Path)));
+        menu.Items.Add(FolderMoveMenu(LibraryFolders.MoveTargets(model.PresentationFolderPaths(), string.Join("/", folder.Path)),
+            target => model.MovePresentationFolder(folder.Path, FolderPaths.Components(target))));
         menu.Items.Add(EditorKit.Separator());
         menu.Items.Add(Item("Delete Folder…", () =>
         {
@@ -102,20 +100,41 @@ internal static class LibraryMenus
         menu.Items.Add(Item(model.LibraryShowsAll ? "Show Folders" : "Show Everything", () => model.LibraryShowsAll = !model.LibraryShowsAll));
     }
 
-    public static void ForMediaHit(ContextMenu menu, MainViewModel model, LibraryMediaHitViewModel hit)
+    /// <summary>
+    /// A picture, video or song that a search found: Show in Library (its bin or the Music tab), then
+    /// the menu it has there (the Mac's search hits right-click like the item in its library).
+    /// </summary>
+    public static void ForMediaHit(ContextMenu menu, MainWindow window, MainViewModel model, LibraryMediaHitViewModel hit)
     {
+        (LibraryItemKind Kind, string Id) marks = (hit.Entry.Kind, hit.Entry.Id);
+        menu.Items.Add(Item("Show in Library", () => model.ShowLibraryHit(hit)));
+        menu.Items.Add(EditorKit.Separator());
         if (hit.IsAudio)
         {
-            menu.Items.Add(Item("Show in the Music Tab", () => model.ShowLibraryHit(hit)));
+            if (model.Library.Get<AudioItem>(hit.Entry.Id) is { } song)
+            {
+                menu.Items.Add(Item("Play", () => model.AudioTileClickedCommand.Execute(new AudioTileViewModel(song))));
+                menu.Items.Add(EditorKit.Separator());
+            }
+            AddMarks(menu, window, model, [marks]);
             return;
         }
-        menu.Items.Add(Item("Show in the Media Bin", () => model.ShowLibraryHit(hit)));
-        if (model.Library.Get<MediaItem>(hit.Entry.Id) is { } media)
+        if (model.Library.Get<MediaItem>(hit.Entry.Id) is not { } media)
         {
-            menu.Items.Add(Item("Show Now", () => model.FireMedia(media)));
-            menu.Items.Add(Item("Add to Service", () => model.AddMediaToService(media)));
+            AddMarks(menu, window, model, [marks]);
+            return;
         }
-        menu.Items.Add(Item(Checked("Favourite", hit.IsFavorite), () => model.SetFavorite([(hit.Entry.Kind, hit.Entry.Id)], !hit.IsFavorite)));
+        menu.Items.Add(Item("Show Now", () => model.FireMedia(media)));
+        menu.Items.Add(Item("Add to Service", () => model.AddMediaToService(media)));
+        menu.Items.Add(EditorKit.Separator());
+        menu.Items.Add(Item(Checked("Loop", media.Loops), () => model.SetMediaLoops(media, !media.Loops)));
+        var background = media.Classification == MediaClassification.Background;
+        menu.Items.Add(Item(background ? "Switch to Foreground" : "Switch to Background", () => model.SetMediaClassification(media,
+            background ? MediaClassification.Foreground : MediaClassification.Background)));
+        menu.Items.Add(EditorKit.Separator());
+        foreach (var item in ForOneMedia(window, model, media)) menu.Items.Add(item);
+        menu.Items.Add(EditorKit.Separator());
+        menu.Items.Add(Item("Move to Trash", () => _ = model.DeleteMediaAsync(media)));
     }
 
     // MARK: Media tiles
@@ -200,9 +219,9 @@ internal static class LibraryMenus
     /// name first), then New Folder…. The folder it's in now is ticked.
     /// </summary>
     private static MenuItem FolderMenu(Window owner, IReadOnlyList<FolderNode> tree, string title, string? current, Action<string?> pick,
-        Func<string, string?>? newFolder, string noneTitle = "None", string? excluding = null)
+        Func<string, string?>? newFolder)
     {
-        var children = new List<object> { Item(Checked(noneTitle, current == ""), () => pick(null)) };
+        var children = new List<object> { Item(Checked("None", current == ""), () => pick(null)) };
         if (tree.Count > 0) children.Add(EditorKit.Separator());
         children.AddRange(Nodes(tree));
         if (newFolder is not null)
@@ -219,11 +238,37 @@ internal static class LibraryMenus
         {
             foreach (var node in nodes)
             {
-                if (excluding is not null && FolderPaths.IsUnder(node.Path, excluding)) continue; // a folder can't go into itself
                 var path = node.Path;
                 if (node.Children.Count == 0) yield return Item(Checked(node.Name, current == path), () => pick(path));
                 else
                     yield return Sub(node.Name, [Item(Checked($"“{node.Name}”", current == path), () => pick(path)), EditorKit.Separator(), .. Nodes(node.Children)]);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A folder's "Move to Folder" submenu (the Mac's folderMoveMenu): Top Level when it's inside another
+    /// folder, then the folders it can go into as a tree, where it is now ticked and not offered.
+    /// Greyed when there's nowhere to go.
+    /// </summary>
+    private static MenuItem FolderMoveMenu(FolderMoveTargets targets, Action<string> pick)
+    {
+        var children = new List<object>();
+        if (targets.TopLevel) children.Add(Item("Top Level", () => pick("")));
+        if (targets.TopLevel && targets.Folders.Count > 0) children.Add(EditorKit.Separator());
+        children.AddRange(Nodes(LibraryFolders.Tree(targets.Folders)));
+        var menu = Sub("Move to Folder", children);
+        menu.IsEnabled = targets.Any;
+        return menu;
+
+        IEnumerable<object> Nodes(IReadOnlyList<FolderNode> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                var path = node.Path;
+                var here = path == targets.Current;
+                if (node.Children.Count == 0) yield return Item(Checked(node.Name, here), () => pick(path), enabled: !here);
+                else yield return Sub(node.Name, [Item(Checked("“" + node.Name + "”", here), () => pick(path), enabled: !here), EditorKit.Separator(), .. Nodes(node.Children)]);
             }
         }
     }

@@ -23,16 +23,8 @@ public sealed class LibraryCareSection : UserControl
         var main = owner.Owner as MainWindow ?? Application.Current.MainWindow as MainWindow;
         var panel = new StackPanel();
         panel.Children.Add(EditorKit.Section("BACKUPS & DIAGNOSTICS", top: 18));
-        var frequency = model.Settings.AutoBackup switch
-        {
-            BackupFrequency.Off => "Automatic backups are off.",
-            BackupFrequency.EveryLaunch => "A backup is made each time MxU Slides opens",
-            BackupFrequency.Weekly => "A backup is made once a week",
-            _ => "A backup is made once a day",
-        };
-        if (model.Settings.AutoBackup != BackupFrequency.Off)
-            frequency += $" (the last {model.Settings.AutoBackupKeep} kept{(model.Settings.AutoBackupIncludesMedia ? ", with the media files" : "")}), in {model.BackupFolder}.";
-        panel.Children.Add(EditorKit.Muted($"{frequency} {model.LastBackupLine}", 12, 6));
+        // The Mac's caption: how often, where, how many are kept, and the last one (or why it failed).
+        panel.Children.Add(EditorKit.Muted(model.LastBackupLine + (model.Settings.AutoBackupIncludesMedia ? " With the media files." : ""), 12, 6));
         var backups = new WrapPanel();
         void Add(Panel to, string title, Action click, bool accent = false)
         {

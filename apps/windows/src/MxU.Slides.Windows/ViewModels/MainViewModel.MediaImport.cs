@@ -41,8 +41,11 @@ public sealed partial class MainViewModel
     /// Imports files (folders are opened up), asking about duplicates. Imports run one after
     /// another, so two drops never ask their questions over each other. Returns the items
     /// imported or reused, in order; <paramref name="addToService"/> also adds each to the open service.
+    /// <paramref name="unattended"/> asks nothing (an import nobody is watching, such as a note's
+    /// pictures): the same file is reused, and a different file under a name already taken comes in
+    /// as a numbered copy (the Mac's <c>unattendedUsesExisting</c>).
     /// </summary>
-    public Task<List<MediaItem>> ImportMediaFilesAsync(IEnumerable<string> paths, bool addToService = false)
+    public Task<List<MediaItem>> ImportMediaFilesAsync(IEnumerable<string> paths, bool addToService = false, bool unattended = false)
     {
         var previous = lastMediaImport;
         var list = paths.ToList();
@@ -52,11 +55,11 @@ public sealed partial class MainViewModel
         {
             try { await previous; }
             catch (Exception ex) { Log.Warn($"An earlier media import failed: {ex.Message}"); }
-            return await ImportMediaNow(list, addToService);
+            return await ImportMediaNow(list, addToService, unattended);
         }
     }
 
-    private async Task<List<MediaItem>> ImportMediaNow(IReadOnlyList<string> paths, bool addToService)
+    private async Task<List<MediaItem>> ImportMediaNow(IReadOnlyList<string> paths, bool addToService, bool unattended)
     {
         var files = await OffUiThread(() => MediaImporting.Files(paths));
         var decks = files.Where(IsPresentationFile).ToList();
@@ -78,7 +81,8 @@ public sealed partial class MainViewModel
                 continue;
             }
             var name = Path.GetFileNameWithoutExtension(path);
-            (MediaItem? Item, bool SameFile) existing = dedupe.Find(hash, name, MediaImportDedupe.Kind.Media) switch
+            var match = dedupe.Find(hash, name, MediaImportDedupe.Kind.Media);
+            (MediaItem? Item, bool SameFile) existing = match switch
             {
                 MediaImportDedupe.Match.SameFile same => (Library.Get<MediaItem>(same.Id), true),
                 MediaImportDedupe.Match.SameName named => (Library.Get<MediaItem>(named.Id), false),
@@ -89,7 +93,11 @@ public sealed partial class MainViewModel
             {
                 var numbered = dedupe.AvailableName(held.Name, MediaImportDedupe.Kind.Media);
                 bool useExisting;
-                if (useExistingForRest is { } rest)
+                if (unattended)
+                {
+                    useExisting = MediaImportDedupe.UnattendedUsesExisting(match);
+                }
+                else if (useExistingForRest is { } rest)
                 {
                     useExisting = rest;
                 }

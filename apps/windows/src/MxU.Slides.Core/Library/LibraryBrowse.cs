@@ -91,6 +91,13 @@ public static class LibrarySorts
 /// <summary>A folder and the folders inside it, for a folder picker ("Move to Folder ›").</summary>
 public sealed record FolderNode(string Name, string Path, IReadOnlyList<FolderNode> Children);
 
+/// <summary>Where a folder can move: <see cref="LibraryFolders.MoveTargets"/>.</summary>
+public sealed record FolderMoveTargets(bool TopLevel, string Current, IReadOnlyList<string> Folders)
+{
+    /// <summary>Somewhere to go other than where it is.</summary>
+    public bool Any => TopLevel || Folders.Any(f => f != Current);
+}
+
 /// <summary>
 /// Library folders: which exist, which sit inside a folder, and how they nest. A folder exists while
 /// something is filed in it, or while it's newly made and still empty (the Mac keeps those per
@@ -125,6 +132,20 @@ public static class LibraryFolders
     {
         var joined = string.Join("/", path);
         return items.Where(i => i.Folder == joined);
+    }
+
+    /// <summary>
+    /// Where a folder can move (its "Move to Folder ›" menu, the Mac's <c>folderMoveMenu</c>): any
+    /// folder but itself and those inside it; "Top Level" only when it's inside another folder;
+    /// <see cref="FolderMoveTargets.Current"/> is where it is now, ticked and not offered. With nowhere
+    /// to go the menu is greyed (<see cref="FolderMoveTargets.Any"/>).
+    /// </summary>
+    public static FolderMoveTargets MoveTargets(IEnumerable<string> folders, string moving)
+    {
+        var parts = FolderPaths.Components(moving);
+        var current = string.Join("/", parts.Take(Math.Max(0, parts.Length - 1)));
+        var targets = folders.Where(f => f.Length > 0 && !FolderPaths.IsUnder(f, moving)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        return new FolderMoveTargets(parts.Length > 1, current, targets);
     }
 
     /// <summary>The folders as a tree, for menus. Port of <c>FolderTreeLogic.tree</c>.</summary>

@@ -392,7 +392,12 @@ public sealed class LibraryBackupTests : ScratchFolderTest
         var folder = PathFor("Backups");
         Directory.CreateDirectory(folder);
         var start = new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero);
-        for (var day = 0; day < 6; day++) File.WriteAllText(Path.Combine(folder, BackupFiles.AutomaticName(start.AddDays(day))), "x");
+        for (var day = 0; day < 6; day++)
+        {
+            var nightly = Path.Combine(folder, BackupFiles.AutomaticName(start.AddDays(day)));
+            File.WriteAllText(nightly, "x");
+            File.SetLastWriteTime(nightly, start.AddDays(day).LocalDateTime); // a nightly file's name has only its day: its time is when it was written
+        }
         for (var n = 0; n < 7; n++) File.WriteAllText(Path.Combine(folder, BackupFiles.SafetyCopyName(start.AddHours(n))), "x");
         File.WriteAllText(Path.Combine(folder, "My Easter copy.mxubackup"), "x");
 
@@ -403,6 +408,40 @@ public sealed class LibraryBackupTests : ScratchFolderTest
         Assert.Contains(left, e => e.Kind == BackupFiles.Kind.Saved);
         Assert.Equal(start.AddDays(5).LocalDateTime, BackupFiles.LastAutomatic(folder)!.Value.LocalDateTime, TimeSpan.FromSeconds(1));
         Assert.Equal(left.OrderByDescending(e => e.Created), left); // newest first
+    }
+
+    // MARK: The Mac's nightly rules (ScheduledBackupTests.swift)
+
+    private static DateTime At(int day, int hour, int minute = 0) => new(2026, 11, day, hour, minute, 0, DateTimeKind.Local);
+
+    [Fact]
+    public void ANightlyBackupRunsOnceAfterEach3AMAndCatchesUpAMissedNight()
+    {
+        Assert.True(ScheduledBackup.Due(null, At(2, 10))); // never ran
+        Assert.False(ScheduledBackup.Due(At(2, 3, 1), At(2, 23))); // ran tonight already
+        Assert.True(ScheduledBackup.Due(At(1, 3, 1), At(2, 9))); // the PC was off at 3 AM
+        Assert.False(ScheduledBackup.Due(At(1, 23), At(2, 2, 59))); // not 3 AM yet
+        Assert.Equal(At(3, 3), ScheduledBackup.NextSlot(At(2, 10)));
+        Assert.Equal(At(2, 3), ScheduledBackup.NextSlot(At(2, 1)));
+    }
+
+    [Fact]
+    public void TheNewestSevenNightlyFilesAreKept()
+    {
+        var names = Enumerable.Range(1, 9).Select(day => ScheduledBackup.FileName(At(day, 3))).Append("Easter.mxubackup").ToList();
+        Assert.Equal("MxU Slides Library 2026-11-01.mxubackup", names[0]);
+        Assert.Equal(names[..2], ScheduledBackup.Pruned(names)); // the two oldest go; other files stay
+        Assert.Equal(ScheduledBackup.Prefix, BackupFiles.AutomaticPrefix);
+    }
+
+    [Fact]
+    public void TheCaptionSaysWhereAndWhen()
+    {
+        Assert.StartsWith("Off.", ScheduledBackup.Caption(BackupFrequency.Daily, null, 7, null, null), StringComparison.Ordinal);
+        Assert.StartsWith("Off.", ScheduledBackup.Caption(BackupFrequency.Off, @"E:\MxU", 7, null, null), StringComparison.Ordinal);
+        Assert.Equal("Every night at 3 AM to MxU, keeping the last 7.", ScheduledBackup.Caption(BackupFrequency.Daily, @"E:\Backups\MxU", 7, null, null));
+        Assert.Contains("didn't finish", ScheduledBackup.Caption(BackupFrequency.Daily, @"E:\MxU", 7, null, "The disk is full."), StringComparison.Ordinal);
+        Assert.Contains(" Last: ", ScheduledBackup.Caption(BackupFrequency.Weekly, @"E:\MxU", 7, At(2, 3), null), StringComparison.Ordinal);
     }
 
     [Fact]
