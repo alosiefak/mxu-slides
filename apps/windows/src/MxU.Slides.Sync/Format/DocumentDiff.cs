@@ -93,7 +93,10 @@ public sealed class DocumentDiff(MacSchema schema)
             if (shape == MacEncoder.Kind.Record && schema.Record(((MacNamed)element).Name).HasStringId
                 && Ids(current) is { } haveIds && Ids(target) is { } wantIds)
             {
-                Matched(edit, path, current, target, element, (i, j) => haveIds[i] == wantIds[j]);
+                var at = new Dictionary<string, int>(StringComparer.Ordinal);
+                for (var i = 0; i < haveIds.Length; i++) at[haveIds[i]] = i;
+                Matched(edit, path, current, target, element, (i, j) => haveIds[i] == wantIds[j],
+                    movedFrom: j => at.TryGetValue(wantIds[j], out var i) ? i : null);
                 return;
             }
             if (shape == MacEncoder.Kind.Scalar)
@@ -108,9 +111,13 @@ public sealed class DocumentDiff(MacSchema schema)
     /// <summary>
     /// Keeps the longest run of elements both lists share in order (<paramref name="same"/> says
     /// which pairs match), deletes the other old ones, inserts the other new ones, then compares
-    /// each kept record with its new version.
+    /// each kept record with its new version. A record that moved (<paramref name="movedFrom"/>
+    /// finds where it was) is deleted and inserted again as a copy of itself, every key included,
+    /// as the Mac's moveListElement copies it, then changed to its new version: so fields only a
+    /// newer Mac knows travel with it.
     /// </summary>
-    private void Matched(AmEdit edit, AmPath path, AmList current, JsonArray target, MacType element, Func<int, int, bool> same)
+    private void Matched(AmEdit edit, AmPath path, AmList current, JsonArray target, MacType element, Func<int, int, bool> same,
+        Func<int, int?>? movedFrom = null)
     {
         var pairs = LongestCommonRun(current.Items.Count, target.Count, same);
         var kept = new HashSet<int>(pairs.Select(p => p.Old));
@@ -121,7 +128,21 @@ public sealed class DocumentDiff(MacSchema schema)
         // either the next kept element (already at this position) or new (inserted here).
         var newToOld = pairs.ToDictionary(p => p.New, p => p.Old);
         for (var j = 0; j < target.Count; j++)
-            if (!newToOld.ContainsKey(j)) encoder.InsertAt(edit, path, j, element, target[j]!);
+        {
+            if (newToOld.ContainsKey(j)) continue;
+            if (movedFrom?.Invoke(j) is { } was && current.Items[was] is AmMap moved)
+            {
+                // The positions before j are final now, so the copy and its changes can go in at once.
+                edit.InsertObject(path, j, AmObjectKind.Map);
+                if (!AmCopy.Entries(edit, path.Then(j), moved))
+                    throw new MacFormatException("A moved item holds values Windows can't copy exactly; it wasn't moved, so nothing of it is lost");
+                DiffRecord(edit, path.Then(j), moved, (JsonObject)target[j]!, schema.Record(((MacNamed)element).Name));
+            }
+            else
+            {
+                encoder.InsertAt(edit, path, j, element, target[j]!);
+            }
+        }
         if (encoder.Shape(element) == MacEncoder.Kind.Record)
         {
             var record = schema.Record(((MacNamed)element).Name);
@@ -253,4 +274,70 @@ public sealed class DocumentDiff(MacSchema schema)
                 return false;
         }
     }
+}
+
+/// <summary>
+/// Copies an existing part of a document, every key in it (the schema's and any other), with each
+/// value's Automerge type kept. Only what the Mac's encoder writes can be copied: maps, lists,
+/// strings, Ints, F64s and booleans. Anything else returns false, so the caller can refuse rather
+/// than copy it wrongly.
+/// </summary>
+internal static class AmCopy
+{
+    public static bool Entries(AmEdit edit, AmPath obj, AmMap source)
+    {
+        foreach (var (key, value) in source.Entries)
+        {
+            switch (value)
+            {
+                case AmMap map:
+                    edit.PutObject(obj, key, AmObjectKind.Map);
+                    if (!Entries(edit, obj.Then(key), map)) return false;
+                    break;
+                case AmList list:
+                    edit.PutObject(obj, key, AmObjectKind.List);
+                    if (!Items(edit, obj.Then(key), list)) return false;
+                    break;
+                case AmScalar scalar when Write(scalar) is { } write:
+                    edit.Put(obj, key, write);
+                    break;
+                default:
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool Items(AmEdit edit, AmPath list, AmList source)
+    {
+        for (var i = 0; i < source.Items.Count; i++)
+        {
+            switch (source.Items[i])
+            {
+                case AmMap map:
+                    edit.InsertObject(list, i, AmObjectKind.Map);
+                    if (!Entries(edit, list.Then(i), map)) return false;
+                    break;
+                case AmList inner:
+                    edit.InsertObject(list, i, AmObjectKind.List);
+                    if (!Items(edit, list.Then(i), inner)) return false;
+                    break;
+                case AmScalar scalar when Write(scalar) is { } write:
+                    edit.Insert(list, i, write);
+                    break;
+                default:
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    private static AmWrite? Write(AmScalar scalar) => scalar.Kind switch
+    {
+        AmScalarKind.String => AmWrite.String(scalar.Text!),
+        AmScalarKind.Int => AmWrite.Int(scalar.Integer),
+        AmScalarKind.F64 => AmWrite.Double(scalar.Double),
+        AmScalarKind.Boolean => AmWrite.Bool(scalar.Bool),
+        _ => null,
+    };
 }

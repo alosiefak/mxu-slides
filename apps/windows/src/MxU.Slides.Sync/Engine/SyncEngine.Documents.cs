@@ -113,7 +113,7 @@ public sealed partial class SyncEngine
         }
 
         using var arrived = LoadShared(sharedBytes, kind);
-        var decoded = Decoded(arrived, kind);
+        var decoded = Decoded(arrived, kind, key);
         if (JsonRead.String(decoded["id"]) is { } inside && inside != id) return ConflictCopy(kind, id, inside, arrived);
         var sharedStamp = new Written(SharedFolder.Fingerprint(sharedBytes), shared.Stamp(kind, id) ?? default);
 
@@ -219,7 +219,7 @@ public sealed partial class SyncEngine
             }
             // Deleted here, but changed on the Mac since: the change wins and the document comes back.
             using (var arrived = LoadShared(sharedBytes, kind)) replica.Merge(arrived);
-            var back = Decoded(replica, kind);
+            var back = Decoded(replica, kind, key);
             SaveReplica(key, replica);
             if (!Save(key, kind, back, expected: null)) return Outcome.Again;
             Remember(key, kind, replica, windows.Read(kind, id)!, new Written(sharedHash!, shared.Stamp(kind, id) ?? default));
@@ -243,7 +243,7 @@ public sealed partial class SyncEngine
                 // ever wrote it, so the Mac may never have had it (a backup made again on the Mac
                 // leaves out what it hadn't imported): it goes back in the folder.
                 if (changedHere) TakeInLocal(kind, key, entry, replica, local);
-                var kept = Decoded(replica, kind);
+                var kept = Decoded(replica, kind, key);
                 SaveReplica(key, replica);
                 Taken(entry, changedHere, local);
                 if (!WriteShared(kind, id, replica, expected: null, out var written)) return Outcome.Again;
@@ -276,7 +276,7 @@ public sealed partial class SyncEngine
             replica.Merge(arrived);
         }
         if (changedHere) TakeInLocal(kind, key, entry, replica, local);
-        var merged = Decoded(replica, kind);
+        var merged = Decoded(replica, kind, key);
         SaveReplica(key, replica);
         Taken(entry, changedHere, local);
 
@@ -477,12 +477,31 @@ public sealed partial class SyncEngine
     }
 
     /// <summary>The document read with the Mac's rules; one this version can't read stops sync to ask.</summary>
-    private JsonObject Decoded(AmDocument document, MacKind kind)
+    private JsonObject Decoded(AmDocument document, MacKind kind, string? key = null)
     {
         var tree = document.Read();
         var decoded = MacDecoder.Shared.Decode(tree, kind.RecordName);
-        return decoded.Value ?? throw new UnreadableException(string.Join("; ", decoded.Errors.Take(3)),
-            tree["name"] is AmScalar { Kind: AmScalarKind.String, Text: { Length: > 0 } name } ? name : null);
+        var name = tree["name"] is AmScalar { Kind: AmScalarKind.String, Text: { Length: > 0 } text } ? text : null;
+        if (decoded.Value is null) throw new UnreadableException(string.Join("; ", decoded.Errors.Take(3)), name);
+        if (key is not null && decoded.UnknownKeys.Count > 0) NoteUnknown(key, name ?? key, decoded.UnknownKeys);
+        return decoded.Value;
+    }
+
+    /// <summary>Which unknown fields each document was last noted for, so the log says it once.</summary>
+    private readonly Dictionary<string, string> unknownNoted = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// A document holds fields this version doesn't know: added by a newer Mac, or left by an older
+    /// one. They aren't brought into the Windows library (it can't hold them), but they stay in the
+    /// shared document, untouched: every Windows edit is made around them.
+    /// </summary>
+    private void NoteUnknown(string key, string name, IReadOnlyList<string> unknown)
+    {
+        var fields = unknown.Select(path => path[(path.LastIndexOf('.') + 1)..]).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        var said = string.Join(",", fields);
+        if (unknownNoted.TryGetValue(key, out var before) && before == said) return;
+        unknownNoted[key] = said;
+        Log.Add(SyncDirection.Note, $"'{name}' has fields this version doesn't know ({string.Join(", ", fields.Take(4))}{(fields.Count > 4 ? ", …" : "")}): a newer Mac added them, or an older one left them. They're kept as they are.");
     }
 
     private string NameOf(string key) =>
