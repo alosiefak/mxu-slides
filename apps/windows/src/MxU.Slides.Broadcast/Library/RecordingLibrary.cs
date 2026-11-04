@@ -128,9 +128,6 @@ public static class RecordingLibrary
         return adopted;
     }
 
-    /// <summary>A recording is anything captured (it has a recorded date) or anything filed under "Recordings".</summary>
-    public static bool IsRecording(MediaItem item) => item.RecordedAt is not null || InSubtree(item.Folder, DefaultFolder);
-
     /// <summary>Copies a library file out to <paramref name="destination"/>, replacing what's there; the copy is never read-only.</summary>
     public static void ExportCopy(string blob, string destination)
     {

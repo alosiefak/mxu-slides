@@ -36,7 +36,7 @@ public static class ScriptureReference
         "Revelation|Rev",
     ];
 
-    internal const string Translations = "NIV|ESV|KJV|NKJV|NLT|NASB|CSB|HCSB|MSG|AMP|NRSV|NET|TPT|CEV|NCV";
+    internal const string Translations = "NIV|ESV|KJV|NKJV|NLT|NASB|CSB|HCSB|MSG|AMP|NRSV|NET|TPT|CEV|NCV|WEB|ASV|RSV|BSB|LSB|NIRV|GNT|NABRE";
 
     // Longest names first, so "Song of Songs" wins over "Song" and "Philemon" over "Phil".
     private static readonly Regex Pattern = BuildPattern();
@@ -111,7 +111,8 @@ public static class ScriptureReference
             return new Split(before, match.Text);
         if (found[0] is { Start: 0 } lead)
         {
-            var rest = line[lead.End..];
+            // "Psalm 46:1 – God is our refuge": the dash may stand apart from the reference.
+            var rest = line[lead.End..].TrimmingWhitespaces();
             var separator = rest.Length > 0 && ":-–—".Contains(rest[0]);
             if (separator)
             {
@@ -121,4 +122,84 @@ public static class ScriptureReference
         }
         return null;
     }
+
+    /// <summary>The verses one reference names, inclusive: "Hebrews 12:27–28 (WEB)" is 27 to 28.</summary>
+    public readonly record struct VerseNumbers(int First, int Last)
+    {
+        public bool Contains(int number) => number >= First && number <= Last;
+    }
+
+    /// <summary>
+    /// The chapter and verses of a single-chapter reference ("1 John 4:8" is "1 John 4", 8–8).
+    /// Null for a whole chapter ("Psalm 23") or a range across chapters ("Mark 5:3-6:1").
+    /// </summary>
+    public static (string Chapter, VerseNumbers Verses)? Verses(string reference)
+    {
+        var match = VersePattern.Match(reference);
+        if (!match.Success || !int.TryParse(match.Groups[2].Value, out var first)) return null;
+        var last = match.Groups[3].Success && int.TryParse(match.Groups[3].Value, out var end) ? end : first;
+        if (last < first) return null;
+        return (match.Groups[1].Value, new VerseNumbers(first, last));
+    }
+
+    private static readonly Regex VersePattern = new(
+        @"^\s*([^:]*?\d+)\s*:\s*(\d+)[a-c]?(?:\s*[-–—]\s*(\d+)[a-c]?)?\s*(?:\(?[A-Z]{2,6}\)?)?\s*$",
+        RegexOptions.CultureInvariant);
+
+    /// <summary>One verse of a pasted passage: its number, or null for words before the first number.</summary>
+    public sealed record Verse(int? Number, string Text)
+    {
+        public string Numbered => Number is { } number ? $"{number} {Text}" : Text;
+    }
+
+    /// <summary>
+    /// A passage cut at the verse numbers its reference names. Only the expected numbers count,
+    /// in order ("after 3 days" in verse 1 stays words), so stray digits never split a verse.
+    /// </summary>
+    public static List<Verse> Verses(string text, VerseNumbers numbered)
+    {
+        var cuts = VerseNumberCuts(text, numbered);
+        if (cuts.Count == 0) return [new Verse(null, text.TrimmingWhitespacesAndNewlines())];
+        var result = new List<Verse>();
+        var head = text[..cuts[0].Start].TrimmingWhitespacesAndNewlines();
+        if (head.Length > 0) result.Add(new Verse(null, head));
+        for (var index = 0; index < cuts.Count; index++)
+        {
+            var end = index + 1 < cuts.Count ? cuts[index + 1].Start : text.Length;
+            var words = text[cuts[index].End..end].TrimmingWhitespacesAndNewlines();
+            result.Add(new Verse(cuts[index].Number, words));
+        }
+        return result;
+    }
+
+    /// <summary>The passage with its verse numbers taken out, and everything else as it was.</summary>
+    public static string RemovingVerseNumbers(string text, VerseNumbers numbered)
+    {
+        var cuts = VerseNumberCuts(text, numbered);
+        for (var index = cuts.Count - 1; index >= 0; index--)
+            text = text.Remove(cuts[index].Start, cuts[index].End - cuts[index].Start);
+        return text;
+    }
+
+    private static List<(int Number, int Start, int End)> VerseNumberCuts(string text, VerseNumbers verses)
+    {
+        var cuts = new List<(int Number, int Start, int End)>();
+        var expected = verses.First;
+        foreach (System.Text.RegularExpressions.Match match in NumberPattern.Matches(text))
+        {
+            if (expected > verses.Last || !int.TryParse(match.Groups[1].Value, out var number)) continue;
+            var leading = text[..match.Index].TrimmingWhitespacesAndNewlines().Length > 0;
+            // A passage pasted from the middle of its first verse starts with that verse's
+            // words and the next number, so the first cut may skip one.
+            if (number == expected || (cuts.Count == 0 && leading && number == expected + 1 && number <= verses.Last))
+            {
+                cuts.Add((number, match.Index, match.Index + match.Length));
+                expected = number + 1;
+            }
+        }
+        return cuts;
+    }
+
+    private static readonly Regex NumberPattern = new(
+        @"(?:^|(?<=\s))(\d{1,3})\s+(?=[^\d\s])", RegexOptions.Multiline | RegexOptions.CultureInvariant);
 }

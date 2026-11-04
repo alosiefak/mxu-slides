@@ -73,15 +73,6 @@ public sealed class RecordingLibraryTests : IDisposable
         Assert.Null(RecordingLibrary.LatestRecording([Item("Backgrounds", 100)], "Recordings"));
 
     [Fact]
-    public void RecordingsAreCapturesOrAnythingUnderRecordings()
-    {
-        Assert.True(RecordingLibrary.IsRecording(Item("Sermons", 100)));
-        Assert.True(RecordingLibrary.IsRecording(Item("Recordings/2026", null)));
-        Assert.False(RecordingLibrary.IsRecording(Item("Recordings Archive", null)));
-        Assert.False(RecordingLibrary.IsRecording(Item(null, null)));
-    }
-
-    [Fact]
     public async Task ExportCopyIsTheSameBytesAndEditable()
     {
         var blob = Path.Combine(scratch, "abc.mp4");
