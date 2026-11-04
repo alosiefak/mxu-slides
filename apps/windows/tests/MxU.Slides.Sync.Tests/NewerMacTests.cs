@@ -8,30 +8,38 @@ using MxU.Slides.Sync.Tests.Fakes;
 namespace MxU.Slides.Sync.Tests;
 
 /// <summary>
-/// A Mac newer than this build: MxU's upstream "make slides from notes" (#13) and the release
-/// before it took the shared schema from 149 to 161. Every new field is optional (a slide object's
-/// <c>photoSpot</c>, a cue's <c>scaleMode</c> and <c>endFade</c>, a video's <c>marks</c>…), and some
-/// enums gained cases (MediaScaleMode's <c>scaleAndBlur</c>). These tests write documents the way
-/// such a Mac does and check Windows never drops what it doesn't know, and never guesses at a
+/// A Mac newer than this build. The shared schema grows: MxU's "make slides from notes" release
+/// (#13) took it from 149 to 161, adding optional fields and enum cases. Whatever version this
+/// build's models are, a Mac can always be one ahead, so these tests play a Mac on schema
+/// <see cref="FutureVersion"/> (one above this build's) that writes fields and an enum case no
+/// real schema will ever have. Windows must never drop what it doesn't know, and never guess at a
 /// value it can't read.
 /// </summary>
 public sealed class NewerMacTests
 {
     private static readonly MacKind Songs = Samples.Presentations;
 
-    /// <summary>A song as a schema-161 Mac writes it: a background cue with scaleMode and endFade, and a photo spot on slide 2.</summary>
+    /// <summary>The schema version the pretend Mac is on: always one above this build's.</summary>
+    private static readonly int FutureVersion = MacSchema.Shared.Version + 1;
+
+    /// <summary>A field and an enum case no schema will ever have (checked by <see cref="TheFutureNamesAreNotInThisSchema"/>).</summary>
+    private const string FutureField = "windowsTestFutureField";
+    private const string FutureStyle = "windowsTestFutureStyle";
+    private const string FutureCase = "windowsTestFutureCase";
+
+    /// <summary>A song as that newer Mac writes it: new fields on the background cue and on slide 2's text, one a whole map.</summary>
     private static AmDocument NewerMacSong()
     {
         var song = Samples.Song();
         song.Background = new CueMedia { MediaId = "picture", Loops = true };
         var document = MacSimulator.Create(song, Songs);
         var root = AmPath.Root;
+        var spot = root.Then("slides").Then(1).Then("objects").Then(0);
         document.Apply(new AmEdit()
-            .Put(root.Then("background"), "scaleMode", AmWrite.String("fit"))
-            .Put(root.Then("background"), "endFade", AmWrite.String("black"))
-            .Put(root.Then("slides").Then(1).Then("objects").Then(0), "photoSpot", AmWrite.Bool(true))
-            .PutObject(root.Then("slides").Then(1).Then("objects").Then(0), "futureStyle", AmObjectKind.Map)
-            .Put(root.Then("slides").Then(1).Then("objects").Then(0).Then("futureStyle"), "depth", AmWrite.Double(0.25)), null, DateTimeOffset.UtcNow);
+            .Put(root.Then("background"), FutureField, AmWrite.String($"from schema {FutureVersion}"))
+            .Put(spot, FutureField, AmWrite.Bool(true))
+            .PutObject(spot, FutureStyle, AmObjectKind.Map)
+            .Put(spot.Then(FutureStyle), "depth", AmWrite.Double(0.25)), null, DateTimeOffset.UtcNow);
         return document;
     }
 
@@ -43,12 +51,21 @@ public sealed class NewerMacTests
 
     private static void AssertNewerFieldsKept(AmMap root)
     {
-        var background = (AmMap)root["background"]!;
-        Assert.Equal(AmScalar.Of("fit"), background["scaleMode"]);
-        Assert.Equal(AmScalar.Of("black"), background["endFade"]);
+        Assert.Equal(AmScalar.Of($"from schema {FutureVersion}"), ((AmMap)root["background"]!)[FutureField]);
         var spot = SlideObject(root, "slide-2");
-        Assert.Equal(AmScalar.Of(true), spot["photoSpot"]);
-        Assert.Equal(AmScalar.Of(0.25), ((AmMap)spot["futureStyle"]!)["depth"]);
+        Assert.Equal(AmScalar.Of(true), spot[FutureField]);
+        Assert.Equal(AmScalar.Of(0.25), ((AmMap)spot[FutureStyle]!)["depth"]);
+    }
+
+    [Fact]
+    public void TheFutureNamesAreNotInThisSchema()
+    {
+        foreach (var record in MacSchema.Shared.Records.Values)
+        {
+            Assert.Null(record.Field(FutureField));
+            Assert.Null(record.Field(FutureStyle));
+        }
+        Assert.All(MacSchema.Shared.Enums.Values, e => Assert.Null(e.Decode(FutureCase)));
     }
 
     [Fact]
@@ -57,8 +74,9 @@ public sealed class NewerMacTests
         using var document = NewerMacSong();
         var decoded = MacDocuments.Shared.Decode(document, Songs);
         Assert.True(decoded.Ok);
-        Assert.Contains("background.endFade", decoded.UnknownKeys);
-        Assert.Contains("slides[1].objects[0].photoSpot", decoded.UnknownKeys);
+        Assert.Contains($"background.{FutureField}", decoded.UnknownKeys);
+        Assert.Contains($"slides[1].objects[0].{FutureField}", decoded.UnknownKeys);
+        Assert.Contains($"slides[1].objects[0].{FutureStyle}", decoded.UnknownKeys);
         Assert.True(MxuJson.StructurallyEqual(MacSimulator.Read<Presentation>(document, Songs).Slides, Samples.Song().Slides));
     }
 
@@ -92,7 +110,7 @@ public sealed class NewerMacTests
         using (var mac = NewerMacSong()) fixture.MacSave(mac, Songs, "song");
         fixture.Sync();
         Assert.NotNull(fixture.Store.Get<Presentation>("song"));
-        Assert.Contains(fixture.Engine.Log.Entries, e => e.Text.Contains("photoSpot") && e.Text.Contains("kept as they are"));
+        Assert.Contains(fixture.Engine.Log.Entries, e => e.Text.Contains(FutureField) && e.Text.Contains("kept as they are"));
 
         fixture.WindowsEdit<Presentation>("song", s =>
         {
@@ -136,17 +154,17 @@ public sealed class NewerMacTests
     [Fact]
     public void AnEnumCaseANewerMacAddedStopsSyncAndIsNeverWritten()
     {
-        // MediaScaleMode gained "scaleAndBlur": this version can't hold it, so it can't guess.
+        // A newer Mac's MediaScaleMode case: this version can't hold it, so it can't guess.
         using var fixture = new SyncFixture();
         using (var mac = MacSimulator.Create(Samples.Song(), Songs))
         {
-            mac.Apply(new AmEdit().Put(AmPath.Root.Then("slides").Then(0).Then("objects").Then(0), "mediaScaleMode", AmWrite.String("scaleAndBlur")), null, DateTimeOffset.UtcNow);
+            mac.Apply(new AmEdit().Put(AmPath.Root.Then("slides").Then(0).Then("objects").Then(0), "mediaScaleMode", AmWrite.String(FutureCase)), null, DateTimeOffset.UtcNow);
             fixture.MacSave(mac, Songs, "song");
         }
         var before = fixture.MacBytes(Songs, "song");
         fixture.Sync();
         Assert.Equal(AttentionKind.Unreadable, fixture.Engine.Attention?.Kind);
-        Assert.Contains("scaleAndBlur", fixture.Engine.Attention!.Items.Single().Reason);
+        Assert.Contains(FutureCase, fixture.Engine.Attention!.Items.Single().Reason);
         Assert.Equal("Amazing Grace", fixture.Engine.Attention.Items.Single().Name);
         Assert.Null(fixture.Store.Get<Presentation>("song"));
         Assert.Equal(before, fixture.MacBytes(Songs, "song"));

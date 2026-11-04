@@ -321,7 +321,7 @@ this way at the same time (they'd share one `index.sqlite`).
 
 ## 8. Tests
 
-`tests/MxU.Slides.Sync.Tests` (95 tests):
+`tests/MxU.Slides.Sync.Tests` (96 tests):
 
 - `MacFormatTests`: the DLL is Automerge 0.7.2; the embedded schema is the models' schema; the
   Mac's own fixtures (its `richDeck`, the welcome deck, every starter theme, a service) round-trip;
@@ -339,9 +339,11 @@ this way at the same time (they'd share one `index.sqlite`).
   winning, Windows-only documents put back, many held), a folder going offline, a document from a
   newer Mac, a newer backup format, NaN never sent, an unknown enum never written, a conflict copy
   merged, media both ways.
-- `NewerMacTests`: documents as a schema-161 Mac writes them: its new fields are skipped, kept
-  through Windows edits, moves and the first sync, and reported; a new enum case stops sync and is
-  never written; notes are left as they are.
+- `NewerMacTests`: documents as a Mac one schema version ahead of this build writes them, with
+  made-up fields and an enum case no schema will ever have (`windowsTestFutureField`,
+  `windowsTestFutureCase`), so the tests hold whatever version the models are: the new fields are
+  skipped, kept through Windows edits, moves and the first sync, and reported; the new enum case
+  stops sync and is never written; notes are left as they are.
 - `Fakes/MacSimulator.cs` plays the Mac: it writes documents the way automerge-swift's encoder
   does, written separately from the app's encoder from the Swift source.
 

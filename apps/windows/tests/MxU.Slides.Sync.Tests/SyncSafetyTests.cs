@@ -194,7 +194,7 @@ public sealed class SyncSafetyTests
         // A newer Mac's song with a kind this version doesn't know.
         using (var newer = MacSimulator.Create(Samples.Song("medley", "Medley"), Songs))
         {
-            newer.Apply(new AmEdit().Put(AmPath.Root, "presentationKind", AmWrite.String("medley")), null, DateTimeOffset.UtcNow);
+            newer.Apply(new AmEdit().Put(AmPath.Root, "presentationKind", AmWrite.String("windowsTestFutureCase")), null, DateTimeOffset.UtcNow);
             fixture.MacSave(newer, Songs, "medley");
         }
         var before = fixture.MacBytes(Songs, "medley");
@@ -204,7 +204,7 @@ public sealed class SyncSafetyTests
         Assert.Equal(SyncState.NeedsAttention, fixture.Engine.Status.State);
         var asked = fixture.Engine.Attention!;
         Assert.Equal(AttentionKind.Unreadable, asked.Kind);
-        Assert.Contains("medley", Assert.Single(asked.Items).Reason);
+        Assert.Contains("windowsTestFutureCase", Assert.Single(asked.Items).Reason);
         Assert.Null(fixture.Store.Get<Presentation>("medley"));
         Assert.Equal(before, fixture.MacBytes(Songs, "medley"));
 
@@ -258,13 +258,13 @@ public sealed class SyncSafetyTests
     {
         // However a value got into a Windows document, the writer refuses an enum case the Mac doesn't know.
         var json = MacDocuments.ToJson(Samples.Song());
-        json["presentationKind"] = "medley";
+        json["presentationKind"] = "windowsTestFutureCase";
         Assert.Throws<SchemaViolationException>(() => MacDocuments.Shared.Create(json, Songs, DateTimeOffset.UtcNow));
         using var document = MacSimulator.Create(Samples.Song(), Songs);
         var heads = document.Heads;
         var slides = (JsonArray)json["slides"]!;
         json["presentationKind"] = "song";
-        ((JsonObject)slides[0]!)["transition"] = new JsonObject { ["transitionKind"] = "push" };
+        ((JsonObject)slides[0]!)["transition"] = new JsonObject { ["transitionKind"] = "windowsTestFutureCase" };
         Assert.Throws<SchemaViolationException>(() => MacDocuments.Shared.Edit(document, json, Songs, DateTimeOffset.UtcNow));
         Assert.Equal(heads, document.Heads);
     }
