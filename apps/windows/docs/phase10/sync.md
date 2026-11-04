@@ -169,7 +169,12 @@ a null, so a bug on the C# side can't put a value into a document that the Mac w
   (the longest run both versions share, then real inserts and deletes), lists of values keep the
   values both share. A change to slide 3 touches only slide 3, so a Mac's change to slide 5 at
   the same time survives the merge. Keys the schema doesn't know (left by an older Mac, or added
-  by a newer one) are never touched.
+  by a newer one) are never touched. One field is the exception, as it is on the Mac: a song's
+  `arrangements` is written as a whole new list when it changes (upstream `TypedDocument.swift`,
+  `wholeValueKeys`, from the "make slides from notes" release), so two computers reordering an
+  arrangement at once end up with one computer's order, never a mixture with a section listed
+  twice. Each arrangement that was there before goes into the new list as a copy of itself, so
+  fields a newer Mac added to it are kept.
 - `SchemaCheck` refuses a document that isn't exactly the schema: an unknown field, an unknown
   enum value, a missing field, NaN.
 - `MacDocuments` puts it together. **Every write** is checked against the schema, made, then read
@@ -316,7 +321,7 @@ this way at the same time (they'd share one `index.sqlite`).
 
 ## 8. Tests
 
-`tests/MxU.Slides.Sync.Tests` (92 tests):
+`tests/MxU.Slides.Sync.Tests` (95 tests):
 
 - `MacFormatTests`: the DLL is Automerge 0.7.2; the embedded schema is the models' schema; the
   Mac's own fixtures (its `richDeck`, the welcome deck, every starter theme, a service) round-trip;
@@ -357,7 +362,7 @@ Ported line by line (add to "Ported line by line"):
 | `automerge-swift/Sources/Automerge/Codable/Encoding/*` (what `AutomergeEncoder` writes: maps, lists, string values, Int, F64, booleans, enum names) | `MxU.Slides.Sync/Format/MacEncoder.cs`; the test copy that also writes by position, `tests/MxU.Slides.Sync.Tests/Fakes/MacSimulator.cs` |
 | `PresenterCore/…/Documents/DocumentEntity.swift` (`DocumentKind`, `directoryName`), `Library/SyncScope.swift` (`scope(for:)`, `entityType(for:)`) | `MxU.Slides.Sync/Format/MacKinds.cs` |
 | `PresenterCore/…/Documents/DocumentStore.swift` (`url`, `save`'s merge-before-write, `ids(of:)`), `MediaImport/BlobStore.swift` (blob names) | `MxU.Slides.Sync/Engine/SharedFolder.cs`, `SyncEngine.Documents.cs` (`WriteShared`), `BlobMirror.cs` |
-| `PresenterCore/…/Documents/TypedDocument.swift` (`init(value)`: one change, "create"; `updateSlideList`'s inserts, deletes and moves) | `MxU.Slides.Sync/Format/MacDocuments.cs`, `DocumentDiff.cs` |
+| `PresenterCore/…/Documents/TypedDocument.swift` (`init(value)`: one change, "create"; `updateSlideList`'s inserts, deletes and moves; upstream's `wholeValueKeys`/`encodeRootField`, not yet merged here) | `MxU.Slides.Sync/Format/MacDocuments.cs`, `DocumentDiff.cs` (`WholeValueKeys`, `WriteWhole`) |
 | `PresenterCore/…/Library/SyncLedger.swift` (`hex(heads)`), `SyncScope.swift` (`SyncReconcileLogic.afterTombstone`: an edit beats a deletion) | `MxU.Slides.Sync/Automerge/AmDocument.cs` (`DocHeads`), `Engine/SyncEngine.Documents.cs` |
 | `PresenterCore/…/Library/BackupBundle.swift` (`formatVersion`, the layout) | `MxU.Slides.Sync/Engine/SharedFolder.cs` (`BackupFormatVersion`) |
 

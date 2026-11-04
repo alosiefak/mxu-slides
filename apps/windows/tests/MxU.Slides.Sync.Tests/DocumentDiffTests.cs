@@ -68,10 +68,35 @@ public sealed class DocumentDiffTests
     [Fact]
     public void AListOfValuesKeepsWhatBothShare()
     {
-        var song = Samples.Song();
-        // v1, c, v2, c  →  v1, c, c, v2: one value moved, so one deletion and one insertion.
-        var ops = Ops(song, Edited(song, s => s.Arrangements![0].SectionIds = ["v1", "c", "c", "v2"]));
+        var song = Edited(Samples.Song(), s => s.Slides[0].AnimationOrder = ["a", "b", "c", "d"]);
+        // a, b, c, d  →  a, c, b, d: one value moved, so one deletion and one insertion.
+        var ops = Ops(song, Edited(song, s => s.Slides[0].AnimationOrder = ["a", "c", "b", "d"]));
         Assert.Equal(2, ops.Split("\"o\"").Length - 1);
+    }
+
+    [Fact]
+    public void ArrangementsAreWrittenWholeAsTheMacWritesThem()
+    {
+        // Upstream TypedDocument.swift's wholeValueKeys: a changed "arrangements" is a new list.
+        var song = Samples.Song();
+        var ops = Ops(song, Edited(song, s => s.Arrangements![0].SectionIds = ["v1", "c", "c", "v2"]));
+        Assert.StartsWith("""[{"o":"putObj","p":[],"k":"arrangements","t":"list"}""", ops);
+        Assert.Equal("[]", Ops(song, Edited(song, s => s.Name = s.Name)));
+        Assert.DoesNotContain("arrangements", Ops(song, Edited(song, s => s.Name = "Renamed")));
+    }
+
+    [Fact]
+    public void AnArrangementWrittenWholeKeepsFieldsANewerMacAdded()
+    {
+        using var document = MacSimulator.Create(Samples.Song(), Kind);
+        document.Apply(new AmEdit().Put(AmPath.Root.Then("arrangements").Then(0), "futureColor", AmWrite.String("#FF0000FF")), null, DateTimeOffset.UtcNow);
+        var song = MacSimulator.Read<Presentation>(document, Kind);
+        song.Arrangements![0].SectionIds = ["c", "v1"];
+        song.Arrangements.Add(new Arrangement { Id = "a2", Name = "Short", SectionIds = ["c"] });
+        MacDocuments.Shared.Edit(document, MacDocuments.ToJson(song), Kind, DateTimeOffset.UtcNow);
+        Assert.True(MxuJson.StructurallyEqual(song, MacSimulator.Read<Presentation>(document, Kind)));
+        var first = (AmMap)((AmList)document.Read()["arrangements"]!).Items[0];
+        Assert.Equal(AmScalar.Of("#FF0000FF"), first["futureColor"]);
     }
 
     [Fact]

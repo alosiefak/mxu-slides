@@ -60,9 +60,53 @@ public sealed class DocumentDiff(MacSchema schema)
             {
                 encoder.WriteAtKey(edit, path, field.Name, field.Type, wanted);
             }
+            else if (ReferenceEquals(path, AmPath.Root) && WholeValueKeys.Contains(field.Name) && have is AmList whole && wanted is JsonArray array
+                     && field.Type is MacListOf { Element: MacNamed named } && schema.Records.TryGetValue(named.Name, out var element))
+            {
+                var trial = new AmEdit();
+                DiffAtKey(trial, path, field.Name, have, wanted, field.Type);
+                if (trial.Count > 0) WriteWhole(edit, field.Name, whole, array, element);
+            }
             else
             {
                 DiffAtKey(edit, path, field.Name, have!, wanted, field.Type);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Root fields the Mac writes as one whole value when they change: it deletes the old list
+    /// and writes a new one (upstream TypedDocument.swift, <c>wholeValueKeys</c>, from MxU's "make
+    /// slides from notes" release). Two computers changing a song's arrangements at once then
+    /// get one computer's arrangements, never a mixture of both (a section listed twice).
+    /// </summary>
+    internal static readonly IReadOnlySet<string> WholeValueKeys = new HashSet<string>(StringComparer.Ordinal) { "arrangements" };
+
+    /// <summary>
+    /// Writes a whole-value field as a new list. Each record that was there before (matched by id)
+    /// goes in as a copy of itself first, every key included, then changed to its new version, so
+    /// fields only a newer Mac knows are kept.
+    /// </summary>
+    private void WriteWhole(AmEdit edit, string key, AmList old, JsonArray target, MacRecord element)
+    {
+        var before = new Dictionary<string, AmMap>(StringComparer.Ordinal);
+        foreach (var item in old.Items)
+            if (item is AmMap map && map["id"] is AmScalar { Kind: AmScalarKind.String, Text: { } id }) before.TryAdd(id, map);
+        var list = AmPath.Root.Then(key);
+        edit.PutObject(AmPath.Root, key, AmObjectKind.List);
+        for (var j = 0; j < target.Count; j++)
+        {
+            var wanted = (JsonObject)target[j]!;
+            edit.InsertObject(list, j, AmObjectKind.Map);
+            if (JsonRead.String(wanted["id"]) is { } id && before.TryGetValue(id, out var was))
+            {
+                if (!AmCopy.Entries(edit, list.Then(j), was))
+                    throw new MacFormatException($"{key} holds values Windows can't copy exactly; it wasn't rewritten, so nothing of it is lost");
+                DiffRecord(edit, list.Then(j), was, wanted, element);
+            }
+            else
+            {
+                encoder.WriteRecordFields(edit, list.Then(j), wanted, element);
             }
         }
     }

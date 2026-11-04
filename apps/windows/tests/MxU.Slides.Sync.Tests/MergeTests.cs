@@ -117,14 +117,22 @@ public sealed class MergeTests
     }
 
     [Fact]
-    public void AnArrangementReorderedOnBothSidesStaysReadable()
+    public void AnArrangementChangedOnBothSidesIsOneSidesNeverAMixture()
     {
+        // Both computers write "arrangements" whole (upstream TypedDocument.swift's wholeValueKeys,
+        // played here by deleting and re-encoding it, as that Mac does): one version wins everywhere.
         var song = Samples.Song();
+        string[] mac = ["c", "v1", "c", "v2"];
+        string[] windows = ["v1", "c", "v2", "c", "c"];
         var merged = Merge(song,
-            mac => MacSimulator.Update(mac, Copy(song, s => s.Arrangements![0].SectionIds = ["c", "v1", "c", "v2"]), Kind),
-            Copy(song, s => s.Arrangements![0].SectionIds.Add("c")));
-        Assert.NotEmpty(merged.Arrangements![0].SectionIds);
-        Assert.All(merged.Arrangements[0].SectionIds, id => Assert.Contains(id, new[] { "v1", "c", "v2" }));
+            document =>
+            {
+                document.Apply(new AmEdit().Delete(AmPath.Root, "arrangements"), null, DateTimeOffset.UtcNow);
+                MacSimulator.Update(document, Copy(song, s => s.Arrangements![0].SectionIds = [.. mac]), Kind);
+            },
+            Copy(song, s => s.Arrangements![0].SectionIds = [.. windows]));
+        var result = merged.Arrangements![0].SectionIds;
+        Assert.True(result.SequenceEqual(mac) || result.SequenceEqual(windows), string.Join(",", result));
     }
 
     [Fact]
