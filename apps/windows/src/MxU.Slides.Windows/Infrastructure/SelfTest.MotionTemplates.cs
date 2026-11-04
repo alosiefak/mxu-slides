@@ -273,6 +273,9 @@ public sealed partial class SelfTest
         var id = window.HoveredMotionPreview;
         var frames = id is null ? 0 : await Until(() => model.Media.MotionFramesShown(id), n => n >= 5, 8000);
         Check("pointing at its tile plays it there", frames >= 5);
+        if (frames < 5)
+            report.AppendLine($"NOTE  bin preview {id ?? "(none)"}: player {(id is null ? null : model.MotionPlayers[id]) is { } p ? $"version {p.Version}, drawn {p.FramesDrawn}, finished {p.IsFinished}, failure {p.Failure ?? "none"}" : "not playing"}; "
+                + $"screen copies {frames}; tile shows {(tile.Preview.AllItems.Select(i => i.Content).OfType<ItemContent.Media>().FirstOrDefault()?.Id ?? "no picture")}");
         await Delay(300);
         Save(window, "mt-10-bin-hover");
         window.HoverOverlayTile(null, pinned: true);

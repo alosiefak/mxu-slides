@@ -64,7 +64,35 @@ public sealed class LottieFrame : IDisposable
 
     internal SKCanvas Canvas => surface.Canvas;
 
-    public void Dispose() => surface.Dispose();
+    // A surface for each horizontal band, over the same pixels, so several threads can draw a band each.
+    private readonly Dictionary<(int Top, int Height), SKSurface> bands = [];
+    private readonly Lock bandGate = new();
+
+    /// <summary>A canvas drawing only rows <paramref name="top"/> to <paramref name="top"/> + <paramref name="height"/> of this picture (its own surface over those rows).</summary>
+    internal SKCanvas Band(int top, int height)
+    {
+        lock (bandGate)
+        {
+            if (!bands.TryGetValue((top, height), out var band))
+            {
+                var info = new SKImageInfo(Width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+                band = SKSurface.Create(info, Marshal.UnsafeAddrOfPinnedArrayElement(Pixels, top * Stride), Stride)
+                       ?? throw new InvalidOperationException("Skia can't make a band of the picture");
+                bands[(top, height)] = band;
+            }
+            return band.Canvas;
+        }
+    }
+
+    public void Dispose()
+    {
+        surface.Dispose();
+        lock (bandGate)
+        {
+            foreach (var band in bands.Values) band.Dispose();
+            bands.Clear();
+        }
+    }
 }
 
 /// <summary>
@@ -158,6 +186,23 @@ public sealed class LottieRenderer : IDisposable
         var canvas = target.Canvas;
         canvas.Clear(SKColors.Transparent);
         DrawCurrent(canvas, new SKRect(0, 0, target.Width, target.Height));
+        canvas.Flush();
+    }
+
+    /// <summary>
+    /// Draws only rows <paramref name="top"/> to <paramref name="top"/> + <paramref name="height"/> of the
+    /// frame last moved to. Skia skips everything outside the band, so a band costs about its share
+    /// of the frame. Each band has its own surface over the picture's memory: different renderers
+    /// can draw different bands of one picture at the same time.
+    /// </summary>
+    public void RenderBand(LottieFrame target, int top, int height)
+    {
+        var canvas = target.Band(top, height);
+        canvas.Clear(SKColors.Transparent);
+        canvas.Save();
+        canvas.Translate(0, -top);
+        DrawCurrent(canvas, new SKRect(0, 0, target.Width, target.Height));
+        canvas.Restore();
         canvas.Flush();
     }
 

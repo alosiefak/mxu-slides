@@ -77,6 +77,33 @@ public sealed class MotionPlayersTests
     }
 
     [Fact]
+    public void ATemplateTooSlowForOneThreadIsDrawnInBandsAndLooksTheSame()
+    {
+        // Any frame counts as slow here, so the switch doesn't depend on this PC's speed.
+        using var players = Players();
+        players.BandAfter = TimeSpan.Zero;
+        var card = StarterMotionTemplates.TitleCard();
+        var motion = players.Start("motion::bg", card, MotionTimeline.For(card, MotionPlayback.Loop), 960, 540, upAt: 0);
+        for (var i = 1; i <= 4; i++) players.DrawNow(i / 30.0);
+        Assert.True(motion.Bands > 1, $"bands {motion.Bands}");
+        players.DrawNow(2.5);
+        byte[]? shown = null;
+        var version = 0;
+        players.CopyLatest("motion::bg", ref version, (f, _) => shown = [.. f.Pixels]);
+        using var single = new LottieRenderer(card, LottieRendererTests.ShippedFonts);
+        using var expected = new LottieFrame(960, 540);
+        single.Render(motion.ShownFrame, expected);
+        // The same picture, give or take a level here and there where a soft gradient meets a band's edge.
+        long difference = 0;
+        for (var i = 0; i < shown!.Length; i++) difference += Math.Abs(shown[i] - expected.Pixels[i]);
+        Assert.True(difference < shown.Length / 100, $"difference {difference}");
+        // A small template is never banded, however slow.
+        var strap = players.Start("motion::small", StarterMotionTemplates.NameStrap(), Timeline(), 480, 270, upAt: 0);
+        for (var i = 1; i <= 6; i++) players.DrawNow(i / 30.0);
+        Assert.Equal(1, strap.Bands);
+    }
+
+    [Fact]
     public void HoldingStillMakesNoNewPictures()
     {
         using var players = Players();

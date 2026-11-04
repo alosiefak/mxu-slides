@@ -38,7 +38,8 @@ public sealed record MotionExportOptions(int Width = 1920, int Height = 1080, in
 /// Renders a template, with its fields filled in, to an H.264 MP4 through the app's own encoder:
 /// the motion backgrounds' writer (Broadcast/Media/RenderedVideoWriter.cs), the same way
 /// Broadcast/Library/MotionBackgroundMaker.cs makes a background. Each frame is drawn by Skottie
-/// at its exact moment (frame i at i ÷ frame rate), put over the chosen colour and turned into
+/// at its exact moment (frame i at i ÷ frame rate; in bands on a crew of threads, for a big
+/// picture: <see cref="BandedRenderer"/>), put over the chosen colour and turned into
 /// NV12 (<see cref="Nv12Over"/>), while the encoder thread compresses the frame before: two
 /// threads at once, passing a few reusable pictures between them, so memory stays flat.
 /// <para>
@@ -80,7 +81,9 @@ public static class LottieVideoMaker
         LottieRenderer renderer;
         try { renderer = new LottieRenderer(document, fonts); }
         catch (LottieFormatException e) { throw new IOException(e.Message, e); }
-        using var _ = renderer;
+        using var owned = renderer;
+        // A big picture is drawn in bands on the crew too (a full-screen template can take tens of milliseconds a frame on one thread).
+        using var banded = width * height >= 640 * 360 ? new BandedRenderer(document, fonts, crew) : null;
         using var drawn = new LottieFrame(width, height);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var free = new BlockingCollection<byte[]>();
@@ -131,7 +134,15 @@ public static class LottieVideoMaker
                 for (var i = 0; i < frames.Count; i++)
                 {
                     var picture = free.Take(stop.Token);
-                    renderer.Render(frames[i], drawn);
+                    if (banded is not null)
+                    {
+                        banded.Seek(frames[i], width, height, out _);
+                        banded.Render(frames[i], drawn);
+                    }
+                    else
+                    {
+                        renderer.Render(frames[i], drawn);
+                    }
                     Nv12Over.Convert(drawn.Pixels, width, height, drawn.Stride, background, picture, crew);
                     ready.Add((picture, i), stop.Token);
                 }

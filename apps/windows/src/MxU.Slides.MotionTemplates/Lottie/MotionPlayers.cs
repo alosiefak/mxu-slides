@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MxU.Slides.Core.Motion;
 using MxU.Slides.Core.MotionTemplates;
 using MxU.Slides.Core.Scene;
 
@@ -76,10 +77,15 @@ public sealed class LiveMotion
     /// <summary>Why it stopped drawing, if drawing failed.</summary>
     public string? Failure { get; internal set; }
 
+    /// <summary>How many bands it's drawn in: 1, or several threads' worth once one core was too slow for it.</summary>
+    public int Bands => Banded?.Bands ?? 1;
+
     internal readonly Lock Gate = new();
     internal LottieFrame Front;
     internal LottieFrame Back;
     internal LottieRenderer? Renderer;
+    internal BandedRenderer? Banded;
+    internal int SlowFrames;
     internal bool Redraw = true;
     internal bool FinishedRaised;
     private LottieDocument document_;
@@ -159,6 +165,8 @@ public sealed class LiveMotion
         {
             Renderer?.Dispose();
             Renderer = null;
+            Banded?.Dispose();
+            Banded = null;
             Front.Dispose();
             Back.Dispose();
         }
@@ -181,6 +189,12 @@ public sealed class LiveMotion
 /// <b>Holding costs nothing.</b> A frame the same as the last one isn't drawn again, so a lower
 /// third holding still uses no time at all until it's taken down.
 /// </para>
+/// <para>
+/// <b>Heavy templates share the work.</b> A lower third takes a millisecond or two a frame at 1080p;
+/// a full-screen background of big soft glows can take fifty, too slow for a smooth picture. A
+/// template that takes longer than <see cref="BandAfter"/> for a few frames running is drawn from
+/// then on in bands, on a small crew of threads (<see cref="BandedRenderer"/>).
+/// </para>
 /// </summary>
 public sealed class MotionPlayers : IDisposable
 {
@@ -192,6 +206,13 @@ public sealed class MotionPlayers : IDisposable
     private readonly Thread thread;
     private double requestedFor = double.NaN;
     private volatile bool disposed;
+    private RenderCrew? crew;
+
+    /// <summary>How long a frame may take on one thread before the template is drawn in bands (three such frames in a row). A 60 Hz screen shows a picture every 16.7 ms.</summary>
+    public TimeSpan BandAfter { get; set; } = TimeSpan.FromMilliseconds(8);
+
+    // Threads of its own for drawing bands, at normal priority: this is the live show. Made the first time a template needs it.
+    private RenderCrew Crew => crew ??= new RenderCrew("Motion template bands", Math.Clamp(Environment.ProcessorCount / 2 - 1, 1, 3), ThreadPriority.Normal);
 
     /// <param name="fonts">Fonts for templates that use one Windows hasn't got.</param>
     /// <param name="clock">The show clock (default <see cref="ShowState.HostClock"/>); the tests give their own.</param>
@@ -345,11 +366,21 @@ public sealed class MotionPlayers : IDisposable
     {
         if (motion.TakePending() is { } changed)
         {
+            // New field values: a new animation, drawn the same way as before (in bands if it was).
             motion.Renderer?.Dispose();
-            motion.Renderer = new LottieRenderer(changed, fonts);
+            motion.Renderer = null;
+            if (motion.Banded is { } old)
+            {
+                old.Dispose();
+                motion.Banded = new BandedRenderer(changed, fonts, Crew);
+            }
+            else
+            {
+                motion.Renderer = new LottieRenderer(changed, fonts);
+            }
             motion.Redraw = true;
         }
-        motion.Renderer ??= new LottieRenderer(motion.Document, fonts);
+        if (motion.Banded is null) motion.Renderer ??= new LottieRenderer(motion.Document, fonts);
         var downAt = motion.DownAt;
         var (frame, finished) = motion.Timeline.FrameAt(at - motion.UpAt, downAt is { } d ? at - d : null);
         if (finished)
@@ -364,11 +395,25 @@ public sealed class MotionPlayers : IDisposable
         if (!motion.Redraw && frame == motion.ShownFrame) return;
         var started = Stopwatch.GetTimestamp();
         // Nothing moved since the last picture (a lower third holding still): no new picture needed.
-        if (!motion.Renderer.Seek(frame, motion.Width, motion.Height, out var region) && !motion.Redraw) return;
+        var moved = motion.Banded is { } bands
+            ? bands.Seek(frame, motion.Width, motion.Height, out var region)
+            : motion.Renderer!.Seek(frame, motion.Width, motion.Height, out region);
+        if (!moved && !motion.Redraw) return;
         if (motion.Redraw) region = new PixelRect(0, 0, motion.Width, motion.Height);
         motion.Redraw = false;
-        motion.Renderer.RenderCurrent(motion.Back);
-        motion.Publish(frame, Stopwatch.GetElapsedTime(started).TotalMilliseconds, region);
+        if (motion.Banded is { } banded) banded.Render(frame, motion.Back);
+        else motion.Renderer!.RenderCurrent(motion.Back);
+        var took = Stopwatch.GetElapsedTime(started);
+        motion.Publish(frame, took.TotalMilliseconds, region);
+
+        // Too slow for one thread, three frames running: draw it in bands from the next frame.
+        if (motion.Banded is not null || motion.Width * motion.Height < 640 * 360) return;
+        motion.SlowFrames = took > BandAfter ? motion.SlowFrames + 1 : 0;
+        if (motion.SlowFrames < 3) return;
+        motion.Banded = new BandedRenderer(motion.Document, fonts, Crew);
+        motion.Renderer?.Dispose();
+        motion.Renderer = null;
+        motion.Redraw = true;
     }
 
     public void Dispose()
@@ -379,6 +424,7 @@ public sealed class MotionPlayers : IDisposable
         if (thread.IsAlive) thread.Join(TimeSpan.FromSeconds(2));
         foreach (var motion in Playing) lock (drawing) motion.Dispose();
         lock (gate) playing.Clear();
+        crew?.Dispose();
         wake.Dispose();
     }
 }
