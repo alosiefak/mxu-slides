@@ -1,0 +1,2 @@
+# Cargo build output (tools/build-automerge.ps1 copies the DLL into src/MxU.Slides.Sync/Native).
+*/target/
