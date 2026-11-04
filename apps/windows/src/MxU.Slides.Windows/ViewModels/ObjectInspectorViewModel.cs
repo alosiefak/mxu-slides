@@ -364,6 +364,9 @@ public sealed partial class ObjectInspectorViewModel : ObservableObject
     /// <summary>True for a text box the operator types into (it appears as a field in the bin).</summary>
     public bool IsTyped => o.TextLink is null;
 
+    /// <summary>Whether the "Shows" picker is in the panel (the stage layout editor has its own, with every source's settings).</summary>
+    public bool ShowsTextSource { get; init; } = true;
+
     // MARK: Effects (Views/EffectsPanel.cs)
 
     /// <summary>Where saved effect presets are kept (the library); null offers only the recommended ones.</summary>

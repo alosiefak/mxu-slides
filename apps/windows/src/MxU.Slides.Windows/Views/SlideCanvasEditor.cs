@@ -92,6 +92,18 @@ public sealed class SlideCanvasEditor : Grid
     /// </summary>
     public Func<Slide, RenderScene>? SceneBuilder { get; set; }
 
+    /// <summary>
+    /// More frames to snap to while dragging, besides the canvas and the other objects: the stage
+    /// layout editor's safe area. Null (the slide editor) adds none.
+    /// </summary>
+    public Func<IEnumerable<SceneRect>>? SnapTargets { get; set; }
+
+    /// <summary>
+    /// Draws guides under the selection (the stage layout editor's safe margin), given a way to turn a
+    /// canvas rectangle into the view's. Null draws nothing.
+    /// </summary>
+    public Action<DrawingContext, Func<SceneRect, Rect>>? Decorate { get; set; }
+
     /// <summary>True while <see cref="ShowPreview"/> is playing an animated picture; selection is hidden meanwhile.</summary>
     public bool IsPreviewing { get; private set; }
 
@@ -257,7 +269,7 @@ public sealed class SlideCanvasEditor : Grid
                 if (!moved && Math.Abs(delta.Dx) < 2 && Math.Abs(delta.Dy) < 2) return;
                 moved = true;
                 var proposed = primary with { X = primary.X + delta.Dx, Y = primary.Y + delta.Dy };
-                var others = Objects.Where(o => !Selection.Contains(o.Id) && o.Hidden != true).Select(FrameOf).ToList();
+                var others = Objects.Where(o => !Selection.Contains(o.Id) && o.Hidden != true).Select(FrameOf).Concat(SnapTargets?.Invoke() ?? []).ToList();
                 var snap = noSnap ? new SnapResult(proposed, []) : SnapMove(proposed, others, Canvas, 8 / Fit().Scale);
                 var dx = snap.Frame.X - primary.X;
                 var dy = snap.Frame.Y - primary.Y;
@@ -275,7 +287,7 @@ public sealed class SlideCanvasEditor : Grid
             {
                 moved = true;
                 var resized = Resize(frame, handle, delta);
-                var others = Objects.Where(o => o.Id != primaryId && o.Hidden != true).Select(FrameOf).ToList();
+                var others = Objects.Where(o => o.Id != primaryId && o.Hidden != true).Select(FrameOf).Concat(SnapTargets?.Invoke() ?? []).ToList();
                 var snap = noSnap ? new SnapResult(resized, []) : SnapResize(resized, handle, others, 0, Canvas, 8 / Fit().Scale);
                 guides = snap.Guides;
                 if (Objects.FirstOrDefault(o => o.Id == primaryId) is { } target) SetFrame(target, snap.Frame);
@@ -421,6 +433,7 @@ public sealed class SlideCanvasEditor : Grid
                 return;
             }
             dc.DrawRectangle(Brushes.Transparent, null, new Rect(RenderSize));
+            editor.Decorate?.Invoke(dc, editor.ToView);
             var objects = EditorGeometry.ComposedOrder(editor.Objects, editor.Template);
             foreach (var o in objects.Where(o => o.Hidden != true))
             {

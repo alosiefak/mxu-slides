@@ -37,7 +37,7 @@
 
         <!-- Text -->
         <StackPanel Visibility="{Binding IsText, Converter={StaticResource Visible}}">
-            <DockPanel Margin="0,0,0,6">
+            <DockPanel Margin="0,0,0,6" Visibility="{Binding ShowsTextSource, Converter={StaticResource Visible}}">
                 <TextBlock Text="Shows" Style="{StaticResource Muted}" Width="56" VerticalAlignment="Center" />
                 <ComboBox ItemsSource="{Binding TextSources}" SelectedItem="{Binding TextSource}"
                           ToolTip="Typed text is a field you fill in before putting the overlay up; the others fill themselves in" />
