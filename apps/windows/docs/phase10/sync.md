@@ -239,6 +239,25 @@ store: everything else uses it as before.
   schema, stops sync before anything is written. A document this version can't read stops it to
   ask (section 1).
 
+**A Mac newer than this build.** The shared schema grows: MxU's upstream release "make slides
+from notes" (#13), with the one before it, took it from version 149 to 161. Fields added after a
+type ships are always optional (a slide object's `photoSpot`, a cue's `scaleMode` and `endFade`, a
+video's `marks`, a note's `mediaImports`…), and enums gain cases (`MediaScaleMode.scaleAndBlur`,
+`MediaEndFade`). Sync copes with a Mac that's ahead of it like this:
+
+- **A field it doesn't know** is skipped when the document is read (the Mac's decoder does the
+  same), so it isn't in the Windows library, which couldn't hold it. But it stays in the shared
+  document and in this PC's replica: every Windows edit is made *around* it, and a record Windows
+  moves (a slide dragged to a new place) is re-inserted as a copy of itself with every key, as the
+  Mac's `moveListElement` copies it. A value that couldn't be copied exactly stops that edit
+  rather than lose it. The log notes, once per document, which fields it holds.
+- **An enum case it doesn't know** can't be read without guessing, so sync stops to ask (as for any
+  document it can't read): the document isn't brought in and its file is never written.
+- **A kind it doesn't keep** (notes, font files, settings) is never touched.
+
+When the Windows models are regenerated from the newer schema, the Sync project reads that same
+file (it's built in), so the new fields and cases are simply known.
+
 ## 6. Trying it with a real Mac
 
 A Mac can't be tried on this PC, so here is exactly what to do. Make a backup on the Mac first
@@ -297,7 +316,7 @@ this way at the same time (they'd share one `index.sqlite`).
 
 ## 8. Tests
 
-`tests/MxU.Slides.Sync.Tests` (85 tests):
+`tests/MxU.Slides.Sync.Tests` (92 tests):
 
 - `MacFormatTests`: the DLL is Automerge 0.7.2; the embedded schema is the models' schema; the
   Mac's own fixtures (its `richDeck`, the welcome deck, every starter theme, a service) round-trip;
@@ -315,6 +334,9 @@ this way at the same time (they'd share one `index.sqlite`).
   winning, Windows-only documents put back, many held), a folder going offline, a document from a
   newer Mac, a newer backup format, NaN never sent, an unknown enum never written, a conflict copy
   merged, media both ways.
+- `NewerMacTests`: documents as a schema-161 Mac writes them: its new fields are skipped, kept
+  through Windows edits, moves and the first sync, and reported; a new enum case stops sync and is
+  never written; notes are left as they are.
 - `Fakes/MacSimulator.cs` plays the Mac: it writes documents the way automerge-swift's encoder
   does, written separately from the app's encoder from the Swift source.
 
