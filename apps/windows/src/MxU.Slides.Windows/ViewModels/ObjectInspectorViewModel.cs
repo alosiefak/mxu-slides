@@ -268,15 +268,39 @@ public sealed partial class ObjectInspectorViewModel : ObservableObject
 
     // MARK: Media
 
+    /// <summary>0 Fill, 1 Fit, 2 Stretch, 3 Scale and Blur (the picture fitted over a blurred copy of itself).</summary>
     public int ScaleMode
     {
-        get => (int)SlideSceneBuilder.ScaleMode(SlideObjectNormalization.Normalized(o).Fill?.MediaScaleMode);
+        get => SlideObjectNormalization.Normalized(o).Fill?.MediaScaleMode switch
+        {
+            MediaScaleMode.Fit => 1,
+            MediaScaleMode.Stretch => 2,
+            MediaScaleMode.ScaleAndBlur => 3,
+            _ => 0,
+        };
         set => Set(() =>
         {
-            var mode = value switch { 1 => MediaScaleMode.Fit, 2 => MediaScaleMode.Stretch, _ => MediaScaleMode.Fill };
+            var mode = value switch { 1 => MediaScaleMode.Fit, 2 => MediaScaleMode.Stretch, 3 => MediaScaleMode.ScaleAndBlur, _ => MediaScaleMode.Fill };
             if (o.Fill is { FillKind: FillKind.Media } fill) fill.MediaScaleMode = mode;
             else o.MediaScaleMode = mode;
         });
+    }
+
+    // MARK: Photo spot (the theme editor's)
+
+    /// <summary>True in the theme editor: a shape can be a photo spot there.</summary>
+    public bool ShowsPhotoSpot { get; init; }
+
+    public bool ShowsPhotoSpotToggle => ShowsPhotoSpot && o.ObjectKind == SlideObjectKind.Shape;
+
+    /// <summary>
+    /// Picture slides made from notes put their picture here; several spots fill left to right, then
+    /// top to bottom. Port of the Mac inspector's "Photo spot" toggle (shared <c>photoSpot</c> field).
+    /// </summary>
+    public bool PhotoSpot
+    {
+        get => o.PhotoSpot == true;
+        set => Set(() => o.PhotoSpot = value ? true : null);
     }
 
     // MARK: Mask (shown by the overlay editor's inspector)

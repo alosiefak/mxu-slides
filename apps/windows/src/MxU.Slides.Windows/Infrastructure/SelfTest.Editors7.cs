@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using MxU.Slides.Core.Animation;
 using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Library;
+using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Core.Stage;
@@ -31,6 +32,7 @@ public sealed partial class SelfTest
             await MediaEditor7Check();
             await AutoAdvance7Check(deck);
             await Effects7Check();
+            await ThemeDesigns7Check(deck);
             await StageLayout7Check(deck);
             await OverlayExtras7Check();
         }
@@ -38,7 +40,7 @@ public sealed partial class SelfTest
         {
             model.AskReplaceOwnThemes = ask;
             foreach (var open in Application.Current.Windows.OfType<Window>()
-                         .Where(w => w is ThemeEditorWindow or MediaEditorWindow or AutoAdvanceWindow or ThemePickerWindow or StageLayoutEditorWindow or OverlayEditorWindow).ToList())
+                         .Where(w => w is ThemeEditorWindow or MediaEditorWindow or AutoAdvanceWindow or ThemePickerWindow or StageLayoutEditorWindow or OverlayEditorWindow or ThemeDesignsWindow).ToList())
                 open.Close();
             model.ClearAllCommand.Execute(null);
             model.IsEditing = false;
@@ -107,8 +109,19 @@ public sealed partial class SelfTest
         Check("the design gets a background of its own", design.BackgroundFill is { FillKind: FillKind.Solid, ColorHex: "#1E3A8AFF" });
         vm.SampleText = "Self-test sample words\nOn a second line";
         Check("the sample slide shows the design with your words", vm.SampleScene is not null);
+        vm.SelectObjects([placeholder.Id]); // a fresh inspector shows the new size and colour
         await Delay(600);
         Save(editor, "e7-02-theme-editor-design");
+
+        // A shape can be a photo spot (where picture slides made from notes put their picture).
+        vm.AddBoxCommand.Execute(null);
+        var spot = design.Objects.Last();
+        vm.SelectObjects([spot.Id]);
+        Check("the theme editor's inspector offers Photo spot for a shape", vm.Inspector is { ShowsPhotoSpotToggle: true });
+        if (vm.Inspector is { } spotInspector) spotInspector.PhotoSpot = true;
+        Check("…which sets the shared photoSpot field", spot.PhotoSpot == true);
+        vm.DeleteSelectedObjectsCommand.Execute(null);
+        vm.SelectObjects([placeholder.Id]);
 
         vm.ShowingAnimationTab = true;
         vm.Animation.SelectedPreset = vm.Animation.PresetChoices.FirstOrDefault(p => p.KineticRecipe is not null);
@@ -336,12 +349,65 @@ public sealed partial class SelfTest
         Check("the editor says when this PC can't draw pixel shaders",
             EffectsEditorViewModel.CanDrawShaders ? effects.SoftwareNote is null : effects.SoftwareNote is { Length: > 0 });
         report.AppendLine($"NOTE  pixel shaders on this PC: {(EffectsEditorViewModel.CanDrawShaders ? "yes" : "no")}");
+        Descendants<EffectsPanel>(window).FirstOrDefault(p => p.IsVisible)?.BringIntoView();
         await Delay(600);
         Save(window, "e7-14-effects-inspector");
         effects.Remove(0);
         effects.Remove(0);
         Check("removing them leaves the object as it was", target.Effects is null or { Count: 0 });
         model.IsEditing = false;
+    }
+
+    // MARK: Theme designs, a design dropped on a slide, and a picture or video slide's media
+
+    private async Task ThemeDesigns7Check(Presentation deck)
+    {
+        var theme = model.Library.All<Theme>().FirstOrDefault(t => t.Name == "Self-test Theme") ?? model.Library.All<Theme>().First();
+        var browser = ThemeDesignsWindow.Open(window, model, theme.Id);
+        await Delay(800);
+        Check("Theme Designs opens onto the theme's designs, each with a preview", browser.CurrentTheme?.Id == theme.Id
+            && browser.Cards.Count == (theme.Slides?.Count ?? 0) && browser.Cards.Count > 0);
+        Save(browser, "e7-22-theme-designs");
+
+        // Open the deck, then drop the theme's Bible design on its first slide.
+        model.IsEditing = false;
+        model.Open(deck, null, null);
+        await Delay(500);
+        var tile = model.Slides.FirstOrDefault(t => t.Slide.Id == "e7-v1");
+        var bible = browser.Cards.FirstOrDefault(c => c.Design.Name == "Bible");
+        Check("a theme design dropped on a slide gives it that theme and design", tile is not null && bible.Payload is not null
+            && ThemeDesignDrop.Drop(model, tile, bible.Payload)
+            && deck.Slides[0].ThemeId == theme.Id && deck.Slides[0].ThemeSlideName == "Bible" && deck.Slides[1].ThemeId != theme.Id);
+        Check("…and something else dropped is left to the grid", tile is null || !ThemeDesignDrop.Drop(model, tile, "mxuslide::e7-v2"));
+        browser.Close();
+
+        // A picture slide and a video slide.
+        var picture = model.Library.All<MediaItem>().FirstOrDefault(m => m.MediaKind == MediaKind.Image);
+        var video = model.Library.All<MediaItem>().FirstOrDefault(m => m.MediaKind == MediaKind.Video);
+        if (picture is null || video is null)
+        {
+            Skip("a picture or video slide's media menu", "no picture or video in the library");
+            return;
+        }
+        var pictureSlide = new Slide { Id = "e7-picture", Name = "Picture", Objects = [], Background = MediaCueRouting.DroppedAsNewSlide(picture) };
+        var videoSlide = new Slide { Id = "e7-video", Name = "Video", Objects = [], Background = MediaCueRouting.DroppedAsNewSlide(video) };
+        deck.Slides.AddRange([pictureSlide, videoSlide]);
+        model.SavePresentation(deck);
+        model.Open(deck, null, null);
+        await Delay(400);
+        static List<string> Headers(List<FrameworkElement> items) => [.. items.OfType<MenuItem>().Select(i => i.Header as string ?? "")];
+        var pictureMenu = Headers(EditorMenus.SlideItems(model, pictureSlide));
+        var videoMenu = Headers(EditorMenus.SlideItems(model, videoSlide));
+        Check("a picture slide's menu has its Layer and Scale; a video slide's its end", pictureMenu.Contains("Layer") && pictureMenu.Contains("Scale: Fill")
+            && videoMenu.Contains("Layer") && videoMenu.Contains("When the video ends: Stop") && videoMenu.Contains("Apply Theme…"));
+        model.SetSlideMediaScale(deck, pictureSlide, MediaScaleMode.ScaleAndBlur);
+        model.SetSlideMediaLayer(deck, pictureSlide, "overlays");
+        Check("Scale and Blur and the Overlays layer are saved in the shared fields",
+            model.Library.Get<Presentation>(deck.Id)?.Slides.FirstOrDefault(s => s.Id == "e7-picture")?.Background is { ScaleMode: MediaScaleMode.ScaleAndBlur, LayerId: "overlays", Layer: null });
+        model.SetSlideVideoEnd(deck, videoSlide, CueVideoEnd.FadeToBlack);
+        Check("a video slide fades to black at its end", videoSlide.Background is { EndFade: MediaEndFade.Black, Loops: false } && videoSlide.AutoAdvance is null);
+        model.SetSlideVideoEnd(deck, videoSlide, CueVideoEnd.Next);
+        Check("…or goes to the next slide", videoSlide.AutoAdvance is { AfterPlayback: true } && videoSlide.Background?.EndFade is null);
     }
 
     // MARK: Stage layout editor
@@ -378,6 +444,17 @@ public sealed partial class SelfTest
         var words = notes.First(o => o.TextLink is not null);
         vm.SelectObjects([words.Id]);
         Check("selecting a box shows what it reads", vm.Link?.Source?.Label == "Slide notes" && vm.Inspector is not null);
+        var countdown = vm.AddBox(StageBoxKind.VideoCountdown).First(o => o.TextLink is not null);
+        vm.SelectObjects([countdown.Id]);
+        if (vm.Link is { } video)
+        {
+            video.VideoTarget = video.VideoTargets.First(t => t.Value == VideoCountdownTarget.NamedMark);
+            video.VideoMarkName = "Sermon";
+            video.DirectionIndex = 1;
+        }
+        Check("a video countdown box counts up to a named video action", countdown.TextLink is { VideoTarget: VideoCountdownTarget.NamedMark, VideoMarkName: "Sermon", CountsUp: true }
+            && vm.Link is { IsNamedMark: true, IsVideoCountdown: true });
+        vm.SelectObjects([words.Id]);
         vm.SafeMargin = vm.SafeMargins.First(m => Math.Abs(m.Value - 0.10) < 1e-9);
         words.X = 4;
         vm.SelectObjects([words.Id]);

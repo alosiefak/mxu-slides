@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
 using MxU.Slides.Core.Automation;
+using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Scene;
 using MxU.Slides.Windows.ViewModels;
 
 namespace MxU.Slides.Windows.Views;
@@ -12,8 +14,9 @@ namespace MxU.Slides.Windows.Views;
 /// the main window's XAML stay as they are):
 /// <list type="bullet">
 /// <item>a media tile: Edit… (the media editor) and Auto Advance…;</item>
-/// <item>a slide tile: Auto Advance… and Apply Theme…;</item>
-/// <item>the library's presentation: Slide Show…, Theme… and Edit Theme….</item>
+/// <item>a slide tile: Auto Advance… and Apply Theme…; for a picture or video slide, its media's
+/// Layer, a picture's Scale and a video's end;</item>
+/// <item>the library's presentation: Slide Show…, Theme…, Edit Theme… and Theme Designs….</item>
 /// </list>
 /// </summary>
 public static class EditorMenus
@@ -28,6 +31,8 @@ public static class EditorMenus
     {
         owner = window;
         model = viewModel;
+        // A theme design dragged from Theme Designs… onto a slide tile restyles that slide.
+        ThemeDesignDrop.Attach(window, viewModel);
         // The Mac's question before a deck's new theme replaces slides' own themes (MainViewModel.Themes.cs).
         viewModel.AskReplaceOwnThemes ??= (presentation, theme, count) => MessageBox.Show(window,
             $"{count} slide{(count == 1 ? "" : "s")} in “{presentation.Name}” {(count == 1 ? "has a theme of its own" : "have a theme of their own")}. "
@@ -90,15 +95,62 @@ public static class EditorMenus
             () => AutoAdvanceWindow.ForMedia(owner, model, item)?.ShowDialog()),
     ];
 
-    private static List<FrameworkElement> SlideItems(MainViewModel model, Slide slide)
+    internal static List<FrameworkElement> SlideItems(MainViewModel model, Slide slide)
     {
         var deck = model.CurrentPresentation?.Slides.Any(s => s.Id == slide.Id) == true ? model.CurrentPresentation : model.PresentationContaining(slide.Id);
         if (deck is null) return [];
-        return
+        List<FrameworkElement> items =
         [
             Command($"Auto Advance: {AutoAdvanceEditing.Value([slide.AutoAdvance])}…", () => AutoAdvanceWindow.ForSlides(owner, model, deck, [slide.Id])?.ShowDialog()),
             Command("Apply Theme…", () => ThemePickerWindow.ForSlides(owner!, model, deck, [slide.Id])?.ShowDialog()),
         ];
+        items.AddRange(SlideMediaItems(model, deck, slide));
+        return items;
+    }
+
+    /// <summary>
+    /// A picture or video slide's media: its Layer (the Mac's media cue menu), a picture's Scale and a
+    /// video's end (which the Mac sets when it makes slides from notes).
+    /// </summary>
+    private static List<FrameworkElement> SlideMediaItems(MainViewModel model, Presentation deck, Slide slide)
+    {
+        if (slide.Background is not { } cue || cue.IsLiveInput() || model.Library.Get<MediaItem>(cue.MediaId) is not { } item) return [];
+        var custom = model.CustomLayers();
+        var chosen = CueMediaEditing.ChosenLayer(cue, item.MediaKind, custom);
+        var layer = new MenuItem { Header = "Layer" };
+        // Default, then the built-in layers, then the custom ones, as the Mac's picker groups them.
+        var choices = CueMediaEditing.LayerChoices(cue, item.MediaKind, custom);
+        var builtIn = CueMediaEditing.BuiltInLayers.Count;
+        for (var i = 0; i < choices.Count; i++)
+        {
+            if (i == 1 || i == 1 + builtIn) layer.Items.Add(new Separator());
+            var choice = choices[i];
+            layer.Items.Add(Check(choice.Name, choice.Id == chosen, () => model.SetSlideMediaLayer(deck, slide, choice.Id)));
+        }
+        List<FrameworkElement> items = [new Separator(), layer];
+        if (item.MediaKind == MediaKind.Image)
+        {
+            var scale = new MenuItem { Header = $"Scale: {CueMediaEditing.ScaleName(CueMediaEditing.Scale(cue))}" };
+            foreach (var (mode, name) in CueMediaEditing.ScaleChoices)
+                scale.Items.Add(Check(name, CueMediaEditing.Scale(cue) == mode, () => model.SetSlideMediaScale(deck, slide, mode)));
+            items.Add(scale);
+        }
+        else
+        {
+            var current = CueMediaEditing.VideoEnd(slide);
+            var end = new MenuItem { Header = $"When the video ends: {CueMediaEditing.VideoEndName(current)}" };
+            foreach (var (value, name) in CueMediaEditing.VideoEndChoices)
+                end.Items.Add(Check(name, current == value, () => model.SetSlideVideoEnd(deck, slide, value)));
+            items.Add(end);
+        }
+        return items;
+    }
+
+    private static MenuItem Check(string header, bool on, Action click)
+    {
+        var item = new MenuItem { Header = header, IsCheckable = false, IsChecked = on };
+        item.Click += (_, _) => click();
+        return item;
     }
 
     private static List<FrameworkElement> PresentationItems(MainViewModel model, Presentation presentation) =>
@@ -107,5 +159,6 @@ public static class EditorMenus
             () => AutoAdvanceWindow.ForPresentation(owner, model, presentation).ShowDialog()),
         Command("Theme…", () => ThemePickerWindow.ForPresentation(owner!, model, presentation).ShowDialog()),
         Command("Edit Theme…", () => ThemeEditorWindow.Open(owner!, model, presentation.ThemeId)),
+        Command("Theme Designs…", () => ThemeDesignsWindow.Open(owner!, model, presentation.ThemeId)),
     ];
 }

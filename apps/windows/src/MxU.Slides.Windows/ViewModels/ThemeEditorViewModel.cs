@@ -624,7 +624,7 @@ public sealed partial class ThemeEditorViewModel : ObservableObject, IDisposable
     {
         var selected = CanvasSelected();
         Inspector = selected.Count == 1 && Current is { } theme
-            ? new ObjectInspectorViewModel(selected[0], null, theme, SceneSize.Hd, InspectorChanged) { Siblings = Mirror?.Objects, Library = Library }
+            ? new ObjectInspectorViewModel(selected[0], null, theme, SceneSize.Hd, InspectorChanged) { Siblings = Mirror?.Objects, Library = Library, ShowsPhotoSpot = true }
             : null;
         syncingSelection = true;
         SelectedObjectRow = selected.Count == 1 ? ObjectRows.FirstOrDefault(r => r.Id == selected[0].Id) : null;

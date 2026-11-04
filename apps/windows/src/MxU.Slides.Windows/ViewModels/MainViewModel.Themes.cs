@@ -49,15 +49,31 @@ public sealed partial class MainViewModel
     public bool ApplySlidesTheme(Presentation presentation, IReadOnlyCollection<string> slideIds, string themeId, string? design = null)
     {
         if (!ThemeApplication.ApplyToSlides(presentation, slideIds, themeId, design, ThemesById())) return false;
-        SavePresentationEdit(presentation);
+        SlidesRestyled(presentation);
         return true;
+    }
+
+    /// <summary>
+    /// A theme design dropped on a slide (dragged from the theme designs browser): the slide takes that
+    /// theme and design. False when the payload isn't a design that's still there. Port of the Mac's
+    /// PresentGridView drop (<c>model.themeDesign(payload)</c>, then <c>applyTheme(to:slideIDs:)</c>).
+    /// </summary>
+    public bool DropThemeDesign(Presentation presentation, string slideId, string? payload) =>
+        ThemeDesignDrag.Resolve(payload, Library.Get<Theme>) is { } dropped
+        && ApplySlidesTheme(presentation, [slideId], dropped.ThemeId, dropped.Design.Name);
+
+    /// <summary>Saves slides that changed their look, and redraws them when their presentation is the open one.</summary>
+    private void SlidesRestyled(Presentation presentation)
+    {
+        SavePresentationEdit(presentation);
+        if (CurrentPresentation?.Id == presentation.Id) RebuildSlides();
     }
 
     /// <summary>The slides follow no theme at all ("Blank"): only their own objects show.</summary>
     public void SetSlidesBlank(Presentation presentation, IReadOnlyCollection<string> slideIds)
     {
         foreach (var slide in presentation.Slides.Where(s => slideIds.Contains(s.Id))) slide.Unthemed = true;
-        SavePresentationEdit(presentation);
+        SlidesRestyled(presentation);
     }
 
     /// <summary>The slides follow the deck's theme again, with their own kind of design ("Automatic").</summary>
@@ -71,7 +87,7 @@ public sealed partial class MainViewModel
             slide.Unthemed = null;
             slide.AdoptActions(deckTheme?.Design(slide.ThemeSlideName), previous);
         }
-        SavePresentationEdit(presentation);
+        SlidesRestyled(presentation);
     }
 
     // MARK: The theme editor's saves

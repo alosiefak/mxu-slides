@@ -353,6 +353,7 @@ public static class StageLayoutEditing
         TextSourceKind.CurrentGroup => "Group Name",
         TextSourceKind.CurrentPresentation => "Presentation Name",
         TextSourceKind.NextServiceTitle => "Next Service Title",
+        TextSourceKind.VideoMarkName => "Video Action Name",
         _ => "Timecode",
     };
 

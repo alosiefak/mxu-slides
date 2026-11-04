@@ -171,10 +171,29 @@
                                 </StackPanel>
                                 <StackPanel Visibility="{Binding IsVideo, Converter={StaticResource Visible}}">
                                     <DockPanel Margin="0,0,0,6">
+                                        <TextBlock Text="{Binding VideoTargetLabel}" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                                        <ComboBox ItemsSource="{Binding VideoTargets}" SelectedItem="{Binding VideoTarget}"
+                                                  ToolTip="What the box counts to on the playing video, or which video action's name it shows" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,0,0,6" Visibility="{Binding IsNamedMark, Converter={StaticResource Visible}}">
+                                        <TextBlock Text="Name" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                                        <TextBox Text="{Binding VideoMarkName, UpdateSourceTrigger=LostFocus}" KeyDown="Box_KeyDown"
+                                                 ToolTip="The video action, matched by name (any capitalisation) in whichever video is playing" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,0,0,6" Visibility="{Binding IsVideoCountdown, Converter={StaticResource Visible}}">
+                                        <TextBlock Text="Direction" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                                        <ComboBox SelectedIndex="{Binding DirectionIndex}" Width="90" HorizontalAlignment="Left"
+                                                  ToolTip="Up counts from the previous video action (or the start of the video) and stops at the target">
+                                            <ComboBoxItem Content="Down" />
+                                            <ComboBoxItem Content="Up" />
+                                        </ComboBox>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,0,0,6">
                                         <TextBlock Text="Video" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
                                         <ComboBox ItemsSource="{Binding VideoLayers}" SelectedItem="{Binding VideoLayer}" />
                                     </DockPanel>
-                                    <CheckBox Content="Show the video's name" IsChecked="{Binding ShowsVideoName}" Margin="64,0,0,6" />
+                                    <CheckBox Content="Show the video's name" IsChecked="{Binding ShowsVideoName}" Margin="64,0,0,6"
+                                              Visibility="{Binding IsVideoCountdown, Converter={StaticResource Visible}}" />
                                 </StackPanel>
                                 <TextBlock Text="{Binding SampleLine}" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" />
                             </StackPanel>

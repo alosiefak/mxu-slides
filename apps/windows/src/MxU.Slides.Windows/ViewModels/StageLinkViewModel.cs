@@ -163,7 +163,59 @@ public sealed partial class StageLinkViewModel(SlideObject o, Action changed, Fu
         }
     }
 
-    public bool IsVideo => Link?.Source == TextSourceKind.VideoCountdown;
+    /// <summary>A box reading a playing video: its countdown, or the name of its next video action.</summary>
+    public bool IsVideo => Link?.Source is TextSourceKind.VideoCountdown or TextSourceKind.VideoMarkName;
+
+    public bool IsVideoCountdown => Link?.Source == TextSourceKind.VideoCountdown;
+
+    // MARK: Video actions (the Mac inspector's Counts To / Action, Action Name and Direction)
+
+    /// <summary>"Counts to" for a countdown, "Action" for a video action's name.</summary>
+    public string VideoTargetLabel => IsVideoCountdown ? "Counts to" : "Action";
+
+    public IReadOnlyList<Choice<VideoCountdownTarget>> VideoTargets => IsVideoCountdown
+        ? [new(VideoCountdownTarget.End, "End of video"), new(VideoCountdownTarget.NextMark, "Next video action"), new(VideoCountdownTarget.NamedMark, "Video action named…")]
+        : [new(VideoCountdownTarget.NextMark, "Next video action"), new(VideoCountdownTarget.NamedMark, "Video action named…")];
+
+    /// <summary>What a countdown counts to (the end, unless set), or which video action's name the box shows (the next one, unless set).</summary>
+    public Choice<VideoCountdownTarget>? VideoTarget
+    {
+        get
+        {
+            var target = Link?.VideoTarget ?? (IsVideoCountdown ? VideoCountdownTarget.End : VideoCountdownTarget.NextMark);
+            return VideoTargets.FirstOrDefault(c => c.Value == target) ?? VideoTargets[0];
+        }
+        set
+        {
+            if (value is null || Link is not { } link) return;
+            Write(() => link.VideoTarget = value.Value);
+        }
+    }
+
+    public bool IsNamedMark => IsVideo && Link?.VideoTarget == VideoCountdownTarget.NamedMark;
+
+    /// <summary>The video action to count to or show, matched by name (any capitalisation) in whichever video is playing.</summary>
+    public string VideoMarkName
+    {
+        get => Link?.VideoMarkName ?? "";
+        set
+        {
+            if (Link is not { } link) return;
+            var name = value.Trim();
+            Write(() => link.VideoMarkName = name.Length == 0 ? null : name);
+        }
+    }
+
+    /// <summary>0 counts down; 1 counts up from the previous video action (or the start) and stops at the target.</summary>
+    public int DirectionIndex
+    {
+        get => Link?.CountsUp == true ? 1 : 0;
+        set
+        {
+            if (Link is not { } link) return;
+            Write(() => link.CountsUp = value == 1 ? true : null);
+        }
+    }
 
     public IReadOnlyList<Choice<string?>> VideoLayers { get; } = [.. StageLayoutEditing.VideoLayers.Select(v => new Choice<string?>(v.Layer, v.Label))];
 

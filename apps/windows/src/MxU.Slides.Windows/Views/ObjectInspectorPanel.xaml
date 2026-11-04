@@ -97,8 +97,14 @@
                 <ComboBoxItem Content="Fill (crop)" />
                 <ComboBoxItem Content="Fit (whole picture)" />
                 <ComboBoxItem Content="Stretch" />
+                <ComboBoxItem Content="Scale and Blur" />
             </ComboBox>
         </DockPanel>
+
+        <!-- Photo spot (theme editor) -->
+        <CheckBox Content="Photo spot" IsChecked="{Binding PhotoSpot}" Margin="0,6,0,0"
+                  Visibility="{Binding ShowsPhotoSpotToggle, Converter={StaticResource Visible}}"
+                  ToolTip="Picture slides made from notes put their picture here. Several spots fill left to right, then top to bottom." />
 
         <!-- Effects (Views/EffectsPanel.cs) -->
         <v:EffectsPanel DataContext="{Binding Effects}" />
