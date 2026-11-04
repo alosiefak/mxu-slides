@@ -65,13 +65,17 @@ public sealed class CheatSheet : Window
             foreach (var key in generated) block.Children.Add(Line(model.ShortcutLabel(key.MapKey), KeyChip.Caps([map.ChordFor(key)!], size: 12)));
             columns.Children.Add(block);
         }
-        var hotKeys = HotKeyJump.HotKeyTargets(model.GroupHotKeyGroups);
-        if (hotKeys.Count > 0)
+        // One line per letter, in the palette's order ("Verse / Verse 1" share A).
+        var letters = model.GroupHotKeyGroups
+            .Select(g => (Letter: HotKeyJump.EffectiveHotKey(g), g.Name))
+            .Where(g => g.Letter is not null)
+            .GroupBy(g => g.Letter!)
+            .ToList();
+        if (letters.Count > 0)
         {
             var block = Block("Jump to a Section (the live song)");
-            foreach (var group in model.GroupHotKeyGroups)
-                if (HotKeyJump.EffectiveHotKey(group) is { } letter && hotKeys.ContainsKey(letter) && block.Children.Count < 14)
-                    block.Children.Add(Line(group.Name, KeyChip.Caps([new KeyChord(letter)], size: 12)));
+            foreach (var letter in letters.Take(16))
+                block.Children.Add(Line(string.Join(" / ", letter.Select(g => g.Name).Take(2)), KeyChip.Caps([new KeyChord(letter.Key)], size: 12)));
             columns.Children.Add(block);
         }
 
@@ -92,19 +96,31 @@ public sealed class CheatSheet : Window
             if (!KeyTokens.IsModifierOnly(KeyTokens.RealKey(e)))
             {
                 e.Handled = true;
-                Close();
+                CloseOnce();
             }
         };
-        MouseLeftButtonUp += (_, _) => Close();
+        MouseLeftButtonUp += (_, _) => CloseOnce();
+        // Clicking another window closes it too. Closing makes it lose the focus, which would close
+        // it a second time, and WPF refuses that: hence the flag.
+        Closing += (_, _) => closing = true;
         Deactivated += (_, _) =>
         {
-            if (IsLoaded) Close();
+            if (IsLoaded) CloseOnce();
         };
+    }
+
+    private bool closing;
+
+    private void CloseOnce()
+    {
+        if (closing) return;
+        closing = true;
+        Close();
     }
 
     private static StackPanel Block(string title) => new()
     {
-        Width = 300, Margin = new Thickness(0, 0, 24, 14),
+        Width = 380, Margin = new Thickness(0, 0, 24, 14),
         Children = { new TextBlock { Text = title.ToUpperInvariant(), Style = EditorKit.Res<Style>("SectionLabel"), Margin = new Thickness(0, 0, 0, 6) } },
     };
 

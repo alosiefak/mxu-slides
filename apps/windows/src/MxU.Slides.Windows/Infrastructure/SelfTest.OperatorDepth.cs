@@ -102,18 +102,18 @@ public sealed partial class SelfTest
         await Delay(400);
         var picker = Descendant<ArrangementPicker>(window);
         var strip = Descendant<ArrangementStrip>(window);
-        Check("the song opens with its typed order as its default arrangement (Custom)", model.CurrentArrangement?.Name == "Custom" && model.Slides.Count == 8);
+        Check("the song opens with its typed order as its default arrangement (Custom)", model.CurrentArrangement?.Name == "Custom" && model.Slides.Count == 4);
         Check("the header has the arrangement chip and the section pills",
             picker is { Visibility: Visibility.Visible } && strip?.PillNames.SequenceEqual(["Verse 1", "Chorus", "Verse 2", "Chorus"]) == true);
         var custom = model.CurrentArrangement!.Id;
 
         var made = model.NewArrangement();
         Check("New Arrangement starts from each section once, in slide order, and is picked",
-            made is not null && model.CurrentArrangement?.Id == made.Id && made.SectionIds.Count == 4 && made.Name == "Arrangement 2");
+            made is not null && model.CurrentArrangement?.Id == made.Id && made.SectionIds.Count == 5 && made.Name == "Arrangement 2"); // Intro, V1, C, V2, B
         Check("typing an order sets its blocks (V1, C, V2, C x2, B, C)", made is not null && model.SetArrangementOrder(made.Id, "V1, C, V2, C x2, B, C"));
         await Delay(300);
         Check("the grid plays the new order, and the pills follow",
-            model.Slides.Count == 14 && strip?.PillNames.SequenceEqual(["Verse 1", "Chorus", "Verse 2", "Chorus", "Chorus", "Bridge", "Chorus"]) == true);
+            model.Slides.Count == 7 && strip?.PillNames.SequenceEqual(["Verse 1", "Chorus", "Verse 2", "Chorus", "Chorus", "Bridge", "Chorus"]) == true);
         Check("the order reads back folded", made is not null && ArrangementEditing.OrderText(song, made.Id) == "Verse 1, Chorus, Verse 2, Chorus x2, Bridge, Chorus");
         Check("the service row remembers the arrangement it plays",
             model.Library.Get<Service>("selftest-depth-service")?.Items.FirstOrDefault(i => i.Id == "d-morning")?.ArrangementId == made?.Id

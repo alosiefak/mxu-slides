@@ -67,7 +67,7 @@ public sealed class ShortcutsWindow : Window
         DockPanel.SetDock(restore, Dock.Right);
         foot.Children.Add(restore);
         foot.Children.Add(EditorKit.Muted("Letters and numbers work only in the main window, and never while typing. On a laptop the F-keys may need Fn.", 11, 0));
-        var body = new DockPanel { Margin = new Thickness(18, 14, 6, 14) };
+        var body = new DockPanel();
         DockPanel.SetDock(filters, Dock.Top);
         DockPanel.SetDock(message, Dock.Top);
         DockPanel.SetDock(foot, Dock.Bottom);
@@ -75,7 +75,8 @@ public sealed class ShortcutsWindow : Window
         body.Children.Add(message);
         body.Children.Add(foot);
         body.Children.Add(new ScrollViewer { Content = rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        Content = body;
+        // Padding on a border, not a margin on the panel, so a picture of the window (the self-test's) isn't shifted.
+        Content = new Border { Padding = new Thickness(18, 14, 6, 14), Child = body };
         PreviewKeyDown += OnPreviewKeyDown;
         model.KeyMapChanged += OnKeyMapChanged;
         Closed += (_, _) => model.KeyMapChanged -= OnKeyMapChanged;

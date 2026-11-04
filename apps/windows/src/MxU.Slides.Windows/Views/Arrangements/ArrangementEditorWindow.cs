@@ -72,11 +72,12 @@ public sealed class ArrangementEditorWindow : Window
             ShowDetail();
         };
 
-        var body = new DockPanel { Margin = new Thickness(18, 14, 18, 14) };
+        var body = new DockPanel();
         DockPanel.SetDock(left, Dock.Left);
         body.Children.Add(left);
         body.Children.Add(new ScrollViewer { Content = detail, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        Content = body;
+        // Padding on a border, not a margin on the panel, so a picture of the window (the self-test's) isn't shifted.
+        Content = new Border { Padding = new Thickness(18, 14, 18, 14), Child = body };
         model.ArrangementsChanged += OnChanged;
         Closed += (_, _) => model.ArrangementsChanged -= OnChanged;
         Refresh();

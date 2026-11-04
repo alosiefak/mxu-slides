@@ -177,6 +177,35 @@ public class ArrangementEditingTests
     }
 
     [Fact]
+    public void ASongTypedWithAnOrderArrangesItsSections()
+    {
+        const string lyrics = """
+            Verse 1
+            Morning has broken
+            Like the first morning
+
+            Chorus
+            Praise for the singing
+            Praise for the morning
+
+            Verse 2
+            Sweet the rain's new fall
+            Sunlit from heaven
+
+            Bridge
+            Mine is the sunlight
+            Mine is the morning
+            """;
+        var song = SongEditing.Build(null, lyrics, 2, new SongEditing.Details("Morning", "", null, "", ""), "", "V1, C, V2, C");
+        Assert.Equal("Custom", ArrangementEditing.Find(song, song.DefaultArrangementId)?.Name);
+        Assert.Equal(4, SlideSceneBuilder.ArrangedSlides(song, song.DefaultArrangementId).Count);
+        var added = ArrangementEditing.Add(song)!;
+        // The blank Intro slide Reflow puts first is a section of its own, so a new arrangement starts with it.
+        Assert.Equal(["Intro", "Verse 1", "Chorus", "Verse 2", "Bridge"], added.SectionIds.Select(id => ArrangementEditing.SectionName(song, id)));
+        Assert.Equal("Arrangement 2", added.Name);
+    }
+
+    [Fact]
     public void TheDefaultIsOneThatExistsOrNone()
     {
         var song = Song();
