@@ -174,6 +174,40 @@ editor) implements `IAnimationHost`: what's selected, how to redraw, how to pose
   stretch it, its left edge to trim, a column to reorder; scrub to preview. Times snap to 1/20 s.
 - **Drag and drop**: drag a step in the list onto another to move it there.
 
+## 7. From MxU's latest Mac updates
+
+Three Mac releases came in while this was being built. The parts that belong to the editors:
+
+- **Theme previews** (`Views/ThemeDesignsWindow.cs`, `Views/ThemeDesignDrop.cs`,
+  `Core/Library/ThemeDesignDrag.cs`). *Library › right-click › Theme Designs…* lists the themes,
+  each with a picture, and opens onto a theme's designs. Double-click a design to edit it. **Drag one
+  onto a slide** in the slide grid and that slide takes the design, as *Apply Theme* would. The drag
+  carries the Mac's payload, `mxuthemedesign::<theme>::<design>`. The drop is caught by class
+  handlers on the slide tiles, so the main window's XAML didn't change, and any other drag passes on
+  to the grid's own drag-and-drop.
+- **Picture and video slides** (`Core/Media/CueMediaEditing.cs`, `ViewModels/MainViewModel.SlideMedia.cs`,
+  the slide menu in `Views/EditorMenus.cs`). A slide whose media is its background gets three menus:
+  **Layer** (the default, Background Media, Still Graphics, Foreground Videos, Overlays, or an
+  output preset's custom layer), a picture's **Scale** (Scale and Blur, Fit, Fill, Stretch) and a
+  video's **When the video ends** (go to the next slide, stop, loop, fade to black, fade to clear).
+  On the Mac the last two are set when slides are made from notes; Windows lets you change them
+  afterwards. They're all shared fields (`layer`/`layerId`, `scaleMode`, `loops`, `endFade`, the
+  slide's `autoAdvance`). *Drawing* Scale and Blur, the end fades and custom layers is the engine's
+  part of the port, on another branch.
+- **Photo spots.** In the theme editor, a shape's inspector has **Photo spot**: picture slides made
+  from notes put their picture there. The media fit picker everywhere gains **Scale and Blur**.
+- **Clear steps and custom layers** (`ActionEditing.LayerStack`). The action editor's Layer picker
+  and the *Clear* menu now list the output presets' custom layers (the Mac's Screen Map) where they
+  composite, each just above the layer it names. A step's label names them ("Clear Lobby").
+- **Video actions on stage.** A stage box reading a video can count to the *end*, the *next video
+  action* or one *named*, up or down, or show the next video action's name (the Mac inspector's new
+  Linked To rows), in the stage layout editor's SHOWS panel.
+- **The inspector reads the placeholder's font before the theme's.** The Windows inspector already
+  did (it reads the styled text the slide is drawn with), so nothing changed there.
+- **The Overlays module** was removed on the Mac: overlays now fire from the library. That's the
+  library's part of the port (another branch); the overlay editor is unchanged. Its "media item's
+  Layer menu" is the slide Layer menu above.
+
 ## Try it
 
 1. Library › right-click *Amazing Grace* › **Edit Theme…**. Choose *Lyrics*, click the placeholder,
@@ -202,6 +236,7 @@ editor) implements `IAnimationHost`: what's selected, how to redraw, how to pose
 - `RenderScene.applyingMediaEffects` → the effects half of `Core/Media/MediaDressing.cs`. Tests: `MediaDressingTests.cs`.
 - The theme host of the slide editor, `ThemeSlides.defaultSlides`, `SlideBulkEdit.freshIDCopy`/`uniqueThemeSlideName`, AppModel's create/duplicate → `Core/Library/ThemeLibrary.cs`, `Core/Library/ThemeApplication.cs`, `ViewModels/ThemeEditorViewModel.cs`, `Views/ThemeEditorWindow.xaml`. Tests: `ThemeLibraryTests.cs`. `NewSlide.preview` → `Core/Animation/DesignPreview.cs`.
 - `ConfidenceModule.swift`'s "Edit Layout in Library" → the pencil in `Views/Operator/StagePanel.cs`.
+- From MxU's latest updates: `NewSlide.swift`'s `ThemeDesignDrag` and AppModel's `themeDesign(_:)` → `Core/Library/ThemeDesignDrag.cs`; `LibraryThemeDesigns.swift` (with `ThemeLook`'s previews) → `Views/ThemeDesignsWindow.cs`; PresentGridView's theme design drop → `Views/ThemeDesignDrop.cs` and `MainViewModel.DropThemeDesign`; `SlideLayerFacts.swift` (`storedRoutingLayerId`, `setRoutingLayer`, `defaultLayer`), MediaCueMenu's `SpotLayer` picker, `PhotoSpots.swift`'s `inPhotoSpot` and SlidePlanner's `showMedia` video end → `Core/Media/CueMediaEditing.cs`; `OutputPresetsController.customLayers` → `CueMediaEditing.CustomLayers`; ActionEditors' `router.layerStack` and `slideActionLabel(layers:)` → `ActionEditing.LayerStack`, `SlideActions.LabelNames.Layers`; the inspector's Photo spot toggle and Scale and Blur → `ObjectInspectorViewModel.PhotoSpot`, `ScaleMode`; its Counts To / Action / Action Name / Direction / Video From rows → `StageLinkViewModel`. Tests: `CueMediaEditingTests.cs`.
 
 **Windows-only:**
 
@@ -213,6 +248,7 @@ editor) implements `IAnimationHost`: what's selected, how to redraw, how to pose
 - `Views/EditorMenus.cs` (the Edit…, Auto Advance…, Apply Theme…, Slide Show…, Theme… and Edit Theme… menu items); `SlideCanvasEditor.SnapTargets` and `Decorate`; `ObjectInspectorViewModel.ShowsTextSource`.
 - The shared `Views/AnimationTab.xaml` / `AnimationTabViewModel` / `IAnimationHost` (the overlay and theme editors share one tab); `CompositionObjects.cs`.
 - `Infrastructure/SelfTest.Editors7.cs`.
+- Changing a picture slide's Scale and a video slide's end from the slide menu (the Mac sets them only when it makes slides from notes); Theme Designs as its own window (the Mac shows it in the library sidebar).
 
 **Not ported yet:**
 
@@ -222,3 +258,4 @@ editor) implements `IAnimationHost`: what's selected, how to redraw, how to pose
 - A new trim or speed applies the next time a playing video is fired, not to the copy already playing.
 - Bulk Auto Advance and Apply Theme from a multi-slide selection (wired through `AutoAdvanceWindow.ForSlides` and `ThemePickerWindow.ForSlides`, which take a list, once the slide grid can select several).
 - In the overlay editor's line, remove "the *animation timeline* and drag-and-drop reordering are still not there".
+- From MxU's latest updates: drawing Scale and Blur, end fades, custom layers and video actions is the engine's port (wt\up-core); the Overlays module's move into the library is the library's (wt\p8-library); the media editor's Video Actions timeline (`VideoActionsCard`, marks on a video) isn't ported yet.
