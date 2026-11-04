@@ -51,7 +51,7 @@ internal static class ScenePictures
         }
     }
 
-    private static async Task WaitForMediaAsync(RenderScene scene, int width, MediaHub media)
+    internal static async Task WaitForMediaAsync(RenderScene scene, int width, MediaHub media)
     {
         bool Ready(string id) => media.KindOf(id) switch
         {

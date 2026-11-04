@@ -122,6 +122,7 @@ public sealed partial class MainViewModel : ObservableObject
             dispatcher.BeginInvoke(() => OnLibraryChanged(type, id));
             return;
         }
+        if (DeferLibraryChange(type)) return; // a batch redraws each list once, at its end (MainViewModel.LibraryBrowse.cs)
         if (type == typeof(Presentation)) RefreshLibrary();
         else if (type == typeof(Service)) RefreshServices(keepSelection: true);
         else if (type == typeof(MediaItem)) RefreshMedia();
@@ -135,56 +136,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     // MARK: Library
-
-    public ObservableCollection<LibraryEntryViewModel> LibraryItems { get; } = [];
-
-    [ObservableProperty]
-    public partial string LibrarySearch { get; set; } = "";
-
-    /// <summary>0 = everything, 1 = songs, 2 = presentations.</summary>
-    [ObservableProperty]
-    public partial int LibraryFilter { get; set; }
-
-    [ObservableProperty]
-    public partial LibraryEntryViewModel? SelectedLibraryEntry { get; set; }
-
-    partial void OnLibrarySearchChanged(string value) => RefreshLibrary();
-
-    partial void OnLibraryFilterChanged(int value) => RefreshLibrary();
-
-    private bool suppressLibrarySelection;
-
-    partial void OnSelectedLibraryEntryChanged(LibraryEntryViewModel? value)
-    {
-        if (value is null || suppressLibrarySelection) return;
-        SelectedServiceItem = null;
-        Open(value.Presentation, null, null);
-    }
-
-    public void RefreshLibrary()
-    {
-        var query = LibrarySearch.Trim();
-        var selectedId = SelectedLibraryEntry?.Presentation.Id;
-        var entries = Library.All<Presentation>()
-            .Select(p => new LibraryEntryViewModel(p))
-            .Where(e => LibraryFilter switch { 1 => e.IsSong, 2 => !e.IsSong, _ => true })
-            .Where(e => query.Length == 0 || Matches(e.Presentation, query))
-            .ToList();
-        suppressLibrarySelection = true;
-        LibraryItems.Clear();
-        foreach (var entry in entries) LibraryItems.Add(entry);
-        SelectedLibraryEntry = selectedId is null ? null : LibraryItems.FirstOrDefault(e => e.Presentation.Id == selectedId);
-        suppressLibrarySelection = false;
-    }
-
-    /// <summary>Title, author, CCLI number or any lyric line.</summary>
-    private static bool Matches(Presentation p, string query)
-    {
-        if (p.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)) return true;
-        if (p.Ccli?.Author?.Contains(query, StringComparison.CurrentCultureIgnoreCase) == true) return true;
-        if (p.Ccli?.SongNumber?.ToString() == query) return true;
-        return p.Slides.Any(s => s.Objects.Any(o => o.Text.Contains(query, StringComparison.CurrentCultureIgnoreCase)));
-    }
+    // The library list (folders, sorting, search, favourites and tags) is MainViewModel.LibraryBrowse.cs.
 
     // MARK: Themes
 

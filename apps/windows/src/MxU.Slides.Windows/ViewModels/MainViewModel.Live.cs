@@ -137,6 +137,7 @@ public sealed partial class MainViewModel
         foreach (var tile in MediaItems)
             tile.IsLive = Show.LiveMedia.Values.Any(m => m.MediaId == tile.Item.Id);
         MarkLiveOverlays();
+        NoteLiveUse(); // for the library's Recently Used sort (MainViewModel.LibraryBrowse.cs)
     }
 
     [RelayCommand]

@@ -1,0 +1,128 @@
+<!--
+    The library list (Phase 8): search across the whole library, All / Songs / Presentations /
+    Media, favourites and tags, the sort order, folders with crumbs, and picking several rows with
+    Ctrl+click or Shift+click for one action. Rows: LibraryFolderRowViewModel,
+    LibraryAllRowViewModel, LibraryEntryViewModel and (in search results) LibraryMediaHitViewModel
+    (ViewModels/ItemViewModels.Browse.cs). The menus are built as they open (Views/LibraryMenus.cs).
+-->
+<UserControl x:Class="MxU.Slides.Windows.Views.LibraryPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MxU.Slides.Windows.ViewModels"
+             xmlns:v="clr-namespace:MxU.Slides.Windows.Views">
+    <UserControl.Resources>
+        <v:BoolToVisibility x:Key="Visible" />
+        <v:NotNullToVisibility x:Key="VisibleWhenSet" />
+        <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+    </UserControl.Resources>
+    <Border Style="{StaticResource Panel}">
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4" LastChildFill="False">
+                <TextBlock DockPanel.Dock="Left" Text="LIBRARY" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" Margin="0" />
+                <Button x:Name="MoreButton" DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Click="More_Click" ToolTip="New folder, show everything">
+                    <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE712;" />
+                </Button>
+                <Button x:Name="SortButton" DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Click="Sort_Click" ToolTip="Sort by name, date modified, recently used or date added">
+                    <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8CB;" />
+                </Button>
+                <Button x:Name="TagButton" DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Click="Tag_Click" ToolTip="Show only items with a tag">
+                    <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8EC;" />
+                </Button>
+                <ToggleButton x:Name="FavoritesToggle" DockPanel.Dock="Right" IsChecked="{Binding LibraryFavoritesOnly}" Padding="6,2" Margin="0,0,2,0"
+                              ToolTip="Show only favourites">
+                    <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE734;" />
+                </ToggleButton>
+            </DockPanel>
+            <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Text="{Binding LibrarySearch, UpdateSourceTrigger=PropertyChanged, Delay=120}"
+                     Tag="Search titles, lyrics, authors, CCLI numbers, media…" PreviewKeyDown="SearchBox_PreviewKeyDown"
+                     ToolTip="Search the whole library: song titles, every lyric, authors, CCLI numbers, tags, media and music (Ctrl+F)" Margin="0,0,0,6" />
+            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                <RadioButton x:Name="ShowAll" Content="All" Margin="0,0,10,2" IsChecked="True" Checked="Filter_Checked" Tag="0" />
+                <RadioButton Content="Songs" Margin="0,0,10,2" Checked="Filter_Checked" Tag="1" />
+                <RadioButton Content="Presentations" Margin="0,0,10,2" Checked="Filter_Checked" Tag="2" />
+                <RadioButton x:Name="ShowMedia" Content="Media" Margin="0,0,0,2" Checked="Filter_Checked" Tag="3"
+                             ToolTip="Search pictures, videos and music" Visibility="{Binding IsLibrarySearching, Converter={StaticResource Visible}}" />
+            </WrapPanel>
+            <!-- Where the list is: Library › Hymns › Easter (click a step to go back to it), and what it holds. -->
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding LibraryStatus}" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" />
+                <ItemsControl ItemsSource="{Binding LibraryCrumbs}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:LibraryCrumb}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="Arrow" Text=" › " Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" />
+                                <Button Style="{StaticResource GhostButton}" Padding="2,0" Click="Crumb_Click" ToolTip="Go back to here">
+                                    <TextBlock Text="{Binding Name}" FontSize="11" />
+                                </Button>
+                            </StackPanel>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding RelativeSource={RelativeSource PreviousData}}" Value="{x:Null}">
+                                    <Setter TargetName="Arrow" Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+            <TextBlock x:Name="PickedNote" DockPanel.Dock="Bottom" Style="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0" Visibility="Collapsed" />
+            <ListBox x:Name="LibraryList" ItemsSource="{Binding LibraryRows}" SelectionMode="Extended"
+                     SelectionChanged="List_SelectionChanged" PreviewMouseLeftButtonDown="List_PreviewMouseDown" PreviewMouseMove="List_PreviewMouseMove"
+                     MouseDoubleClick="List_DoubleClick" ContextMenuOpening="List_ContextMenuOpening" PreviewKeyDown="List_PreviewKeyDown"
+                     AllowDrop="True" DragOver="List_DragOver" Drop="List_Drop"
+                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                <ListBox.ContextMenu>
+                    <ContextMenu Opened="Menu_Opened" />
+                </ListBox.ContextMenu>
+                <ListBox.Resources>
+                    <DataTemplate DataType="{x:Type vm:LibraryAllRowViewModel}">
+                        <DockPanel>
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="{Binding Glyph}" Foreground="{StaticResource MutedText}" Width="22" VerticalAlignment="Center" FontSize="12" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding Count}" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        </DockPanel>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:LibraryFolderRowViewModel}">
+                        <DockPanel>
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="{Binding Glyph}" Foreground="{StaticResource Accent}" Width="22" VerticalAlignment="Center" FontSize="13" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </DockPanel>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:LibraryEntryViewModel}">
+                        <DockPanel>
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="{Binding Glyph}" Foreground="{StaticResource MutedText}"
+                                       Width="22" VerticalAlignment="Top" Margin="0,2,0,0" FontSize="12" />
+                            <TextBlock DockPanel.Dock="Right" FontFamily="{StaticResource Icons}" Text="&#xE735;" FontSize="11" Margin="4,2,0,0"
+                                       VerticalAlignment="Top" Foreground="#F5C542" ToolTip="Favourite"
+                                       Visibility="{Binding IsFavorite, Converter={StaticResource Visible}}" />
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Line}" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Snippet}" Style="{StaticResource Muted}" FontSize="11" FontStyle="Italic" TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding Snippet, Converter={StaticResource VisibleWhenSet}}" />
+                                <TextBlock Text="{Binding TagsLine}" Foreground="{StaticResource Accent}" FontSize="10" TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding TagsLine, Converter={StaticResource VisibleWhenSet}}" />
+                            </StackPanel>
+                        </DockPanel>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:LibraryMediaHitViewModel}">
+                        <DockPanel>
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="{Binding Glyph}" Foreground="{StaticResource MutedText}" Width="22" VerticalAlignment="Top" Margin="0,2,0,0" FontSize="12" />
+                            <TextBlock DockPanel.Dock="Right" FontFamily="{StaticResource Icons}" Text="&#xE735;" FontSize="11" Margin="4,2,0,0" VerticalAlignment="Top"
+                                       Foreground="#F5C542" Visibility="{Binding IsFavorite, Converter={StaticResource Visible}}" />
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Line}" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DockPanel>
+                    </DataTemplate>
+                </ListBox.Resources>
+            </ListBox>
+        </DockPanel>
+    </Border>
+</UserControl>

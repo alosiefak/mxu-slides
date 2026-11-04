@@ -112,6 +112,7 @@ public sealed partial class AppSettings
 
     public static AppSettings Load()
     {
+        ApplyStagedFromBackup(); // settings a restore put aside for this launch (AppSettings.Library.cs)
         try
         {
             if (File.Exists(AppPaths.SettingsFile))

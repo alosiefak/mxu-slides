@@ -25,7 +25,7 @@ internal static class LibraryDialogs
     internal static Action<ChoiceWindow>? Showing { get; set; }
 
     /// <summary>Over whichever window the operator is in (a dialog can come up during an import).</summary>
-    private static Window? Owner =>
+    internal static Window? Owner =>
         Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive && w is not ChoiceWindow) ?? Application.Current?.MainWindow;
 
     public static SlidesPresentationFile.Conflict? AskPresentationConflict(string name)
@@ -122,7 +122,7 @@ internal static class LibraryDialogs
     // MARK: Pieces
 
     /// <summary>The where-used list: one heading per kind ("Presentations (2)"), a row per use, "via Hymns theme" when it's the theme's.</summary>
-    private static UIElement UsesList(IReadOnlyList<MediaUsage.Group> groups)
+    internal static UIElement UsesList(IReadOnlyList<MediaUsage.Group> groups)
     {
         var list = new StackPanel();
         foreach (var group in groups)

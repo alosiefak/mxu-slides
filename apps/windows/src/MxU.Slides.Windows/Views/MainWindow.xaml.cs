@@ -231,7 +231,7 @@ public partial class MainWindow : Window
                 case Key.N: NewSong_Click(this, e); e.Handled = true; return;
                 case Key.I: Import_Click(this, e); e.Handled = true; return;
                 case Key.E: model.IsEditing = !model.IsEditing; e.Handled = true; return;
-                case Key.F: LibrarySearchBox.Focus(); LibrarySearchBox.SelectAll(); e.Handled = true; return;
+                case Key.F: LibraryPanelView.FocusSearch(); e.Handled = true; return;
                 case Key.B: model.OpenBibleCommand.Execute(null); e.Handled = true; return;
             }
         }
@@ -382,23 +382,10 @@ public partial class MainWindow : Window
         static bool IsPowerPoint(string path) => string.Equals(Path.GetExtension(path), ".pptx", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void LibraryList_DoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        if (model.CurrentPresentation is { } p && model.SelectedLibraryEntry?.IsSong == true) OpenLyricsEditor(p);
-    }
-
     private void RenamePresentation_Click(object sender, RoutedEventArgs e)
     {
         if (model.CurrentPresentation is not { } p) return;
         if (InputDialog.Ask(this, "Rename", "Name", p.Name) is { } name) model.RenamePresentation(p, name);
-    }
-
-    private void DeletePresentation_Click(object sender, RoutedEventArgs e)
-    {
-        if (model.CurrentPresentation is not { } p) return;
-        if (MessageBox.Show(this, $"Move \"{p.Name}\" to the library's Trash folder?", "MxU Slides",
-                MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
-            model.DeletePresentationCommand.Execute(null);
     }
 
     private void Background_Click(object sender, RoutedEventArgs e)
@@ -413,23 +400,10 @@ public partial class MainWindow : Window
         menu.IsOpen = true;
     }
 
-    private void LibraryFilter_Checked(object sender, RoutedEventArgs e)
-    {
-        if (sender is RadioButton { Tag: string tag } && int.TryParse(tag, out var filter) && IsLoaded) model.LibraryFilter = filter;
-    }
-
-    // MARK: Library → service drag, service reordering
+    // MARK: Library → service drag (the library's side is Views/LibraryPanel.xaml.cs), service reordering
 
     private Point dragStart;
     private object? dragCandidate;
-
-    private void LibraryList_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        dragStart = e.GetPosition(null);
-        dragCandidate = (e.OriginalSource as FrameworkElement)?.DataContext as LibraryEntryViewModel;
-    }
-
-    private void LibraryList_PreviewMouseMove(object sender, MouseEventArgs e) => MaybeDrag(e, "mxu/presentation");
 
     private void ServiceList_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -587,6 +561,7 @@ public partial class MainWindow : Window
 
     private void MediaTile_Click(object sender, MouseButtonEventArgs e)
     {
+        if (PickedMediaTile(sender)) return; // Ctrl+click or Shift+click picks tiles for a batch (MainWindow.LibraryPanel.cs)
         if (ContextOf<MediaTileViewModel>(sender) is { } tile) model.MediaClickedCommand.Execute(tile);
     }
 

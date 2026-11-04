@@ -27,11 +27,11 @@ public sealed partial class MainViewModel
         var query = MediaSearch.Trim();
         var selectedId = SelectedMedia?.Item.Id;
         MediaItems.Clear();
-        foreach (var item in Library.All<MediaItem>()
-                     .Where(m => query.Length == 0 || m.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase))
-                     .OrderByDescending(m => m.ImportedAt ?? 0))
+        // Search, folder, favourites and order: MainViewModel.MediaBrowse.cs.
+        foreach (var item in MediaForBin(query))
             MediaItems.Add(new MediaTileViewModel(item, MediaTileViewModel.PreviewScene(item)));
         SelectedMedia = MediaItems.FirstOrDefault(m => m.Item.Id == selectedId);
+        ShowMediaPicks();
         MarkMediaFiles();
         MarkLiveTiles();
     }
