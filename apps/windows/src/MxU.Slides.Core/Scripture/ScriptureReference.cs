@@ -36,7 +36,7 @@ public static class ScriptureReference
         "Revelation|Rev",
     ];
 
-    internal const string Translations = "NIV|ESV|KJV|NKJV|NLT|NASB|CSB|HCSB|MSG|AMP|NRSV|NET|TPT|CEV|NCV";
+    internal const string Translations = "NIV|ESV|KJV|NKJV|NLT|NASB|CSB|HCSB|MSG|AMP|NRSV|NET|TPT|CEV|NCV|WEB|ASV|RSV|BSB|LSB|NIRV|GNT|NABRE";
 
     // Longest names first, so "Song of Songs" wins over "Song" and "Philemon" over "Phil".
     private static readonly Regex Pattern = BuildPattern();
@@ -111,7 +111,7 @@ public static class ScriptureReference
             return new Split(before, match.Text);
         if (found[0] is { Start: 0 } lead)
         {
-            var rest = line[lead.End..];
+            var rest = line[lead.End..].TrimmingWhitespaces();
             var separator = rest.Length > 0 && ":-–—".Contains(rest[0]);
             if (separator)
             {
@@ -121,4 +121,74 @@ public static class ScriptureReference
         }
         return null;
     }
+
+    /// <summary>
+    /// The chapter and verses a reference names: "Hebrews 12:27–28 (WEB)" is Hebrews 12, 27 to 28.
+    /// Null for a whole chapter, or a passage over two chapters.
+    /// </summary>
+    public static (string Chapter, int First, int Last)? VersesOf(string reference)
+    {
+        var match = VersePattern.Match(reference);
+        if (!match.Success || !int.TryParse(match.Groups[2].Value, out var first)) return null;
+        var last = match.Groups[3].Success && int.TryParse(match.Groups[3].Value, out var l) ? l : first;
+        if (last < first) return null;
+        return (match.Groups[1].Value, first, last);
+    }
+
+    private static readonly Regex VersePattern = new(
+        @"^\s*([^:]*?\d+)\s*:\s*(\d+)[a-c]?(?:\s*[-–—]\s*(\d+)[a-c]?)?\s*(?:\(?[A-Z]{2,6}\)?)?\s*$", RegexOptions.CultureInvariant);
+
+    /// <summary>One verse of a passage, with the number it carried in the text (null for words before the first number).</summary>
+    public sealed record Verse(int? Number, string Text)
+    {
+        /// <summary>"4 Rejoice": the verse with its number in front.</summary>
+        public string Numbered => Number is { } n ? $"{n} {Text}" : Text;
+    }
+
+    /// <summary>
+    /// The passage cut at the verse numbers its reference names ("27 This phrase… 28 Therefore…"),
+    /// counting up from the first, so a number in the words ("after 3 days") is no cut.
+    /// </summary>
+    public static List<Verse> VersesIn(string text, int first, int last)
+    {
+        var cuts = VerseNumbers(text, first, last);
+        if (cuts.Count == 0) return [new Verse(null, text.TrimmingWhitespacesAndNewlines())];
+        var result = new List<Verse>();
+        var head = text[..cuts[0].Start].TrimmingWhitespacesAndNewlines();
+        if (head.Length > 0) result.Add(new Verse(null, head));
+        for (var index = 0; index < cuts.Count; index++)
+        {
+            var end = index + 1 < cuts.Count ? cuts[index + 1].Start : text.Length;
+            var from = cuts[index].Start + cuts[index].Length;
+            result.Add(new Verse(cuts[index].Number, text[from..end].TrimmingWhitespacesAndNewlines()));
+        }
+        return result;
+    }
+
+    /// <summary>The passage with its verse numbers taken out.</summary>
+    public static string RemovingVerseNumbers(string text, int first, int last)
+    {
+        foreach (var cut in Enumerable.Reverse(VerseNumbers(text, first, last))) text = text.Remove(cut.Start, cut.Length);
+        return text;
+    }
+
+    private static List<(int Number, int Start, int Length)> VerseNumbers(string text, int first, int last)
+    {
+        var cuts = new List<(int, int, int)>();
+        var expected = first;
+        foreach (System.Text.RegularExpressions.Match match in NumberPattern.Matches(text))
+        {
+            if (expected > last || !int.TryParse(match.Groups[1].Value, out var number)) continue;
+            var leading = text[..match.Index].TrimmingWhitespacesAndNewlines().Length > 0;
+            // The first number may be one past the reference's first verse when words come before it.
+            if (number == expected || (cuts.Count == 0 && leading && number == expected + 1 && number <= last))
+            {
+                cuts.Add((number, match.Index, match.Length));
+                expected = number + 1;
+            }
+        }
+        return cuts;
+    }
+
+    private static readonly Regex NumberPattern = new(@"(?:^|(?<=\s))(\d{1,3})\s+(?=[^\d\s])", RegexOptions.Multiline | RegexOptions.CultureInvariant);
 }
