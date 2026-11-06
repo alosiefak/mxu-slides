@@ -159,7 +159,7 @@ public sealed partial class MainViewModel
         var groups = NoteSlideBuilder.Groups(body);
         var target = request.AddToPresentationId is { } existingId ? Library.Get<Presentation>(existingId) : null;
         var themeId = target?.ThemeId ?? request.ThemeId;
-        var built = NoteLiveUpdates.NewSlides(groups, themeId, map, ThemeById, NotePlanner(map.Options), mediaIds, request.Overrides, request.Switches);
+        var built = NoteLiveUpdates.NewSlides(groups, themeId, map, ThemeById, NotePlanner(map.Options, NotePictureAspects(body)), mediaIds, request.Overrides, request.Switches);
 
         Presentation deck;
         if (target is not null)

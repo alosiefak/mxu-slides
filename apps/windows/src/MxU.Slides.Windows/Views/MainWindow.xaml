@@ -285,6 +285,8 @@
                             <RadioButton Content="All" Margin="0,0,10,0" IsChecked="True" Checked="LibraryFilter_Checked" Tag="0" />
                             <RadioButton Content="Songs" Margin="0,0,10,0" Checked="LibraryFilter_Checked" Tag="1" />
                             <RadioButton Content="Presentations" Checked="LibraryFilter_Checked" Tag="2" />
+                            <Button x:Name="NotesButton" Content="Notes" Margin="14,0,0,0" Padding="8,1" Click="Notes_Click"
+                                    ToolTip="Notes: paste or import a sermon outline and make slides from it" />
                         </StackPanel>
                         <ListBox x:Name="LibraryList" ItemsSource="{Binding LibraryItems}" SelectedItem="{Binding SelectedLibraryEntry}"
                                  PreviewMouseLeftButtonDown="LibraryList_PreviewMouseDown" PreviewMouseMove="LibraryList_PreviewMouseMove"

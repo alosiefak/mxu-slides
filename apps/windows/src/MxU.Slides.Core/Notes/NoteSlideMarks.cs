@@ -71,7 +71,7 @@ public static partial class NoteSlideMarks
         public override string ToString() => $"{Id} {Type} [{string.Join(",", BlockIndexes)}] {Text}";
     }
 
-    internal static Shape ShapeOf(NoteBlock block) => block.Type switch
+    public static Shape ShapeOf(NoteBlock block) => block.Type switch
     {
         NoteBlockType.Heading => Shape.Heading,
         NoteBlockType.List or NoteBlockType.TaskList => Shape.List,
@@ -164,7 +164,7 @@ public static partial class NoteSlideMarks
     });
 
     /// <summary>A copy of the note with every run changed by <paramref name="transform"/> (a picture's mark too).</summary>
-    internal static NoteBody Mapping(NoteBody body, Func<NoteRun, NoteRun> transform) =>
+    public static NoteBody Mapping(NoteBody body, Func<NoteRun, NoteRun> transform) =>
         new() { Blocks = body.Blocks.Select(b => MappingRuns(b, transform)).ToList(), PlainText = body.PlainText };
 
     internal static NoteBlock MappingRuns(NoteBlock block, Func<NoteRun, NoteRun> transform, Action<NoteBlock>? also = null)
@@ -255,7 +255,7 @@ public static partial class NoteSlideMarks
         return marked;
     }
 
-    internal static bool IsPassageType(NoteBlock block) =>
+    public static bool IsPassageType(NoteBlock block) =>
         block.Type is NoteBlockType.Heading or NoteBlockType.Paragraph or NoteBlockType.List or NoteBlockType.TaskList or NoteBlockType.Quote;
 
     /// <summary>Each run of blocks under a "[slide]" or "Slide 2:" marker becomes a passage.</summary>
