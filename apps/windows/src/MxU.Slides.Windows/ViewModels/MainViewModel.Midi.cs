@@ -50,9 +50,11 @@ public sealed partial class MainViewModel
         if (!Settings.MidiInputEnabled) return;
         if (Settings.MidiMap.Resolve(status, note, velocity) is not { } hit) return;
         Log.Info($"MIDI {MidiCommandMap.NoteName(note)} v{velocity} → {hit.Command.DisplayName()}");
+        // A backup's triggers wait while it follows its booth (MainViewModel.Follow.cs).
+        if (HeldWhileFollowing("MIDI " + hit.Command)) return;
         try
         {
-            HandleMidi(hit.Command, hit.Velocity);
+            LocalApi.ApiFireSource.With(new LocalApi.ApiFireSource(LocalApi.ApiFireSource.Kinds.Midi), () => HandleMidi(hit.Command, hit.Velocity));
         }
         catch (Exception ex)
         {

@@ -132,6 +132,22 @@ public sealed class ApiFireFeed(Func<double>? clock = null)
         }
     }
 
+    /// <summary>
+    /// Until disposed, fires made on this thread (and the async work it starts) are effects of
+    /// <paramref name="seq"/>: for code that can't wrap its effects in a lambda.
+    /// </summary>
+    public static IDisposable Caused(int seq)
+    {
+        var before = cause.Value;
+        cause.Value = seq;
+        return new Restore(() => cause.Value = before);
+    }
+
+    private sealed class Restore(Action restore) : IDisposable
+    {
+        public void Dispose() => restore();
+    }
+
     private readonly Func<double> clock = clock ?? (() => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency);
     private int seq;
 

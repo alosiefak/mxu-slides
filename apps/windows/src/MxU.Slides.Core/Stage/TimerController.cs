@@ -255,11 +255,21 @@ public sealed class TimerController(TimeProvider? clock = null)
             return t;
         });
 
-    public void Start(string id) => Mutate(id, t => t.IsRunning ? t : t with { IsRunning = true, RunningSince = Now });
+    /// <summary>Someone played, paused or reset a timer ("play", "pause", "reset"): a backup computer does too.</summary>
+    public event Action<string, string>? Acted;
+
+    public void Start(string id)
+    {
+        Acted?.Invoke(id, "play");
+        Mutate(id, t => t.IsRunning ? t : t with { IsRunning = true, RunningSince = Now });
+    }
 
     /// <summary>Banks the time run so far; resuming continues from it.</summary>
-    public void Pause(string id) => Mutate(id, t =>
-        !t.IsRunning ? t : t with { Banked = t.Elapsed(Now), IsRunning = false, RunningSince = null });
+    public void Pause(string id)
+    {
+        Acted?.Invoke(id, "pause");
+        Mutate(id, t => !t.IsRunning ? t : t with { Banked = t.Elapsed(Now), IsRunning = false, RunningSince = null });
+    }
 
     public void Toggle(string id)
     {
@@ -269,7 +279,13 @@ public sealed class TimerController(TimeProvider? clock = null)
     }
 
     /// <summary>Back to the start, stopped. A countdown-to-time re-arms for the next occurrence of its wall time.</summary>
-    public void Reset(string id) => Mutate(id, t =>
+    public void Reset(string id)
+    {
+        Acted?.Invoke(id, "reset");
+        ResetNow(id);
+    }
+
+    private void ResetNow(string id) => Mutate(id, t =>
     {
         t = t with { Banked = 0, IsRunning = false, RunningSince = null };
         if (t.Mode == TimerMode.CountdownToTime && t.TargetTime is { } target)

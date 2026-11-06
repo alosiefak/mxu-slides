@@ -6,6 +6,7 @@ using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
+using MxU.Slides.LocalApi;
 using MxU.Slides.Windows.Infrastructure;
 
 namespace MxU.Slides.Windows.ViewModels;
@@ -91,6 +92,8 @@ public sealed partial class MainViewModel
     {
         var cue = MediaCueRouting.Dropped(item);
         var layer = SlideSceneBuilder.LayerKindOf(cue.Layer);
+        // For a backup computer: the media, and the preset switches and actions it sets off as its effects.
+        using var effects = FiredWithEffects(new ApiFireEvent { Kind = ApiFireEvent.Kinds.Media, Id = item.Id, ServiceItemId = serviceItemId, Layer = layer.Raw() });
         Actions.ApplyPresetSwitches(item, serviceItemId);
         Show.Fire(cue, layer);
         RenderOutputs(DefaultTransition());

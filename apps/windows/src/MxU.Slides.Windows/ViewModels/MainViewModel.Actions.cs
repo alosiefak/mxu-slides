@@ -3,6 +3,7 @@ using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Outputs;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Core.Stage;
+using MxU.Slides.LocalApi;
 using MxU.Slides.Windows.Infrastructure;
 using MxU.Slides.Windows.Outputs;
 
@@ -46,7 +47,12 @@ public sealed partial class MainViewModel : IShowActions
     }
 
     /// <summary>Runs an action combo by id (the toolbar, MIDI and the Local API use this).</summary>
-    public void RunActionCombo(string comboId) => Actions.Fire(comboId);
+    public void RunActionCombo(string comboId)
+    {
+        // For a backup computer: the combo, its steps as its effects (MainViewModel.Follow.cs).
+        using var effects = FiredWithEffects(new ApiFireEvent { Kind = ApiFireEvent.Kinds.Combo, Id = comboId });
+        Actions.Fire(comboId);
+    }
 
     /// <summary>Action combos in the order MIDI "Run Action Combo" numbers them (velocity 1 = the first): by name.</summary>
     private List<ActionCombo> ActionComboOrder() =>

@@ -6,7 +6,8 @@ using MxU.Slides.Core.Threading;
 namespace MxU.Slides.Audio.Control;
 
 /// <summary>One bus as the Local API reports it (the same fields as <c>ApiAudioBus</c>).</summary>
-public sealed record AudioBusStatus(string? PlaylistId, string? AudioItemId, string? TrackName, bool Playing, double? Position, double? Duration);
+/// <param name="EntryId">The playlist entry playing, so a backup computer that takes over plays the same song.</param>
+public sealed record AudioBusStatus(string? PlaylistId, string? AudioItemId, string? TrackName, bool Playing, double? Position, double? Duration, string? EntryId = null);
 
 /// <summary>The buttons the API's /v1/audio/transport and the operator's transport bar press.</summary>
 public enum AudioTransportAction

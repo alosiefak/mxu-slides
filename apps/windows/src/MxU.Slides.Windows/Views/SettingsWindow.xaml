@@ -156,6 +156,8 @@
                 </DockPanel>
             </StackPanel>
         </Expander>
+        <!-- Backup: another computer following this one, or this one following another (Views/Follow). -->
+        <f:BackupSettingsSection xmlns:f="clr-namespace:MxU.Slides.Windows.Views.Follow" x:Name="BackupPanel" />
         <!-- Planning Center and the browser remote (Views/ConnectSettingsSection.cs). -->
         <v:ConnectSettingsSection xmlns:v="clr-namespace:MxU.Slides.Windows.Views" />
 

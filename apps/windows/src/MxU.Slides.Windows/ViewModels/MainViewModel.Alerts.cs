@@ -3,6 +3,7 @@ using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Core.Stage;
 using MxU.Slides.Core.Threading;
+using MxU.Slides.LocalApi;
 using MxU.Slides.Windows.Infrastructure;
 using MxU.Slides.Windows.Rendering;
 
@@ -69,6 +70,7 @@ public sealed partial class MainViewModel
     {
         var trimmed = message.Trim();
         if (trimmed.Length == 0) return;
+        Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.Alert, Alert = new ApiFireAlertCommand(id, trimmed, null, WireName(behavior), WireName(target), themeId), Layer = layer });
         // The theme only dresses what the audience sees; the stage always shows the plain band.
         var theme = target != AlertTarget.Confidence && !string.IsNullOrEmpty(themeId) ? Library.Get<Theme>(themeId) : null;
         Show.FireAlert(new CueAlert(trimmed, behavior, target) { Id = id, Theme = theme, Layer = layer }, ShowState.HostClock());

@@ -29,6 +29,7 @@ public sealed partial class MainViewModel
     /// <summary>Starts, restarts or stops the server to match Settings. Call on the UI thread: requests run on it.</summary>
     public void ApplyApiSettings()
     {
+        EnsureFollow(); // backing up another computer (MainViewModel.Follow.cs)
         if (!apiEventsHooked)
         {
             apiEventsHooked = true;
@@ -42,7 +43,7 @@ public sealed partial class MainViewModel
             ApiStatus = "Off";
             return;
         }
-        api ??= new LocalApiServer();
+        api ??= NewApiServer();
         if (api.IsRunning && api.Port == Settings.LocalApiPort) return;
         api.Stop();
         ApiTokens.EnsureDefaultKey();
@@ -58,7 +59,12 @@ public sealed partial class MainViewModel
         }
     }
 
-    public void StopApi() => api?.Stop();
+    public void StopApi()
+    {
+        // A booth tells its backups it is quitting, so none takes over for a closed app.
+        followController?.Quitting();
+        api?.Stop();
+    }
 
     // Topics waiting to be pushed (see PublishApi).
     private readonly HashSet<ApiTopic> apiPending = [];

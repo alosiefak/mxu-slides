@@ -311,7 +311,8 @@ public sealed class AudioControllerTests
         {
             Assert.Empty(controller.Play(playlist));
             var bus = controller.Status().Single();
-            Assert.Equal(new AudioBusStatus("p", null, "A", true, 0, bus.Duration), bus);
+            // The entry playing rides along, so a backup computer that takes over plays the same song (MxU PR #12).
+            Assert.Equal(new AudioBusStatus("p", null, "A", true, 0, bus.Duration, "e0"), bus);
             Assert.True(Math.Abs(bus.Duration!.Value - 0.3) < 0.01);
             engines[0].RenderOfflineForTests(16_000);
             Assert.True(TestAudio.WaitFor(() => controller.Status().Single().TrackName == "B"), "the next track follows the natural end");

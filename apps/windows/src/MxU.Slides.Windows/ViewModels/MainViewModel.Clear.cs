@@ -1,3 +1,4 @@
+using MxU.Slides.LocalApi;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -79,7 +80,7 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private void ClearInputs()
     {
-        Clear(() => Show.Clear(ShowFunction.Inputs));
+        Clear(() => Show.Clear(ShowFunction.Inputs), fired: "inputs");
         MarkLiveInputs();
     }
 
@@ -101,6 +102,7 @@ public sealed partial class MainViewModel
     /// <summary>Clears one layer: the slide or overlays play their Outs first, as with their function's clear.</summary>
     public void ClearLayer(LayerKind layer)
     {
+        Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.Clear, Clear = new ApiClearCommand(Layer: layer.Raw()) });
         Clear(() => Show.Clear(layer, ShowState.HostClock()));
         if (layer == LayerKind.VideoInput) MarkLiveInputs();
         RefreshClearState();

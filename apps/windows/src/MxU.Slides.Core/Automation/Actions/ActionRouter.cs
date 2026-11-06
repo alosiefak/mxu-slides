@@ -57,6 +57,12 @@ public sealed class ActionRouter
     /// </summary>
     public IExtraSteps? ExtraSteps { get; set; }
 
+    /// <summary>
+    /// Steps held now (a backup following its booth holds MIDI out and the stream, which the booth
+    /// already drove: FollowLogic.Holds). Null: none.
+    /// </summary>
+    public Func<SlideActionKind, bool>? Holds { get; set; }
+
     // MARK: Output presets
 
     /// <summary>
@@ -250,6 +256,11 @@ public sealed class ActionRouter
     private void Perform(SlideAction action, int depth, IReadOnlySet<string> visited, bool skippingPresetSwitches, IReadOnlySet<LayerKind> protectedLayers)
     {
         Note("actions.step", Label(action));
+        if (Holds?.Invoke(action.Kind) == true)
+        {
+            Note("follow.held", action.Kind.ToString());
+            return;
+        }
         switch (action.Kind)
         {
             case SlideActionKind.ClearLayer:

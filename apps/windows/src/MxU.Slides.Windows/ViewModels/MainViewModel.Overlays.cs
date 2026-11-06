@@ -7,6 +7,7 @@ using MxU.Slides.Core.Json;
 using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
+using MxU.Slides.LocalApi;
 using MxU.Slides.Windows.Infrastructure;
 
 namespace MxU.Slides.Windows.ViewModels;
@@ -166,6 +167,7 @@ public sealed partial class MainViewModel
     /// </summary>
     private void SetOverlay(Overlay overlay, bool up)
     {
+        Fired(new ApiFireEvent { Kind = up ? ApiFireEvent.Kinds.Overlay : ApiFireEvent.Kinds.DismissOverlay, Id = overlay.Id });
         var now = ShowState.HostClock();
         if (up) Show.Fire(overlay, now);
         else Show.DismissOverlay(overlay.Id, now);

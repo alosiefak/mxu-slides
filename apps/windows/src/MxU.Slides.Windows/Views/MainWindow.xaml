@@ -154,6 +154,7 @@
 
         <!-- Notices -->
         <StackPanel Grid.Row="1">
+            <f:FollowBanner xmlns:f="clr-namespace:MxU.Slides.Windows.Views.Follow" /><!-- Backing up another computer (Views/Follow) -->
             <Border Background="#1E3A5F" Padding="12,6" Visibility="{Binding Notice, Converter={StaticResource VisibleWhenSet}}">
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Command="{Binding DismissNoticeCommand}" Content="Dismiss" />
