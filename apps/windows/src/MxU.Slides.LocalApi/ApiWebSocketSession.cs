@@ -17,7 +17,8 @@ internal sealed class ApiWebSocketSession(
     ApiEventBus events,
     ApiToken token,
     ApiTokenStore tokens,
-    Func<ApiRoute, ApiRequestContext, Task<ApiHandlerResponse>> invoke)
+    Func<ApiRoute, ApiRequestContext, Task<ApiHandlerResponse>> invoke,
+    FollowHooks? follow = null)
 {
     private const int MaxMessageBytes = 8 * 1024 * 1024;
     private static readonly TimeSpan CloseGrace = TimeSpan.FromSeconds(1);
@@ -139,7 +140,11 @@ internal sealed class ApiWebSocketSession(
                 Send(output, new JsonObject { ["type"] = "error", ["message"] = "Unparseable frame." });
                 break;
             case "ping":
-                Send(output, new JsonObject { ["type"] = "pong" });
+                // A backup pings every second: its booth sees it's there, and the pong's beat says this app isn't frozen.
+                follow?.Heard?.Invoke(token.Name);
+                var pong = new JsonObject { ["type"] = "pong" };
+                if (follow?.Beat is { } beat) pong["beat"] = beat();
+                Send(output, pong);
                 break;
             case "subscribe" or "unsubscribe":
                 var topics = (inbound.Topics ?? ApiTopics.All.Select(t => t.Raw()))
@@ -182,6 +187,11 @@ internal sealed class ApiWebSocketSession(
         if (!Scope.Allows(match.Route.Scope))
         {
             Reply(403, Encode(ApiError.Forbidden(match.Route.Scope)));
+            return;
+        }
+        if (follow?.Hold?.Invoke(match.Route) is { } held)
+        {
+            Reply(held.Status, Encode(held));
             return;
         }
         var context = new ApiRequestContext

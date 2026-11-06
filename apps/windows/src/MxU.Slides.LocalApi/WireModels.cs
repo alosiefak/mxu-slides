@@ -214,8 +214,9 @@ public sealed record ApiMixerInputCommand(bool? Enabled = null, double? Gain = n
 
 public sealed record ApiAudioStatus(IReadOnlyList<ApiAudioBus> Buses);
 
+/// <param name="EntryId">The playlist entry playing, so a backup can take over on the same song.</param>
 public sealed record ApiAudioBus(
-    string? PlaylistId, string? AudioItemId, string? TrackName, bool Playing, double? Position, double? Duration);
+    string? PlaylistId, string? AudioItemId, string? TrackName, bool Playing, double? Position, double? Duration, string? EntryId = null);
 
 public sealed record ApiTransportRow(
     string MediaId, string Name, string Layer, bool Playing, bool Looping, double Position, double Duration);
@@ -270,4 +271,6 @@ public sealed record ApiMidiDeviceEnableCommand([property: JsonRequired] bool En
 
 public sealed record ApiAddServiceItemCommand([property: JsonRequired] string RefId, int? Index = null);
 
-public sealed record ApiServerInfo(string Name, string Product, string ApiVersion, int SchemaVersion);
+/// <param name="StationHexId">This computer's id, which a backup pairs with and finds it by again.</param>
+/// <param name="StationName">This computer's name, as a backup shows it.</param>
+public sealed record ApiServerInfo(string Name, string Product, string ApiVersion, int SchemaVersion, string? StationHexId = null, string? StationName = null);

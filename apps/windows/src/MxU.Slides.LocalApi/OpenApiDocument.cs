@@ -234,7 +234,7 @@ public static class OpenApiDocument
         {
             ["buses"] = ArrayOf(Obj(new()
             {
-                ["playlistId"] = Str, ["audioItemId"] = Str, ["trackName"] = Str, ["playing"] = Bool,
+                ["playlistId"] = Str, ["audioItemId"] = Str, ["trackName"] = Str, ["entryId"] = Str, ["playing"] = Bool,
                 ["position"] = Num, ["duration"] = Num,
             }, "playing")),
         }, "buses"),
@@ -257,27 +257,52 @@ public static class OpenApiDocument
             }, "id", "name", "role", "backed", "width", "height", "outputs", "activeMasks")),
             ["presets"] = ArrayOf(Obj(new() { ["id"] = Str, ["name"] = Str, ["active"] = Bool }, "id", "name", "active")),
         }, "screens", "presets"),
-        ["FireSlideCommand"] = Obj(new()
-        {
-            ["presentationId"] = Str, ["slideId"] = Str, ["slideIndex"] = Int,
-            ["arrangementId"] = Str, ["serviceItemId"] = Str, ["occurrence"] = Int,
-        }),
+        ["FireSlideCommand"] = FireSlideCommand,
         ["AdvanceCommand"] = Obj(new() { ["steps"] = Int, ["settled"] = Bool }),
-        ["ClearCommand"] = Obj(new() { ["function"] = Str, ["layer"] = Str }),
-        ["FireAlertCommand"] = Obj(new()
-        {
-            ["presetId"] = Str, ["message"] = Str,
-            ["tokens"] = new JsonObject { ["type"] = "object", ["additionalProperties"] = Str },
-            ["behavior"] = Str, ["target"] = Str, ["themeId"] = Str,
-        }),
+        ["ClearCommand"] = ClearCommand,
+        ["FireAlertCommand"] = FireAlertCommand,
         ["AudioFireCommand"] = Obj(new() { ["startAtEntryId"] = Str }),
         ["AudioStopCommand"] = Obj(new() { ["playlistId"] = Str, ["audioItemId"] = Str }),
         ["AudioTransportCommand"] = Obj(new() { ["action"] = Str, ["position"] = Num }, "action"),
         ["MediaTransportCommand"] = Obj(new() { ["action"] = Str, ["position"] = Num }, "action"),
         ["AddServiceItemCommand"] = Obj(new() { ["refId"] = Str, ["index"] = Int }, "refId"),
-        ["ServerInfo"] = Obj(new() { ["name"] = Str, ["product"] = Str, ["apiVersion"] = Str, ["schemaVersion"] = Int },
-            "name", "product", "apiVersion", "schemaVersion"),
+        ["ServerInfo"] = Obj(new()
+        {
+            ["name"] = Str, ["product"] = Str, ["apiVersion"] = Str, ["schemaVersion"] = Int,
+            ["stationHexId"] = Str, ["stationName"] = Str,
+        }, "name", "product", "apiVersion", "schemaVersion"),
+        // MxU PR #12: the fires topic, one message per fire (FollowMode.swift's backups read it).
+        ["FireEvent"] = Obj(new()
+        {
+            ["seq"] = Int, ["at"] = Num,
+            ["source"] = Obj(new() { ["kind"] = Str, ["name"] = Str }, "kind"),
+            ["cause"] = Int,
+            ["kind"] = OneOf([.. ApiFireKinds.All.Select(k => k.Raw())]),
+            ["id"] = Str,
+            ["slide"] = FireSlideCommand,
+            ["settled"] = Bool, ["slideActions"] = Bool,
+            ["steps"] = Int,
+            ["clear"] = ClearCommand,
+            ["alert"] = FireAlertCommand,
+            ["layer"] = Str, ["serviceItemId"] = Str, ["loops"] = Bool,
+            ["timer"] = Str,
+        }, "seq", "at", "source", "kind"),
     };
+
+    private static JsonObject FireSlideCommand => Obj(new()
+    {
+        ["presentationId"] = Str, ["slideId"] = Str, ["slideIndex"] = Int,
+        ["arrangementId"] = Str, ["serviceItemId"] = Str, ["occurrence"] = Int,
+    });
+
+    private static JsonObject ClearCommand => Obj(new() { ["function"] = Str, ["layer"] = Str });
+
+    private static JsonObject FireAlertCommand => Obj(new()
+    {
+        ["presetId"] = Str, ["message"] = Str,
+        ["tokens"] = new JsonObject { ["type"] = "object", ["additionalProperties"] = Str },
+        ["behavior"] = Str, ["target"] = Str, ["themeId"] = Str,
+    });
 
     private static JsonObject Str => new() { ["type"] = "string" };
     private static JsonObject Int => new() { ["type"] = "integer" };
@@ -312,12 +337,14 @@ public static class AsyncApiDocument
             [ApiTopic.Library] = ("LibrarySummary", false),
             [ApiTopic.Scheduler] = ("SchedulerStatus", false),
             [ApiTopic.Timecode] = ("TimecodeStatus", false),
+            [ApiTopic.Fires] = ("FireEvent", false),
         };
 
     internal static string TopicDescription(ApiTopic topic) => topic switch
     {
         ApiTopic.Show => "Snapshot pushed when the live show changes: the live slide (with step counters — stepIndex = click groups consumed so far, stepCount = click groups on the slide; both absent when the slide has no animation steps), next-slide text, media layers, overlays. Same shape as GET /v1/status. POST /v1/show/advance consumes one click group per call and pushes a new snapshot; past the last click one more call plays the exit group (the cue stays live, stepIndex reaches stepCount), and the call after that moves slides.",
         ApiTopic.Timecode => "Snapshot pushed when timecode locks or loses lock, changes song or rate, starts, stops or jumps — never per frame. Count frames from anchor (and the timeline playhead from timeline) yourself. Same shape as GET /v1/timecode.",
+        ApiTopic.Fires => "Not a snapshot: one message per fire this computer executes (slide, animation step, clear, media, overlay, alert, timer, combo, output preset, Lock), whoever fired it. seq counts up from launch (a gap = a missed fire); at is the sender's monotonic clock in seconds; cause is the seq of the fire this is an effect of (a slide's actions, a combo's steps), absent for a fire someone or something started.",
         _ => $"Snapshot pushed when {topic.Raw()} state changes; same shape as its REST endpoint.",
     };
 

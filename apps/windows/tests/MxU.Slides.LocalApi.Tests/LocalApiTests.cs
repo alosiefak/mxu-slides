@@ -372,6 +372,11 @@ public sealed class ApiRouterTests
             "POST /v1/services/{id}/select control selectService", "POST /v1/documents/{kind} edit createDocument",
             "PUT /v1/documents/{kind}/{id} edit updateDocument", "DELETE /v1/documents/{kind}/{id} edit deleteDocument",
             "POST /v1/services/{id}/items edit addServiceItem",
+            // Backing up another computer (LocalAPIController.followRoutes, after the table).
+            "GET /v1/follow view followStatus", "POST /v1/follow/takeover control followTakeOver",
+            "POST /v1/follow/handback control followHandBack", "POST /v1/follow/takeback control followTakeBack",
+            "GET /v1/follow/files control followFiles", "GET /v1/follow/files/{kind}/{id} control followFile",
+            "POST /v1/follow/role control followRole",
         ];
         var (router, _) = MakeRouter();
         // Windows-only routes (production control) live under /v1/windows/, apart from the Mac's.
@@ -397,6 +402,8 @@ public sealed class ApiRouterTests
     [InlineData("POST", "/v1/audio/items/a1/fire", "", "Audio unavailable.")]
     [InlineData("POST", "/v1/audio/stop", "", "Audio unavailable.")]
     [InlineData("POST", "/v1/audio/transport", """{"action":"playPause"}""", "Audio unavailable.")]
+    [InlineData("GET", "/v1/follow", "", "Follow unavailable.")]
+    [InlineData("POST", "/v1/follow/takeover", "", "Follow unavailable.")]
     public async Task FeaturesTheBridgeLacksAnswerLikeAMacWithoutThem(string method, string path, string body, string message)
     {
         var router = new ApiRouter(ApiRouteTable.Build(new CoreOnlyBridge()));

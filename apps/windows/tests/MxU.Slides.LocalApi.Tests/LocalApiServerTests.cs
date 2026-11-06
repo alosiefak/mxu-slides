@@ -280,10 +280,10 @@ public sealed class LocalApiServerTests
         Assert.Equal("""{"topics":["timecode"],"type":"subscribed"}""",
             await Exchange("""{"type":"subscribe","topics":["timecode","nonsense"]}"""));
         Assert.Equal(
-            """{"topics":["show","timers","audio","transport","outputs","library","scheduler","timecode"],"type":"subscribed"}""",
+            """{"topics":["show","timers","audio","transport","outputs","library","scheduler","timecode","fires"],"type":"subscribed"}""",
             await Exchange("""{"type":"subscribe"}"""));
         Assert.Equal("""{"topics":["audio"],"type":"subscribed"}""",
-            await Exchange("""{"type":"unsubscribe","topics":["show","timers","transport","outputs","library","scheduler","timecode"]}"""));
+            await Exchange("""{"type":"unsubscribe","topics":["show","timers","transport","outputs","library","scheduler","timecode","fires"]}"""));
 
         var missing = JsonNode.Parse((await Exchange("""{"type":"command","id":"c1","method":"GET","path":"/v1/nope"}"""))!)!;
         Assert.Equal("c1", (string?)missing["id"]);
@@ -296,14 +296,15 @@ public sealed class LocalApiServerTests
     }
 
     [Fact]
-    public async Task WebSocketNeedsAValidTokenInTheQuery()
+    public async Task WebSocketNeedsAValidToken()
     {
         using var host = TestServer.Start(new FakeBridge());
         var (status, json) = await ReadAsync(host.SendAsync(HttpMethod.Get, "/v1/ws?token=mxu_wrong"));
         Assert.Equal(HttpStatusCode.Unauthorized, status);
         Assert.Equal("unauthorized", (string?)json!["code"]);
         (status, _) = await ReadAsync(host.SendAsync(HttpMethod.Get, "/v1/ws", host.Mint(ApiScope.Edit)));
-        Assert.Equal(HttpStatusCode.Unauthorized, status); // the socket takes the key only in the query, as on the Mac
+        // The key in the Authorization header passes too (a Mac backup sends it so, MxU PR #12); this is no upgrade.
+        Assert.Equal(HttpStatusCode.BadRequest, status);
         await Assert.ThrowsAsync<WebSocketException>(() => host.ConnectAsync("mxu_wrong"));
     }
 

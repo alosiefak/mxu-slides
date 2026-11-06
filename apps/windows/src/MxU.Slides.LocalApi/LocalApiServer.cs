@@ -20,7 +20,8 @@ namespace MxU.Slides.LocalApi;
 /// phones and Companion on the LAN can reach it. Start and Stop never throw and can be
 /// called repeatedly; a failure to bind (port in use) is returned and kept in
 /// <see cref="LastError"/>. Port of LocalAPIServer plus the start/stop and publishing
-/// parts of the Mac's LocalAPIController. Bonjour advertising is not ported.
+/// parts of the Mac's LocalAPIController. With <see cref="Advertise"/> on it announces itself on
+/// the network (DNS-SD, as the Mac's Bonjour) for a backup computer to find (MxU PR #12).
 /// </summary>
 public sealed class LocalApiServer(ApiServerInfo? info = null) : IDisposable
 {
@@ -28,11 +29,29 @@ public sealed class LocalApiServer(ApiServerInfo? info = null) : IDisposable
 
     private readonly Lock gate = new();
     private volatile Running? current;
+    private readonly BonjourAdvertiser advertiser = new();
 
     private sealed record Running(WebApplication App, CancellationTokenSource Stopping, IApiBridge? Bridge, int Port);
 
-    public ApiServerInfo Info { get; } = info ?? new ApiServerInfo(
+    private volatile ApiServerInfo info = info ?? new ApiServerInfo(
         Environment.MachineName, "MxU Slides", OpenApiDocument.ApiVersion, OpenApiDocument.DocumentSchemaVersion());
+
+    public ApiServerInfo Info => info;
+
+    /// <summary>Announce this computer on the network while serving, so a backup finds it (set before Start).</summary>
+    public bool Advertise { get; set; }
+
+    /// <summary>What backing up another computer needs from the server (set before Start; see Follow/FollowMode.cs).</summary>
+    public FollowHooks? Follow { get; set; }
+
+    /// <summary>This computer's station id and name, served by /v1/ping and advertised, once the app knows them.</summary>
+    public void UpdateIdentity(string? stationHexId, string? stationName)
+    {
+        var known = info;
+        if (known.StationHexId == stationHexId && known.StationName == stationName) return;
+        info = known with { StationHexId = stationHexId, StationName = stationName };
+        if (IsRunning && Advertise) advertiser.Update(BonjourAdvertiser.Txt(info));
+    }
 
     /// <summary>The event bus sockets subscribe to; see <see cref="Publish(ApiTopic)"/>.</summary>
     public ApiEventBus Events { get; } = new();
@@ -71,12 +90,13 @@ public sealed class LocalApiServer(ApiServerInfo? info = null) : IDisposable
             WebApplication? app = null;
             try
             {
-                var handler = new ApiHttpHandler(new ApiRouter(routes), Events, tokens, Info, bridgeContext, stopping.Token,
-                    bridge as IRemoteBridge, Pairing);
+                var handler = new ApiHttpHandler(new ApiRouter(routes), Events, tokens, () => info, bridgeContext, stopping.Token,
+                    bridge as IRemoteBridge, Pairing, Follow);
                 var built = Build(port, handler.HandleAsync);
                 app = built;
                 Task.Run(() => built.StartAsync()).GetAwaiter().GetResult();
                 current = new Running(built, stopping, bridge, BoundPort(built) ?? port);
+                if (Advertise) advertiser.Start(info.Name, current.Port, BonjourAdvertiser.Txt(info));
                 return true;
             }
             catch (Exception e)
@@ -105,7 +125,8 @@ public sealed class LocalApiServer(ApiServerInfo? info = null) : IDisposable
     /// </summary>
     public void Publish(ApiTopic topic)
     {
-        if (current?.Bridge is not { } bridge) return;
+        // Fires are no snapshot: each is published as it happens (Follow/ApiFireFeed.cs).
+        if (current?.Bridge is not { } bridge || topic == ApiTopic.Fires) return;
         object snapshot;
         try
         {
@@ -154,6 +175,7 @@ public sealed class LocalApiServer(ApiServerInfo? info = null) : IDisposable
     {
         if (current is not { } running) return;
         current = null;
+        advertiser.Stop();
         running.Stopping.Cancel();
         Events.CloseAll();
         Shutdown(running.App);
@@ -251,7 +273,8 @@ internal sealed class ApiHttpHandler
     private readonly ApiRouter router;
     private readonly ApiEventBus events;
     private readonly ApiTokenStore tokens;
-    private readonly ApiServerInfo info;
+    private readonly Func<ApiServerInfo> info;
+    private readonly FollowHooks? follow;
     private readonly SynchronizationContext? bridgeContext;
     private readonly CancellationToken stopping;
     private readonly int schemaVersion = OpenApiDocument.DocumentSchemaVersion();
@@ -260,10 +283,11 @@ internal sealed class ApiHttpHandler
     private readonly RemoteSite? remote;
 
     public ApiHttpHandler(
-        ApiRouter router, ApiEventBus events, ApiTokenStore tokens, ApiServerInfo info, SynchronizationContext? bridgeContext,
-        CancellationToken stopping, IRemoteBridge? remoteBridge = null, RemotePairing? pairing = null)
+        ApiRouter router, ApiEventBus events, ApiTokenStore tokens, Func<ApiServerInfo> info, SynchronizationContext? bridgeContext,
+        CancellationToken stopping, IRemoteBridge? remoteBridge = null, RemotePairing? pairing = null, FollowHooks? follow = null)
     {
-        (this.router, this.events, this.tokens, this.info, this.bridgeContext, this.stopping) = (router, events, tokens, info, bridgeContext, stopping);
+        (this.router, this.events, this.tokens, this.info, this.bridgeContext, this.stopping, this.follow) =
+            (router, events, tokens, info, bridgeContext, stopping, follow);
         if (remoteBridge is not null)
             remote = new RemoteSite(remoteBridge, pairing ?? new RemotePairing(), tokens, router, events, InvokeAsync, OnBridgeAsync, stopping);
     }
@@ -284,7 +308,7 @@ internal sealed class ApiHttpHandler
                 switch (path)
                 {
                     case "/v1/ping":
-                        await WriteJsonAsync(http, ApiHandlerResponse.Json(info));
+                        await WriteJsonAsync(http, ApiHandlerResponse.Json(info()));
                         return;
                     case "/openapi.json":
                         await WriteJsonAsync(http, ApiHandlerResponse.Raw(ApiJson.Encoded(OpenApiDocument.Compose(router.Routes, schemaVersion))));
@@ -304,6 +328,8 @@ internal sealed class ApiHttpHandler
                         return;
                 }
             }
+            if (follow is not null && path.StartsWith(FollowHold.Prefix + "/", StringComparison.Ordinal) && await FollowDoorAsync(http, path))
+                return;
             if (HttpMethods.IsOptions(request.Method))
             {
                 AddCorsHeaders(http.Response.Headers);
@@ -330,6 +356,8 @@ internal sealed class ApiHttpHandler
         }
         if (Authenticate(request) is not { } token) return Error(ApiError.Unauthorized());
         if (!token.Scope.Allows(match.Route.Scope)) return Error(ApiError.Forbidden(match.Route.Scope));
+        // A backup answers reads, and holds everything else while its booth is in charge.
+        if (follow?.Hold?.Invoke(match.Route) is { } held) return Error(held);
 
         var query = request.Query.ToDictionary(q => q.Key, q => q.Value.Count > 0 ? q.Value[^1] ?? "" : "");
         using var body = new MemoryStream();
@@ -354,7 +382,8 @@ internal sealed class ApiHttpHandler
 
     private async Task WebSocketAsync(HttpContext http)
     {
-        if (!http.Request.Query.TryGetValue("token", out var secret) || tokens.Verify(secret[0] ?? "") is not { } token)
+        // The key in the Authorization header (as the Mac's backups send it), or ?token= (browsers).
+        if (Authenticate(http.Request) is not { } token)
         {
             await WriteJsonAsync(http, Error(ApiError.Unauthorized()));
             return;
@@ -365,7 +394,65 @@ internal sealed class ApiHttpHandler
             return;
         }
         using var socket = await http.WebSockets.AcceptWebSocketAsync();
-        await new ApiWebSocketSession(router, events, token, tokens, InvokeAsync).RunAsync(socket, stopping);
+        await new ApiWebSocketSession(router, events, token, tokens, InvokeAsync, follow).RunAsync(socket, stopping);
+    }
+
+    /// <summary>
+    /// The doors a backup uses, outside the route table as on the Mac: pairing by code (no key yet),
+    /// unpairing (its own key), and the booth's media files by hash (an Operate key). True when handled.
+    /// </summary>
+    private async Task<bool> FollowDoorAsync(HttpContext http, string path)
+    {
+        var request = http.Request;
+        if (HttpMethods.IsPost(request.Method) && path == "/v1/follow/pair" && follow!.Pair is { } pair)
+        {
+            using var body = new MemoryStream();
+            await request.Body.CopyToAsync(body, stopping);
+            var bytes = body.ToArray();
+            await WriteJsonAsync(http, await OnBridgeAsync(() => Task.FromResult(pair(bytes))));
+            return true;
+        }
+        if (HttpMethods.IsPost(request.Method) && path == "/v1/follow/unpair" && follow!.Unpair is { } unpair)
+        {
+            if (Authenticate(request) is not { } token)
+            {
+                await WriteJsonAsync(http, Error(ApiError.Unauthorized()));
+                return true;
+            }
+            await OnBridgeAsync(() =>
+            {
+                unpair(token);
+                return Task.FromResult(0);
+            });
+            await WriteJsonAsync(http, ApiHandlerResponse.Ok);
+            return true;
+        }
+        if (HttpMethods.IsGet(request.Method) && path.StartsWith("/v1/follow/blobs/", StringComparison.Ordinal) && follow!.Blob is { } blob)
+        {
+            if (Authenticate(request) is not { } token)
+            {
+                await WriteJsonAsync(http, Error(ApiError.Unauthorized()));
+                return true;
+            }
+            if (!token.Scope.Allows(ApiScope.Control))
+            {
+                await WriteJsonAsync(http, Error(ApiError.Forbidden(ApiScope.Control)));
+                return true;
+            }
+            var hash = path.Split('/')[^1];
+            if (!FollowFiles.IsHash(hash) || blob(hash) is not { } file || !File.Exists(file))
+            {
+                await WriteJsonAsync(http, Error(ApiError.NotFound("No such file here.")));
+                return true;
+            }
+            http.Response.StatusCode = StatusCodes.Status200OK;
+            http.Response.ContentType = "application/octet-stream";
+            await using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16, useAsync: true);
+            http.Response.ContentLength = stream.Length;
+            await stream.CopyToAsync(http.Response.Body, stopping);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>Runs a route on the bridge's context, like the Mac's @MainActor bridge; abandoned when the server stops.</summary>
