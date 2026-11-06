@@ -20,4 +20,9 @@
     <None Remove="Scripture\Bibles\**" />
     <EmbeddedResource Include="Scripture\Bibles\*.tsv.gz;Scripture\Bibles\bibles.json" LogicalName="Bibles/%(Filename)%(Extension)" />
   </ItemGroup>
+  <!-- PdfPig (Apache 2.0) reads a PDF's printed letters, lines and pictures for notes made from
+       PDFs (Notes/PdfNoteReader.cs). Pure .NET: no native code, no network. -->
+  <ItemGroup>
+    <PackageReference Include="PdfPig" Version="0.1.16" />
+  </ItemGroup>
 </Project>
