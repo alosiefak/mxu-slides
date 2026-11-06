@@ -140,6 +140,36 @@ public sealed class SlowUploadTests
     }
 
     [Fact]
+    public async Task TheLoopbackServerTakesAStreamAndCanStallIt()
+    {
+        await using var server = new LoopbackRtmpServer();
+        var session = new StreamSession(
+            new StreamEndpoint("Loopback", StreamEndpointKind.Rtmp, server.Url, "any"),
+            new StreamVideoConfiguration(320, 180, 30, 800),
+            new StreamSessionOptions
+            {
+                Encoder = EncoderPreference.Software,
+                ReconnectDelay = (_, ct) => Task.Delay(50, ct),
+                MonitorInterval = TimeSpan.FromMilliseconds(100),
+                Rtmp = new RtmpPublishOptions { SendBufferSize = 8192, WriteStallTimeout = TimeSpan.FromSeconds(60) },
+            });
+        session.Start();
+        try
+        {
+            await FeedUntilAsync(session, () => server.VideoMessages >= 10 && session.Status.UploadKbps is not null, TimeSpan.FromSeconds(20));
+            server.Paused = true;
+            await FeedUntilAsync(session, () => session.Status.State.Kind == StreamStateKind.Reconnecting, TimeSpan.FromSeconds(20));
+            server.Paused = false;
+            await FeedUntilAsync(session, () => server.Connections >= 2 && session.Status.State.Kind == StreamStateKind.Publishing, TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            session.Stop();
+        }
+        Assert.StartsWith("upload stalled", session.Status.LastDrop);
+    }
+
+    [Fact]
     public void TheEncoderTakesANewBitrateWhileEncoding()
     {
         using var encoder = H264Encoder.Create(new H264Settings(320, 180, 30, 4000), EncoderPreference.Software);

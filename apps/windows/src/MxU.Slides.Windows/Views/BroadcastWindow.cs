@@ -208,6 +208,7 @@ public sealed class BroadcastWindow : Window
 
         AddPictureRows(preset, streams, sourceKind);
         AddQualityRows(preset);
+        if (streams && sourceKind == StreamSourceKind.Screen) AddBitrateModeRows(preset);
         if (sourceKind == StreamSourceKind.Screen) AddSoundRows(preset);
         else editor.Children.Add(Row("Sound", Muted("From the video file.")));
         // A replay isn't recorded again (as on the Mac).
@@ -342,6 +343,50 @@ public sealed class BroadcastWindow : Window
         editor.Children.Add(Row("Quality", quality));
         editor.Children.Add(Muted("6000 kbps suits 1080p streams; recordings look better at 8000 or more, and 60 fps wants about half as much again. "
             + "Check your upload speed: a stream needs about 1.5× its bitrate.", 120));
+    }
+
+    /// <summary>
+    /// Adaptive or Constant bitrate, and Adaptive's lowest. Port of the "slow upload" rows of the
+    /// Mac's StreamQualityPopover (StreamRecordSettings.swift): both are fields of the shared
+    /// preset, so a Mac and this PC read the same choice.
+    /// </summary>
+    private void AddBitrateModeRows(StreamRecordPreset preset)
+    {
+        var adapt = preset.AdaptBitrate ?? true;
+        var modes = new List<Choice<bool>> { new(true, "Adaptive"), new(false, "Constant") };
+        var mode = new ComboBox { ItemsSource = modes, Width = 110, SelectedItem = modes.First(m => m.Value == adapt) };
+        var floors = new[] { 2000, 3000, 4000, 5000, 6000, 8000 }.Select(k => new Choice<int>(k, $"{k / 1000.0:0.#} Mbps")).ToList();
+        var floorKbps = preset.MinBitrateKbps ?? MxU.Slides.Broadcast.Streaming.StreamVideoConfiguration.DefaultFloorKbps;
+        if (floors.All(f => f.Value != floorKbps)) floors.Add(new(floorKbps, $"{floorKbps / 1000.0:0.#} Mbps"));
+        var floor = new ComboBox
+        {
+            ItemsSource = floors, Width = 100, Margin = new Thickness(8, 0, 0, 0),
+            SelectedItem = floors.First(f => f.Value == floorKbps),
+        };
+        var lowest = new TextBlock { Text = "lowest", Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Style = (Style)FindResource("Muted") };
+        var explain = Muted("", 120);
+        void Show()
+        {
+            var adaptive = ((Choice<bool>)mode.SelectedItem).Value;
+            floor.Visibility = lowest.Visibility = adaptive ? Visibility.Visible : Visibility.Collapsed;
+            explain.Text = adaptive
+                ? "When the internet can’t keep up, the stream lowers its bitrate instead of falling behind, and climbs back once it can."
+                : "The stream always sends its full bitrate. Pick this only when the venue’s upload is reliably fast.";
+        }
+        mode.SelectionChanged += (_, _) =>
+        {
+            preset.AdaptBitrate = ((Choice<bool>)mode.SelectedItem).Value;
+            Save(preset);
+            Show();
+        };
+        floor.SelectionChanged += (_, _) =>
+        {
+            preset.MinBitrateKbps = ((Choice<int>)floor.SelectedItem).Value;
+            Save(preset);
+        };
+        Show();
+        editor.Children.Add(Row("Bitrate mode", new StackPanel { Orientation = Orientation.Horizontal, Children = { mode, lowest, floor } }));
+        editor.Children.Add(explain);
     }
 
     // MARK: Sound
