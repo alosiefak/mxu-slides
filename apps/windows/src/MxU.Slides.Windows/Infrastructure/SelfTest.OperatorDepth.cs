@@ -8,6 +8,7 @@ using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Control;
 using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Lyrics;
+using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Outputs;
 using MxU.Slides.Core.Scene;
@@ -220,10 +221,10 @@ public sealed partial class SelfTest
 
     private async Task ShortcutsCheck()
     {
-        var plate = model.Overlays.FirstOrDefault(o => o.Name == "Name + Title");
+        var plate = model.Overlays.FirstOrDefault(o => o.Name == "Name + Title") ?? model.Overlays.FirstOrDefault();
         if (plate is null)
         {
-            Skip("keyboard shortcuts with an overlay", "the starter overlays are missing");
+            Skip("keyboard shortcuts with an overlay", "the library has no overlays");
             return;
         }
         Check("the defaults have no clashes", model.KeyMap.ConflictedKeys().Count == 0);
@@ -282,7 +283,7 @@ public sealed partial class SelfTest
         window.RunCommand(KeyCommand.ShowShortcuts);
         await Delay(700);
         var sheet = Application.Current.Windows.OfType<CheatSheet>().FirstOrDefault();
-        Check("? opens the cheat sheet, with the changed key", sheet?.Lines.Contains("Clear Overlays") == true && sheet.Lines.Contains("Toggle “Name + Title”"));
+        Check("? opens the cheat sheet, with the changed key", sheet?.Lines.Contains("Clear Overlays") == true && sheet.Lines.Contains($"Toggle “{plate.Name}”"));
         if (sheet is not null)
         {
             Save(sheet, "p8o-08-cheat-sheet");
@@ -581,7 +582,7 @@ public sealed partial class SelfTest
     /// </summary>
     private async Task TransportMarksCheck()
     {
-        var video = model.MediaItems.Select(m => m.Item).FirstOrDefault(m => m.MediaKind == MediaKind.Video && m.Name.StartsWith("MxU self-test video", StringComparison.Ordinal))
+        var video = model.MediaItems.Select(m => m.Item).FirstOrDefault(m => m.MediaKind == MediaKind.Video && m.Name.StartsWith("MxU self-test video", StringComparison.Ordinal) && !m.Name.Contains("sound", StringComparison.OrdinalIgnoreCase))
             ?? model.MediaItems.Select(m => m.Item).FirstOrDefault(m => m.MediaKind == MediaKind.Video && m.Classification != MediaClassification.Background);
         if (video is null || Descendant<LiveShowControls>(window) is not { } controls)
         {
@@ -590,22 +591,38 @@ public sealed partial class SelfTest
         }
         var marksBefore = video.Marks;
         var loopsBefore = video.Loops;
+        var layerBefore = model.Settings.TransportLayer;
         try
         {
-            video.Marks =
-            [
-                new VideoMark { Id = "selftest-mark-a", Name = "Chorus", At = 4, Actions = [], ColorHex = "#3B82F6FF" },
-                new VideoMark { Id = "selftest-mark-b", Name = "Offering slide", At = 7, Actions = [] },
-            ];
-            video.Loops = false;
+            // The strip looks at Foreground Videos (an earlier section may have picked another layer).
+            model.SelectTransportLayer(TransportTarget.DefaultLayer);
+            // Looping, so it can't end mid-check on a slow PC, and pinned, so the strip has its controls.
+            video.Loops = true;
             model.Library.Save(video);
             model.FireMedia(video);
-            await WhenShown(() => model.TransportHasVideo && model.TransportShowsControls && model.TransportMarks.Count == 2, 15);
+            await WhenShown(() => model.TransportPicker().Any(l => l.Videos.Any(v => v.MediaId == video.Id)), 20);
+            model.PinTransport(video.Id);
+            await WhenShown(() => model.TransportHasVideo && model.TransportShowsControls && model.TransportName == video.Name, 10);
+            // Marks at 40% and 80% of the pass, placed in the file's time (past any trim an earlier section left).
+            var length = model.TransportDuration;
+            var offset = video.InPoint ?? 0;
+            video.Marks =
+            [
+                new VideoMark { Id = "selftest-mark-a", Name = "Chorus", At = offset + length * 0.4, Actions = [], ColorHex = "#3B82F6FF" },
+                new VideoMark { Id = "selftest-mark-b", Name = "Offering slide", At = offset + length * 0.8, Actions = [] },
+            ];
+            model.Library.Save(video);
+            // Paused at the start, so the next mark is the first, however slowly this PC plays.
+            model.TransportBackToStartCommand.Execute(null);
+            if (model.TransportPlaying) model.TransportPlayPauseCommand.Execute(null);
+            await WhenShown(() => model.TransportMarks.Count == 2 && model.TransportNextMark.Length > 0, 15);
             Check("a video's marks are drawn on the strip's scrub bar", model.TransportMarks.Count == 2
-                && model.TransportMarks[0].Name == "Chorus" && Math.Abs(model.TransportMarks[0].Fraction - 4 / Math.Max(model.TransportDuration, 0.01)) < 0.01);
-            Check("…and the next one is named beside the video, with the time until it", model.TransportNextMark.StartsWith("· Next: Chorus ", StringComparison.Ordinal)
-                || model.TransportNextMark.StartsWith("· Next: Offering slide ", StringComparison.Ordinal));
+                && model.TransportMarks[0].Name == "Chorus" && Math.Abs(model.TransportMarks[0].Fraction - 0.4) < 0.02);
+            Check("…and the next one is named beside the video, with the time until it", model.TransportNextMark.StartsWith("· Next: Chorus ", StringComparison.Ordinal));
+            if (model.TransportMarks.Count != 2)
+                report.AppendLine($"      (strip: {model.TransportName}, {model.TransportDuration:0.0} s, in point {offset}, marks {model.TransportMarks.Count}, next \"{model.TransportNextMark}\")");
             SaveElement(controls.TransportStrip, "p8o-22-transport-marks");
+            model.TransportPlayPauseCommand.Execute(null);
 
             // The UI thread while it plays (after a second to settle): what the strip's refreshes
             // cost, and how soon the thread answers. Then the same with nothing playing, to compare.
@@ -625,6 +642,8 @@ public sealed partial class SelfTest
             video.Marks = marksBefore;
             video.Loops = loopsBefore;
             model.Library.Save(video);
+            model.Settings.TransportLayer = layerBefore;
+            model.Settings.Save();
         }
         await Delay(300);
     }
