@@ -30,6 +30,7 @@ public sealed partial class SelfTest
             await LibraryBatchCheck();
             await MediaBinBatchCheck();
             await ExportFormatsCheck();
+            await LibraryCareCheck(); // SelfTest.LibraryCare.cs
         }
         finally
         {

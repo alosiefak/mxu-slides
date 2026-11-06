@@ -13,6 +13,10 @@ namespace MxU.Slides.Windows.Rendering;
 /// </summary>
 public sealed partial class MediaHub
 {
+    /// <summary>The files the players showing <paramref name="mediaId"/> have open (the self-test checks they moved to the new one).</summary>
+    internal IReadOnlyList<string> PlayerFiles(string mediaId) =>
+        [.. players.Values.Where(p => p.MediaId == mediaId && p.MediaPlayer.Source is not null).Select(p => p.MediaPlayer.Source!.LocalPath)];
+
     /// <summary>Reopens every player showing <paramref name="mediaId"/> on the item's current file, at the same point. Returns how many.</summary>
     public int ReloadVideosInPlace(string mediaId)
     {

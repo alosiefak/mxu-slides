@@ -52,7 +52,7 @@ internal static class SystemInfo
             void Add(string area, string name, string value) => lines.Add(new Line(area, name, value));
 
             Add("App", "Version", typeof(SystemInfo).Assembly.GetName().Version?.ToString(3) ?? "?");
-            Add("App", "Library", $"{counts.Presentations} presentations, {counts.Services} services, {counts.Media} media items, {counts.Themes} themes");
+            Add("App", "Library", $"{N(counts.Presentations, "presentation")}, {N(counts.Services, "service")}, {N(counts.Media, "media item")}, {N(counts.Themes, "theme")}");
             Add("Windows", "Version", RuntimeInformation.OSDescription);
             Add("Windows", ".NET", RuntimeInformation.FrameworkDescription);
             Add("Processor", "Model", ProcessorName());
@@ -213,4 +213,6 @@ internal static class SystemInfo
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetSystemPowerStatus(ref PowerStatus status);
+
+    private static string N(int n, string what) => n == 1 ? $"1 {what}" : $"{n} {what}s";
 }

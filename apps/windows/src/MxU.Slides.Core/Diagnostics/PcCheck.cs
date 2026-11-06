@@ -83,14 +83,16 @@ public static class PcCheck
             areas.Add(mine.Count == 0
                 ? new Area(name, AreaState.NotChecked, "Not checked in this run.", mine)
                 : failed > 0
-                    ? new Area(name, AreaState.Problem, $"{failed} of {mine.Count} checks failed: {mine.First(l => l.Result == Result.Fail).Text}", mine)
+                    ? new Area(name, AreaState.Problem, $"{failed} of {mine.Count} {Checks(mine.Count)} failed: {mine.First(l => l.Result == Result.Fail).Text}", mine)
                     : passed == 0
                         ? new Area(name, AreaState.NotAvailable, $"Not available on this PC ({Reason(skipped[0].Text)}).", mine)
                         : new Area(name, AreaState.Ready,
-                            skipped.Count == 0 ? $"Ready: {passed} checks passed." : $"Ready: {passed} checks passed; {skipped.Count} skipped ({Reason(skipped[0].Text)}).", mine));
+                            skipped.Count == 0 ? $"Ready: {passed} {Checks(passed)} passed." : $"Ready: {passed} {Checks(passed)} passed; {skipped.Count} skipped ({Reason(skipped[0].Text)}).", mine));
         }
         return areas;
     }
+
+    private static string Checks(int n) => n == 1 ? "check" : "checks";
 
     /// <summary>"NDI output (NDI runtime not installed)" → "NDI runtime not installed".</summary>
     private static string Reason(string skip)

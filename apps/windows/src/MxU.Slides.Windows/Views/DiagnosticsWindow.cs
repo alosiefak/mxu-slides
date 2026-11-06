@@ -270,7 +270,7 @@ internal sealed class DiagnosticsWindow : Window
         if (page != Page.Check) ShowPage(Page.Check);
         checkStatus.Text = !result.Finished ? "The check didn't finish. What it got through is below."
             : result.Passed ? "This PC is ready: every check passed."
-            : $"{result.Lines.Count(l => l.Result == PcCheck.Result.Fail)} checks failed. See the areas below.";
+            : result.Lines.Count(l => l.Result == PcCheck.Result.Fail) is var failed && failed == 1 ? "1 check failed. See the areas below." : $"{failed} checks failed. See the areas below.";
         checkStatus.Foreground = result.Passed ? EditorKit.Res<Brush>("Good") : EditorKit.Res<Brush>("Warn");
         checkResults.Children.Clear();
         foreach (var area in result.Areas)

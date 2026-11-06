@@ -79,6 +79,12 @@ public sealed class BlobEdits
         return (settled, settling);
     }
 
+    /// <summary>Whether a time is noted for <paramref name="path"/> (the self-test waits for it before editing the file).</summary>
+    public bool Knows(string path)
+    {
+        lock (gate) return Map().ContainsKey(Path.GetFileName(path));
+    }
+
     /// <summary>Forgets a file that has gone (adopted under its new name, or removed).</summary>
     public void Forget(string path)
     {

@@ -50,6 +50,12 @@ public sealed partial class MainViewModel
         ScheduleBlobScan(TimeSpan.Zero);
     }
 
+    /// <summary>Looks for edited files now, rather than when the watch next fires (the self-test).</summary>
+    internal void CheckMediaFilesSoon() => ScheduleBlobScan(TimeSpan.Zero);
+
+    /// <summary>Whether the library has noted this file's time yet (the self-test edits it only then).</summary>
+    internal bool MediaFileNoted(string path) => blobEdits?.Knows(path) == true;
+
     private void ScheduleBlobScan(TimeSpan after)
     {
         var generation = Interlocked.Increment(ref blobScanGeneration);
