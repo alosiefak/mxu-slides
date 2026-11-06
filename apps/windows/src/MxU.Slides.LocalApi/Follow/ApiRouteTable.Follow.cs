@@ -22,9 +22,9 @@ public interface IFollowApi
     string? FollowTakeBack();
 
     /// <summary>This computer's library items, for its backup (Windows offers them only to a Windows backup: see the app).</summary>
-    FollowFiles.ItemList FollowFiles(bool readsJson);
+    Task<FollowFiles.ItemList> FollowFilesAsync(bool readsJson);
 
-    FollowFiles.Document FollowFile(string kind, string id);
+    Task<FollowFiles.Document> FollowFileAsync(string kind, string id);
 
     /// <summary>A backup tells its booth who is in charge; the answer is who the booth thinks is.</summary>
     ApiFollowRoleCommand FollowRole(ApiFollowRoleCommand command);
@@ -55,9 +55,9 @@ public static partial class ApiRouteTable
         Act("/v1/follow/handback", "followHandBack", "A backup in charge hands back.", () => Follow().FollowHandBackAsync());
         Act("/v1/follow/takeback", "followTakeBack", "A booth that stepped down takes back.", () => Task.FromResult(Follow().FollowTakeBack()));
         routes.Add(new ApiRoute("GET", "/v1/follow/files", ApiScope.Control, "followFiles", "This computer's library items, for its backup.", "Follow",
-            null, Object(), context => Task.FromResult(ApiHandlerResponse.Json(Follow().FollowFiles(context.Query.GetValueOrDefault(ReadsJsonQuery) == "1")))));
+            null, Object(), async context => ApiHandlerResponse.Json(await Follow().FollowFilesAsync(context.Query.GetValueOrDefault(ReadsJsonQuery) == "1"))));
         routes.Add(new ApiRoute("GET", "/v1/follow/files/{kind}/{id}", ApiScope.Control, "followFile", "One library item's whole save.", "Follow",
-            null, Object(), context => Task.FromResult(ApiHandlerResponse.Json(Follow().FollowFile(context.PathParameter("kind"), context.PathParameter("id"))))));
+            null, Object(), async context => ApiHandlerResponse.Json(await Follow().FollowFileAsync(context.PathParameter("kind"), context.PathParameter("id")))));
         routes.Add(new ApiRoute("POST", "/v1/follow/role", ApiScope.Control, "followRole", "A backup tells its booth who is in charge.", "Follow",
             null, Object(), context => Task.FromResult(ApiHandlerResponse.Json(Follow().FollowRole(context.Decode<ApiFollowRoleCommand>())))));
     }

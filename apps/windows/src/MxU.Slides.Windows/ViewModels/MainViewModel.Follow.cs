@@ -127,12 +127,22 @@ public sealed partial class MainViewModel : IFollowApi
     /// read, so they're offered only to a backup that asks for JSON (a Windows one); a Mac backup is
     /// told there are none and simply follows the show.
     /// </summary>
-    FollowFiles.ItemList IFollowApi.FollowFiles(bool readsJson) => !readsJson
-        ? new FollowFiles.ItemList([])
-        : new FollowFiles.ItemList([.. FollowCopy.Offered(Library).Select(o => new FollowFiles.Item(o.Kind, o.Id, o.Heads, o.File, o.Ext))]);
+    async Task<FollowFiles.ItemList> IFollowApi.FollowFilesAsync(bool readsJson)
+    {
+        if (!readsJson) return new FollowFiles.ItemList([]);
+        // Reading and hashing every item's file is disk work: off the UI thread (the library is safe to read from any).
+        var library = Library;
+        var offers = await Task.Run(() => FollowCopy.Offered(library));
+        return new FollowFiles.ItemList([.. offers.Select(o => new FollowFiles.Item(o.Kind, o.Id, o.Heads, o.File, o.Ext))]);
+    }
 
-    FollowFiles.Document IFollowApi.FollowFile(string kind, string id) =>
-        FollowCopy.Save(Library, kind, ApiIds.Validated(id)) is { } bytes ? new FollowFiles.Document(bytes) : throw ApiError.NotFound("Not a library item here.");
+    async Task<FollowFiles.Document> IFollowApi.FollowFileAsync(string kind, string id)
+    {
+        var (library, safe) = (Library, ApiIds.Validated(id));
+        return await Task.Run(() => FollowCopy.Save(library, kind, safe)) is { } bytes
+            ? new FollowFiles.Document(bytes)
+            : throw ApiError.NotFound("Not a library item here.");
+    }
 
     ApiFollowRoleCommand IFollowApi.FollowRole(ApiFollowRoleCommand command) => Follow.ReceiveRole(command);
 }

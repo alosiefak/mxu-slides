@@ -70,6 +70,8 @@ public sealed class FollowController
     /// <summary>This run of the app: a booth that comes back with the same one only dropped off the network.</summary>
     public static readonly string Launch = Guid.NewGuid().ToString("D").ToUpperInvariant();
 
+    private const string AutomaticReason = "the booth stopped answering";
+
     private static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };
     private static readonly JsonSerializerOptions Json = ApiJson.Options;
 
@@ -234,7 +236,9 @@ public sealed class FollowController
         var role = (pairing.Role ?? FollowRole.Start(pairing.StationHexId)).Handed(Me);
         pairing.Role = role;
         pairing.TookOverAt = DateTimeOffset.Now;
-        pairing.TookOverOnItsOwn = reason != "by hand";
+        // Only the booth going quiet counts as "on its own" (the Mac counts the API too, so a takeover
+        // from Companion never told a booth that was still running: here it hears, as for Take Over).
+        pairing.TookOverOnItsOwn = reason == AutomaticReason;
         pairing.TookOverFrozen = frozen;
         Store();
         held = null;
@@ -397,7 +401,7 @@ public sealed class FollowController
                 Raise();
                 if (FollowLogic.TakesOverOnItsOwn(saved.Pairing?.Automatic ?? true, BackingUp, wasLive, State, BoothQuit))
                 {
-                    await TakeOverAsync("the booth stopped answering", State is FollowLogic.State.Lost { Frozen: true });
+                    await TakeOverAsync(AutomaticReason, State is FollowLogic.State.Lost { Frozen: true });
                 }
                 else if (State is FollowLogic.State.Live && !wasLive)
                 {
@@ -643,9 +647,14 @@ public sealed class FollowController
         var library = host.Library;
         var list = await Get<FollowFiles.ItemList>(at, $"/v1/follow/files?{ApiRouteTable.ReadsJsonQuery}=1", TimeSpan.FromSeconds(30))
             ?? throw new HttpRequestException("The other computer didn't list its items.");
-        var heads = new Dictionary<string, IReadOnlyList<string>>();
-        foreach (var item in list.Items)
-            if (FollowCopy.HeldHeads(library, item.Kind, item.Id) is { } here) heads[$"{item.Kind}/{item.Id}"] = here;
+        // The versions held here: reading each file is disk work, off the UI thread.
+        var heads = await Task.Run(() =>
+        {
+            var held = new Dictionary<string, IReadOnlyList<string>>();
+            foreach (var item in list.Items)
+                if (FollowCopy.HeldHeads(library, item.Kind, item.Id) is { } here) held[$"{item.Kind}/{item.Id}"] = here;
+            return held;
+        });
         var hashes = list.Items.Select(i => i.File).OfType<string>().ToList();
         var present = library.Blobs.Presence(hashes);
         var (documents, files) = FollowFiles.Wanted(list.Items, heads, present);
