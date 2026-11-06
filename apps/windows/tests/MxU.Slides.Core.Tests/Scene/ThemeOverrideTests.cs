@@ -172,4 +172,24 @@ public class ThemeOverrideTests
         Assert.False(Draws(state.AnimatedScene()));
         Assert.True(Draws(state.AnimatedScene(slideThemeOverride: theme)));
     }
+
+    [Fact]
+    public void BaseStyleReadsThePlaceholderBeforeTheTheme()
+    {
+        // Port of ThemeOverrideTests.swift's baseStyleReadsThePlaceholderBeforeTheTheme.
+        var placeholder = new SlideObject
+        {
+            Id = "ph", ObjectKind = SlideObjectKind.Text, Name = "Default", Text = "Sample",
+            TextStyle = new TextStyle { FontName = "Gotham-Black", FontSize = 70, ColorHex = "#111111FF", TextTransform = TextTransform.Uppercase },
+        };
+        var theme = new Theme { Id = "t", Name = "Series", FontFamily = "Gotham-Book", FontSize = 45, TextColorHex = "#FFFFFFFF", BackgroundColorHex = "#000000FF" };
+        var made = new SlideObject { Id = "o", ObjectKind = SlideObjectKind.Text, Name = "Default", Text = "Giving generously" };
+        var b = PlaceholderAnimations.BaseStyle.Of(made, placeholder, theme);
+        Assert.Equal(("Gotham-Black", 70.0, "#111111FF", TextTransform.Uppercase), (b.FontName, b.FontSize, b.ColorHex, b.TextTransform));
+        var own = MxU.Slides.Core.Json.MxuJson.Clone(made);
+        own.TextStyle = new TextStyle { FontName = "Gotham-Book" };
+        Assert.Equal("Gotham-Book", PlaceholderAnimations.BaseStyle.Of(own, placeholder, theme).FontName);
+        Assert.Equal("Gotham-Book", PlaceholderAnimations.BaseStyle.Of(made, null, theme).FontName);
+        Assert.Equal("Gotham-Black", PlaceholderAnimations.BaseStyle.Of(placeholder, placeholder, theme).FontName);
+    }
 }

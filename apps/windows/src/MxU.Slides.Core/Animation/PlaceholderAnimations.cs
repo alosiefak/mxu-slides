@@ -143,7 +143,12 @@ public static class PlaceholderAnimations
             options?.SizeEmphasis ?? true, options?.WordLetterSpacing ?? true, options?.Highlight ?? false, options?.TextColor ?? false) { }
     }
 
-    private readonly record struct BaseStyle(string FontName, double FontSize, double Tracking)
+    /// <summary>
+    /// A text box's base look: its own setting, else its design placeholder's, else the theme's.
+    /// Public because the inspector reads the placeholder's font (and colour and case) before the
+    /// theme family (MxU). Port of ThemeOverride.BaseStyle.
+    /// </summary>
+    public readonly record struct BaseStyle(string FontName, double FontSize, string ColorHex, double Tracking, TextTransform TextTransform)
     {
         public static BaseStyle Of(SlideObject o, SlideObject? placeholder, Theme? theme)
         {
@@ -152,7 +157,9 @@ public static class PlaceholderAnimations
             return new BaseStyle(
                 own?.FontName ?? b?.FontName ?? theme?.FontFamily ?? DefaultFontName,
                 own?.FontSize ?? b?.FontSize ?? theme?.FontSize ?? DefaultFontSize,
-                own?.Tracking ?? b?.Tracking ?? 0);
+                own?.ColorHex ?? b?.ColorHex ?? theme?.TextColorHex ?? "#FFFFFFFF",
+                own?.Tracking ?? b?.Tracking ?? 0,
+                own?.TextTransform ?? b?.TextTransform ?? TextTransform.None);
         }
     }
 
@@ -189,6 +196,8 @@ public static class PlaceholderAnimations
         if (keep.Strikethrough && run.Strikethrough == true) carried.Strikethrough = true;
         if (keep.Highlight) carried.HighlightColorHex = run.HighlightColorHex;
         if (keep.TextColor) carried.ColorHex = run.ColorHex;
+        // All Caps on a word is part of what it says, so it always comes along.
+        carried.TextTransform = run.TextTransform;
         carried.FontName = CarriedFontName(run.FontName, from, to, keep);
         if (keep.SizeEmphasis && run.FontSize is { } size && from.FontSize > 0 && Math.Abs(size / from.FontSize - 1) > 0.001)
             carried.FontSize = size / from.FontSize * to.FontSize;
@@ -198,7 +207,8 @@ public static class PlaceholderAnimations
             if (Math.Abs(delta) > 0.001 && from.FontSize > 0) carried.Tracking = to.Tracking + delta * (to.FontSize / from.FontSize);
         }
         var stylesAnything = carried.Underline is not null || carried.Strikethrough is not null || carried.FontName is not null
-            || carried.FontSize is not null || carried.ColorHex is not null || carried.HighlightColorHex is not null || carried.Tracking is not null;
+            || carried.FontSize is not null || carried.ColorHex is not null || carried.HighlightColorHex is not null || carried.Tracking is not null
+            || carried.TextTransform is not null;
         return stylesAnything ? carried : null;
     }
 
