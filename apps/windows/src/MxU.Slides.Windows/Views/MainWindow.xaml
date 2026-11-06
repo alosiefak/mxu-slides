@@ -525,8 +525,10 @@
                                                                 <ComboBoxItem Content="Fill (crop)" />
                                                                 <ComboBoxItem Content="Fit (whole picture)" />
                                                                 <ComboBoxItem Content="Stretch" />
+                                                                <ComboBoxItem Content="Scale and Blur" />
                                                             </ComboBox>
                                                         </DockPanel>
+                                                        <v:EffectsPanel DataContext="{Binding Effects}" />
                                                     </StackPanel>
                                                 </DataTemplate>
                                             </ContentControl.ContentTemplate>

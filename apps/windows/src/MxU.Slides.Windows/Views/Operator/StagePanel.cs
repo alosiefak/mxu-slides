@@ -13,8 +13,9 @@ namespace MxU.Slides.Windows.Views;
 /// The Stage panel: each stage screen (confidence monitor) with the layout it shows, so the
 /// band's monitor can show chords while the pastor's shows the clock; a preview of one of them
 /// (click a screen's name to preview it); and the stage message. Port of
-/// Sources/Modules/ConfidenceModule.swift (screens and Stage Message). Windows has no stage
-/// layout editor yet, so the Mac's "Edit Layout in Library" isn't offered.
+/// Sources/Modules/ConfidenceModule.swift (screens and Stage Message). The pencil beside a
+/// screen's layout is the Mac's "Edit Layout in Library": it opens the stage layout editor
+/// (<see cref="StageLayoutEditorWindow"/>) on that layout.
 /// </summary>
 public sealed class StagePanel : UserControl
 {
@@ -114,8 +115,22 @@ public sealed class StagePanel : UserControl
                 Foreground = id == previewing && rows.Count > 1 ? EditorKit.Res<Brush>("Accent") : EditorKit.Res<Brush>("Text"),
             };
             name.MouseLeftButtonUp += (_, _) => model.StagePreviewScreenId = id;
+            // "Edit Layout in Library": the layout this screen shows (or the list, for the built-in one).
+            var layoutId = row.LayoutId;
+            var edit = new Button
+            {
+                Content = new TextBlock { Text = "", FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 11 },
+                Style = EditorKit.Res<Style>("GhostButton"), Margin = new Thickness(2, 0, 0, 0), Padding = new Thickness(5, 2, 5, 2),
+                ToolTip = layoutId is null ? "Stage layouts: make your own" : "Edit Layout in Library",
+            };
+            edit.Click += (_, _) =>
+            {
+                if (Window.GetWindow(this) is { } owner) StageLayoutEditorWindow.Open(owner, model, layoutId);
+            };
             var line = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
+            DockPanel.SetDock(edit, Dock.Right);
             DockPanel.SetDock(picker, Dock.Right);
+            line.Children.Add(edit);
             line.Children.Add(picker);
             line.Children.Add(name);
             screens.Children.Add(line);

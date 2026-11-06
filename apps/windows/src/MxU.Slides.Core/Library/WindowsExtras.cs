@@ -57,6 +57,20 @@ public sealed class WindowsExtras
         }
     }
 
+    /// <summary>The extra of <paramref name="kind"/> for <paramref name="ownerId"/> with the fingerprint it was saved with, whatever that is; null when there's none.</summary>
+    public WindowsExtra<T>? Read<T>(string kind, string ownerId) where T : class
+    {
+        var path = PathOf(kind, ownerId);
+        try
+        {
+            return File.Exists(path) ? MxuJson.Deserialize<WindowsExtra<T>>(File.ReadAllBytes(path)) : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Saves (or replaces) an extra, with the fingerprint of the shared part it goes with.</summary>
     public void Save<T>(string kind, string ownerId, T value, string? basis = null)
     {

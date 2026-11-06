@@ -37,7 +37,7 @@
 
         <!-- Text -->
         <StackPanel Visibility="{Binding IsText, Converter={StaticResource Visible}}">
-            <DockPanel Margin="0,0,0,6">
+            <DockPanel Margin="0,0,0,6" Visibility="{Binding ShowsTextSource, Converter={StaticResource Visible}}">
                 <TextBlock Text="Shows" Style="{StaticResource Muted}" Width="56" VerticalAlignment="Center" />
                 <ComboBox ItemsSource="{Binding TextSources}" SelectedItem="{Binding TextSource}"
                           ToolTip="Typed text is a field you fill in before putting the overlay up; the others fill themselves in" />
@@ -97,8 +97,17 @@
                 <ComboBoxItem Content="Fill (crop)" />
                 <ComboBoxItem Content="Fit (whole picture)" />
                 <ComboBoxItem Content="Stretch" />
+                <ComboBoxItem Content="Scale and Blur" />
             </ComboBox>
         </DockPanel>
+
+        <!-- Photo spot (theme editor) -->
+        <CheckBox Content="Photo spot" IsChecked="{Binding PhotoSpot}" Margin="0,6,0,0"
+                  Visibility="{Binding ShowsPhotoSpotToggle, Converter={StaticResource Visible}}"
+                  ToolTip="Picture slides made from notes put their picture here. Several spots fill left to right, then top to bottom." />
+
+        <!-- Effects (Views/EffectsPanel.cs) -->
+        <v:EffectsPanel DataContext="{Binding Effects}" />
 
         <!-- Mask -->
         <StackPanel Visibility="{Binding ShowsMask, Converter={StaticResource Visible}}" Margin="0,12,0,0">

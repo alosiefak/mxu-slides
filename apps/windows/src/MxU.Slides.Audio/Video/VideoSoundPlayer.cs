@@ -8,7 +8,8 @@ namespace MxU.Slides.Audio.Video;
 /// <param name="InPoint">Seconds into the file where it starts (null = the start).</param>
 /// <param name="OutPoint">Where it stops (null = the end): no sound is played past it.</param>
 /// <param name="Rate">1 = normal, 0.5 = half speed (the sound keeps its pitch).</param>
-public sealed record VideoSoundOptions(double? InPoint = null, double? OutPoint = null, double Rate = 1);
+/// <param name="Gain">The video's own level, 0…1 (Windows: a media item's volume), on top of the video sound's level.</param>
+public sealed record VideoSoundOptions(double? InPoint = null, double? OutPoint = null, double Rate = 1, double Gain = 1);
 
 public enum VideoSoundState
 {
@@ -151,6 +152,7 @@ public sealed class VideoSoundPlayer : IAudioRenderSource, IDisposable
     {
         this.path = path;
         this.options = options ?? new VideoSoundOptions();
+        gain = (float)Math.Clamp(this.options.Gain, 0, 1);
         this.name = name;
         this.manual = manual;
         mixBuffer = new PcmBuffer(SampleRate, [mixLeft, mixRight]);
@@ -166,6 +168,15 @@ public sealed class VideoSoundPlayer : IAudioRenderSource, IDisposable
         get => volume;
         set => volume = Math.Clamp(value, 0, 1);
     }
+
+    /// <summary>This video's own level, 0…1, multiplied with <see cref="Volume"/> (starts at the options' gain).</summary>
+    public float Gain
+    {
+        get => gain;
+        set => gain = Math.Clamp(value, 0, 1);
+    }
+
+    private volatile float gain = 1;
 
     public bool IsMuted
     {
@@ -415,7 +426,7 @@ public sealed class VideoSoundPlayer : IAudioRenderSource, IDisposable
         mixBuffer.FrameLength = frames;
         delay.Process(mixBuffer);
         var mono = buffers.Length == 1;
-        var target = hardwareLive && !muted ? volume * (mono ? AudioEngine.MonoFold : 1) : 0;
+        var target = hardwareLive && !muted ? volume * gain * (mono ? AudioEngine.MonoFold : 1) : 0;
         var from = appliedGain;
         var step = (target - from) / frames;
         for (var frame = 0; frame < frames; frame++)

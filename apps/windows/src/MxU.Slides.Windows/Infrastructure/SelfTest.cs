@@ -274,6 +274,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await Section("Looks", LooksCheck);
             await Section("MotionBackgrounds", MotionBackgroundsCheck);
             await Section("Sync", SyncCheck);
+            await Section("Editors7", Editors7Check);
         }
         catch (Exception ex)
         {

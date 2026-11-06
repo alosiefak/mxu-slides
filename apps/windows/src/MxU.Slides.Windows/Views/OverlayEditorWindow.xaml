@@ -17,11 +17,6 @@
         <v:NotNullToVisibility x:Key="VisibleWhenSet" />
         <v:InverseBool x:Key="Not" />
         <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
-        <CollectionViewSource x:Key="GroupedSteps" Source="{Binding StepRows}">
-            <CollectionViewSource.GroupDescriptions>
-                <PropertyGroupDescription PropertyName="Group" />
-            </CollectionViewSource.GroupDescriptions>
-        </CollectionViewSource>
         <Style x:Key="TabButton" TargetType="{x:Type ToggleButton}" BasedOn="{StaticResource {x:Type ToggleButton}}">
             <Setter Property="Padding" Value="12,3" />
             <Setter Property="Margin" Value="0,0,4,0" />
@@ -120,6 +115,14 @@
                         <Button Command="{Binding DeleteSelectedObjectsCommand}" Content="Delete" Margin="0,0,4,4" />
                     </WrapPanel>
 
+                    <!-- The animation timeline (Views/AnimationTimelineView.cs): drag blocks to re-time steps -->
+                    <Border DockPanel.Dock="Bottom" Background="{StaticResource Card}" CornerRadius="6" Margin="0,8,0,0" Padding="0,4" MaxHeight="190"
+                            IsEnabled="{Binding HasOverlay}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <v:AnimationTimelineView x:Name="Timeline" DataContext="{Binding Animation}" />
+                        </ScrollViewer>
+                    </Border>
+
                     <!-- Preview strip -->
                     <Border DockPanel.Dock="Bottom" Style="{StaticResource Panel}" Padding="8,6" Margin="0,8,0,0" IsEnabled="{Binding HasOverlay}">
                         <DockPanel>
@@ -202,241 +205,9 @@
                             </StackPanel>
                         </ScrollViewer>
 
-                        <!-- Animation -->
-                        <ScrollViewer x:Name="AnimationScroll" VerticalScrollBarVisibility="Auto" Visibility="{Binding ShowingAnimationTab, Converter={StaticResource Visible}}">
-                            <StackPanel Margin="0,0,6,0">
-                                <TextBlock Text="ADD AN EFFECT" Style="{StaticResource SectionLabel}" />
-                                <ComboBox SelectedIndex="{Binding GalleryKindIndex}" Margin="0,0,0,6">
-                                    <ComboBoxItem Content="Bring in (plays when it goes up)" />
-                                    <ComboBoxItem Content="Take out (plays when it's taken down)" />
-                                    <ComboBoxItem Content="Emphasize (plays when it goes up)" />
-                                </ComboBox>
-                                <ItemsControl ItemsSource="{Binding GalleryTiles}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type vm:GalleryTile}">
-                                            <Button Content="{Binding Title}" MinWidth="74" Margin="0,0,4,4"
-                                                    Command="{Binding DataContext.AddEffectCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <TextBlock Text="{Binding GalleryTarget}" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,10" />
-                                <!-- Presets, one step per line/word and look effects (ViewModels/OverlayEditorViewModel.Presets.cs). -->
-                                <TextBlock Text="PRESETS" Style="{StaticResource SectionLabel}" />
-                                <!-- Point at a tile to see it play; click to pick it, double-click to apply it (Views/AnimationPresetGallery.cs). -->
-                                <v:AnimationPresetGallery x:Name="PresetGallery" Margin="0,0,0,6" />
-                                <TextBlock Text="{Binding SelectedPreset.Name, FallbackValue='Pick a preset above'}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding SelectedPreset.Description}" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,4" />
-                                <WrapPanel Margin="0,0,0,8">
-                                    <Button Content="Apply" Command="{Binding ApplyPresetCommand}" CommandParameter="replace" Margin="0,0,4,4" ToolTip="Replace the selected objects' steps with the preset" />
-                                    <Button Content="Add" Command="{Binding ApplyPresetCommand}" CommandParameter="add" Margin="0,0,4,4" ToolTip="Add the preset's steps after theirs" />
-                                    <Button Content="Save as preset…" Command="{Binding SavePresetAsCommand}" Margin="0,0,4,4" ToolTip="Save the selected object's steps as a preset of your own" />
-                                    <Button Content="Delete" Command="{Binding DeletePresetCommand}" IsEnabled="{Binding CanDeletePreset}" Margin="0,0,4,4" />
-                                </WrapPanel>
-                                <DockPanel Margin="0,0,0,8">
-                                    <TextBlock Text="One step per" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                    <Button Content="Line" Command="{Binding GenerateStepsCommand}" CommandParameter="line" Margin="0,0,4,0"
-                                            ToolTip="Each line of the selected text gets its own step (the kind chosen above), one after another" />
-                                    <Button Content="Word" Command="{Binding GenerateStepsCommand}" CommandParameter="word" HorizontalAlignment="Left"
-                                            ToolTip="Each word of the selected text gets its own step, one after another" />
-                                </DockPanel>
-                                <TextBlock Text="LOOK EFFECTS" Style="{StaticResource SectionLabel}" />
-                                <ComboBox ItemsSource="{Binding EffectChoices}" SelectedItem="{Binding SelectedEffect}" Margin="0,0,0,4"
-                                          ToolTip="Picture effects drawn by the graphics card: frost, static, heat haze, trails" />
-                                <WrapPanel Margin="0,0,0,10">
-                                    <Button Content="Apply" Command="{Binding ApplyEffectCommand}" CommandParameter="replace" Margin="0,0,4,4" />
-                                    <Button Content="Add" Command="{Binding ApplyEffectCommand}" CommandParameter="add" Margin="0,0,4,4" />
-                                    <Button Content="Clear" Command="{Binding ApplyEffectCommand}" CommandParameter="clear" Margin="0,0,4,4" />
-                                </WrapPanel>
-                                <TextBlock Text="STEPS, IN PLAY ORDER" Style="{StaticResource SectionLabel}" />
-                                <TextBlock Text="No animations yet: the overlay cuts (or dissolves) on and off. Select an object and pick an effect above."
-                                           Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap"
-                                           Visibility="{Binding HasSteps, Converter={StaticResource Visible}, ConverterParameter=invert}" />
-                                <ListBox x:Name="StepList" ItemsSource="{Binding Source={StaticResource GroupedSteps}}" SelectedItem="{Binding SelectedStepRow}"
-                                         Background="{StaticResource Card}" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                         ScrollViewer.VerticalScrollBarVisibility="Disabled" PreviewMouseWheel="StepList_PreviewMouseWheel">
-                                    <ListBox.GroupStyle>
-                                        <GroupStyle>
-                                            <GroupStyle.HeaderTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding Name}" Style="{StaticResource SectionLabel}" TextWrapping="Wrap" Margin="4,8,4,2" />
-                                                </DataTemplate>
-                                            </GroupStyle.HeaderTemplate>
-                                        </GroupStyle>
-                                    </ListBox.GroupStyle>
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type vm:StepRowViewModel}">
-                                            <DockPanel Margin="2,2">
-                                                <Ellipse DockPanel.Dock="Left" Width="7" Height="7" Fill="{Binding KindColor}" VerticalAlignment="Top" Margin="0,5,7,0" />
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                                    <TextBlock Text="{Binding Timing}" Style="{StaticResource Muted}" FontSize="10" />
-                                                    <TextBlock Text="{Binding Warning}" Foreground="{StaticResource Warn}" FontSize="10" TextWrapping="Wrap"
-                                                               Visibility="{Binding Warning, Converter={StaticResource VisibleWhenSet}}" />
-                                                </StackPanel>
-                                            </DockPanel>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                                <!-- The selected step's settings -->
-                                <Border x:Name="StepEditorPanel" Style="{StaticResource Panel}" Margin="0,8,0,0"
-                                        Visibility="{Binding StepEditor, Converter={StaticResource VisibleWhenSet}}">
-                                    <StackPanel DataContext="{Binding StepEditor}" Margin="0,0,4,0">
-                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,4" />
-                                        <TextBlock Text="{Binding Warning}" Foreground="{StaticResource Warn}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,4"
-                                                   Visibility="{Binding Warning, Converter={StaticResource VisibleWhenSet}}" />
-                                        <WrapPanel Margin="0,0,0,6">
-                                            <Button Content="Earlier" Margin="0,0,4,4" ToolTip="Play it one step sooner"
-                                                    Command="{Binding DataContext.MoveStepEarlierCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                            <Button Content="Later" Margin="0,0,4,4" ToolTip="Play it one step later"
-                                                    Command="{Binding DataContext.MoveStepLaterCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                            <Button Margin="0,0,4,4" ToolTip="Preview from this step"
-                                                    Command="{Binding DataContext.PreviewStepCommand, RelativeSource={RelativeSource AncestorType=Window}}">
-                                                <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE768;" />
-                                            </Button>
-                                            <Button Content="Remove" Margin="0,0,4,4"
-                                                    Command="{Binding DataContext.RemoveStepCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                        </WrapPanel>
-                                        <WrapPanel Margin="0,0,0,6">
-                                            <TextBlock Text="Move to" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,4" />
-                                            <Button Content="Going up" Margin="0,0,4,4" CommandParameter="up"
-                                                    Command="{Binding DataContext.MoveStepToCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                            <Button Content="Taken down" Margin="0,0,4,4" CommandParameter="down"
-                                                    Command="{Binding DataContext.MoveStepToCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                        </WrapPanel>
-                                        <DockPanel Margin="0,0,0,6">
-                                            <TextBlock Text="Effect" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                            <ComboBox DockPanel.Dock="Left" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" Width="110" Margin="0,0,6,0" IsEnabled="{Binding IsMorph, Converter={StaticResource Not}}" />
-                                            <ComboBox ItemsSource="{Binding Effects}" SelectedItem="{Binding Effect}" />
-                                        </DockPanel>
-                                        <DockPanel Margin="0,0,0,6">
-                                            <TextBlock Text="Plays" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                            <ComboBox SelectedIndex="{Binding TriggerIndex}" ToolTip="On click · with the previous step (together) · after the previous step · on exit (when it's taken down)">
-                                                <ComboBoxItem Content="On click" />
-                                                <ComboBoxItem Content="With previous" />
-                                                <ComboBoxItem Content="After previous" />
-                                                <ComboBoxItem Content="Final (when taken down)" />
-                                            </ComboBox>
-                                        </DockPanel>
-                                        <DockPanel Margin="0,0,0,6">
-                                            <TextBlock Text="Speed" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                            <TextBox DockPanel.Dock="Right" Text="{Binding Duration, UpdateSourceTrigger=LostFocus}" Width="50" Margin="6,0,0,0" ToolTip="Seconds"
-                                                     KeyDown="NumberBox_KeyDown" Visibility="{Binding IsCustomSpeed, Converter={StaticResource Visible}}" />
-                                            <ComboBox SelectedIndex="{Binding SpeedIndex}">
-                                                <ComboBoxItem Content="Quick (0.3s)" />
-                                                <ComboBoxItem Content="Normal (0.5s)" />
-                                                <ComboBoxItem Content="Slow (1s)" />
-                                                <ComboBoxItem Content="Custom" />
-                                            </ComboBox>
-                                        </DockPanel>
-                                        <DockPanel Margin="0,0,0,2">
-                                            <TextBlock Text="Delay" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                            <TextBox Text="{Binding Delay, UpdateSourceTrigger=LostFocus}" Width="60" HorizontalAlignment="Left" KeyDown="NumberBox_KeyDown" />
-                                        </DockPanel>
-                                        <TextBlock Text="{Binding DelayHint}" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="64,0,0,6" />
-                                        <DockPanel Margin="0,0,0,6">
-                                            <TextBlock Text="Ease" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                            <ComboBox SelectedIndex="{Binding RampIndex}" Width="110" HorizontalAlignment="Left" ToolTip="How it speeds up and slows down">
-                                                <ComboBoxItem Content="None" />
-                                                <ComboBoxItem Content="In" />
-                                                <ComboBoxItem Content="Out" />
-                                                <ComboBoxItem Content="Both" />
-                                            </ComboBox>
-                                        </DockPanel>
-                                        <CheckBox Content="With fade" IsChecked="{Binding WithFade}" Margin="64,0,0,6" Visibility="{Binding ShowsWithFade, Converter={StaticResource Visible}}" />
-
-                                        <!-- Move -->
-                                        <StackPanel Visibility="{Binding IsMove, Converter={StaticResource Visible}}">
-                                            <DockPanel Margin="0,0,0,6">
-                                                <TextBlock Text="From" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                                <ComboBox SelectedIndex="{Binding MoveFromIndex}" Width="110" HorizontalAlignment="Left">
-                                                    <ComboBoxItem Content="Left" />
-                                                    <ComboBoxItem Content="Right" />
-                                                    <ComboBoxItem Content="Top" />
-                                                    <ComboBoxItem Content="Bottom" />
-                                                    <ComboBoxItem Content="Offset" />
-                                                </ComboBox>
-                                            </DockPanel>
-                                            <StackPanel Orientation="Horizontal" Margin="64,0,0,6" Visibility="{Binding UsesOffset, Converter={StaticResource Visible}}">
-                                                <TextBlock Text="X" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
-                                                <TextBox Text="{Binding OffsetX, UpdateSourceTrigger=LostFocus}" Width="54" Margin="0,0,8,0" KeyDown="NumberBox_KeyDown" />
-                                                <TextBlock Text="Y" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
-                                                <TextBox Text="{Binding OffsetY, UpdateSourceTrigger=LostFocus}" Width="54" KeyDown="NumberBox_KeyDown" />
-                                            </StackPanel>
-                                        </StackPanel>
-                                        <!-- Wipe -->
-                                        <StackPanel Visibility="{Binding IsWipe, Converter={StaticResource Visible}}">
-                                            <DockPanel Margin="0,0,0,6">
-                                                <TextBlock Text="From" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                                <ComboBox SelectedIndex="{Binding WipeFromIndex}" Width="110" HorizontalAlignment="Left">
-                                                    <ComboBoxItem Content="Left" />
-                                                    <ComboBoxItem Content="Right" />
-                                                    <ComboBoxItem Content="Top" />
-                                                    <ComboBoxItem Content="Bottom" />
-                                                </ComboBox>
-                                            </DockPanel>
-                                            <DockPanel Margin="0,0,0,6">
-                                                <TextBlock Text="Soft edge" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                                <TextBox Text="{Binding SoftEdge, UpdateSourceTrigger=LostFocus}" Width="54" HorizontalAlignment="Left" KeyDown="NumberBox_KeyDown" />
-                                            </DockPanel>
-                                        </StackPanel>
-                                        <!-- Scale -->
-                                        <DockPanel Margin="0,0,0,6" Visibility="{Binding IsScale, Converter={StaticResource Visible}}">
-                                            <TextBlock Text="From size" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                            <TextBox Text="{Binding FromScale, UpdateSourceTrigger=LostFocus}" Width="54" HorizontalAlignment="Left" KeyDown="NumberBox_KeyDown"
-                                                     ToolTip="1 is its own size; 0.5 half" />
-                                        </DockPanel>
-                                        <!-- Blur, burn, glitch, pulse -->
-                                        <DockPanel Margin="0,0,0,6" Visibility="{Binding UsesAmount, Converter={StaticResource Visible}}">
-                                            <TextBlock Text="{Binding AmountLabel}" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                            <TextBox Text="{Binding Amount, UpdateSourceTrigger=LostFocus}" Width="54" HorizontalAlignment="Left" KeyDown="NumberBox_KeyDown" />
-                                        </DockPanel>
-                                        <!-- Type -->
-                                        <WrapPanel Margin="64,0,0,6" Visibility="{Binding IsType, Converter={StaticResource Visible}}">
-                                            <CheckBox Content="Cursor" IsChecked="{Binding Cursor}" Margin="0,0,10,0" />
-                                            <CheckBox Content="Type from the end" IsChecked="{Binding Reverse}" />
-                                        </WrapPanel>
-                                        <!-- Draw -->
-                                        <StackPanel Visibility="{Binding IsDraw, Converter={StaticResource Visible}}">
-                                            <DockPanel Margin="0,0,0,6">
-                                                <TextBlock Text="Start at" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                                <TextBox DockPanel.Dock="Right" Text="{Binding DrawStart, UpdateSourceTrigger=LostFocus}" Width="50" Margin="6,0,0,0" KeyDown="NumberBox_KeyDown"
-                                                         ToolTip="0 to 1, around the outline from the top left" />
-                                                <ComboBox SelectedIndex="{Binding DrawStartIndex}">
-                                                    <ComboBoxItem Content="Top left" />
-                                                    <ComboBoxItem Content="Top right" />
-                                                    <ComboBoxItem Content="Bottom right" />
-                                                    <ComboBoxItem Content="Bottom left" />
-                                                    <ComboBoxItem Content="Custom" />
-                                                </ComboBox>
-                                            </DockPanel>
-                                            <CheckBox Content="Counter-clockwise" IsChecked="{Binding Reverse}" Margin="64,0,0,6" />
-                                        </StackPanel>
-                                        <!-- Color -->
-                                        <DockPanel Margin="0,0,0,6" Visibility="{Binding IsColor, Converter={StaticResource Visible}}">
-                                            <TextBlock Text="Colour" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
-                                            <v:ColorPicker Hex="{Binding ColorHex}" HorizontalAlignment="Left" />
-                                        </DockPanel>
-                                        <CheckBox Content="Blank underline while hidden" IsChecked="{Binding PlaceholderUnderline}" Margin="64,0,0,6"
-                                                  Visibility="{Binding HasRanges, Converter={StaticResource Visible}}" />
-                                        <!-- Camera push -->
-                                        <StackPanel Visibility="{Binding ShowsCameraPush, Converter={StaticResource Visible}}" Margin="0,4,0,0">
-                                            <CheckBox Content="Camera push" IsChecked="{Binding CameraPush}"
-                                                      ToolTip="The program video moves into the space this object leaves free, in step with this animation. Put it on the Out too so the picture returns." />
-                                            <ComboBox SelectedIndex="{Binding PushModeIndex}" Margin="64,4,0,0" Visibility="{Binding CameraPush, Converter={StaticResource Visible}}">
-                                                <ComboBoxItem Content="Push (crop in)" />
-                                                <ComboBoxItem Content="Push (letterbox)" />
-                                                <ComboBoxItem Content="Blur background" />
-                                            </ComboBox>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                            </StackPanel>
-                        </ScrollViewer>
+                        <!-- Animation (Views/AnimationTab.xaml, shared with the theme and stage layout editors) -->
+                        <v:AnimationTab x:Name="AnimationTab" DataContext="{Binding Animation}"
+                                        Visibility="{Binding DataContext.ShowingAnimationTab, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource Visible}}" />
 
                         <!-- Overlay -->
                         <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding ShowingOverlayTab, Converter={StaticResource Visible}}">

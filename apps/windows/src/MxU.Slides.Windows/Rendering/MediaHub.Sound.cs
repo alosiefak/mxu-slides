@@ -44,10 +44,11 @@ public sealed partial class MediaHub
     /// <param name="inPoint">The cue's trim start (seconds into the file), when it has one.</param>
     /// <param name="outPoint">Its trim end: no sound is played past it.</param>
     /// <param name="rate">Its play rate (the sound keeps its pitch).</param>
-    private bool TakeSound(string playbackKey, Player player, string path, double? inPoint = null, double? outPoint = null, double rate = 1)
+    /// <param name="gain">Its own level (the media item's volume, 0…1).</param>
+    private bool TakeSound(string playbackKey, Player player, string path, double? inPoint = null, double? outPoint = null, double rate = 1, double gain = 1)
     {
         if (sound is null) return false;
-        sound.Attach(playbackKey, path, new VideoSoundOptions(inPoint, outPoint, rate));
+        sound.Attach(playbackKey, path, new VideoSoundOptions(inPoint, outPoint, rate, gain));
         soundPlayers[playbackKey] = player;
         soundClock ??= new DispatcherTimer(SoundLook, DispatcherPriority.Normal, (_, _) => LookAtVideoClocks(), dispatcher);
         soundClock.Start();
@@ -117,6 +118,6 @@ public sealed partial class MediaHub
     {
         ReleaseSound(playbackKey);
         player.MediaPlayer.IsMuted = false;
-        player.MediaPlayer.Volume = VideoVolume;
+        player.MediaPlayer.Volume = VideoVolume * Gain(player.MediaId);
     }
 }

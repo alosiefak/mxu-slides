@@ -42,6 +42,7 @@ public partial class MainWindow : Window
         Closing += OnClosing;
         PreviewKeyDown += OnPreviewKeyDown;
         Transitions.TransitionMenus.Attach(this, model);
+        EditorMenus.Attach(this, model); // the Phase 7 editors' menu items: Edit…, Auto Advance…, Apply Theme… (Views/EditorMenus.cs)
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

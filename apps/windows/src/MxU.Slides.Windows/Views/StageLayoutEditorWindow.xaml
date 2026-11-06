@@ -1,0 +1,209 @@
+<Window x:Class="MxU.Slides.Windows.Views.StageLayoutEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:MxU.Slides.Windows.ViewModels"
+        xmlns:r="clr-namespace:MxU.Slides.Windows.Rendering"
+        xmlns:v="clr-namespace:MxU.Slides.Windows.Views"
+        Title="Stage Layouts" Width="1280" Height="780" MinWidth="960" MinHeight="560"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource BasePlane}">
+    <!--
+        The stage (confidence monitor) layout editor. Left: the layouts. Middle: the canvas (the
+        slide editor's canvas, drawing the layout as the stage does, with sample words or what's
+        live), with a safe margin to snap to. Right: the selected box: what it shows, then its look.
+        The data comes from StageLayoutEditorViewModel.
+    -->
+    <Window.Resources>
+        <v:BoolToVisibility x:Key="Visible" />
+        <v:NotNullToVisibility x:Key="VisibleWhenSet" />
+        <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+    </Window.Resources>
+
+    <Border Padding="12">
+        <DockPanel>
+            <!-- Footer -->
+            <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                <Button DockPanel.Dock="Right" Content="Done" MinWidth="90" Style="{StaticResource AccentButton}" Click="Done_Click" />
+                <TextBlock Text="{Binding Notice}" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0" />
+            </DockPanel>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="230" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" MinWidth="400" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="330" />
+                </Grid.ColumnDefinitions>
+
+                <!-- The layouts -->
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="STAGE LAYOUTS" Style="{StaticResource SectionLabel}" />
+                    <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <Button x:Name="NewButton" Content="+ New ▾" Margin="0,0,4,4" Click="New_Click" ToolTip="A new layout, blank or from a starter" />
+                        <Button Command="{Binding DuplicateLayoutCommand}" Content="Duplicate" Margin="0,0,4,4" />
+                        <Button Content="Rename…" Click="Rename_Click" Margin="0,0,4,4" />
+                        <Button Content="Delete" Click="Delete_Click" Margin="0,0,4,4" />
+                    </WrapPanel>
+                    <ListBox ItemsSource="{Binding Layouts}" SelectedItem="{Binding SelectedLayout}" Background="{StaticResource Card}" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:StageLayoutRow}">
+                                <DockPanel Margin="2,3">
+                                    <Border DockPanel.Dock="Left" Width="80" Height="45" Background="Black" CornerRadius="3" ClipToBounds="True">
+                                        <r:SceneView StaticScene="{Binding Preview}" PlaysVideo="False" />
+                                    </Border>
+                                    <StackPanel Margin="8,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Detail}" Style="{StaticResource Muted}" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+
+                <!-- Canvas -->
+                <DockPanel Grid.Column="2">
+                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8" IsEnabled="{Binding CanEdit}">
+                        <TextBlock Text="ADD" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <Button x:Name="AddButton" Content="Box ▾" Margin="0,0,12,4" Click="Add_Click"
+                                ToolTip="Current or next slide, chords, notes, the clock, timers, the stage message, video countdown…" />
+                        <TextBlock Text="ARRANGE" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <Button Command="{Binding BringToFrontCommand}" Content="Front" Margin="0,0,4,4" />
+                        <Button Command="{Binding SendToBackCommand}" Content="Back" Margin="0,0,4,4" />
+                        <Button Command="{Binding AlignCommand}" CommandParameter="Left" ToolTip="Align left (to the screen when one is selected)" Margin="0,0,2,4">
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8E4;" />
+                        </Button>
+                        <Button Command="{Binding AlignCommand}" CommandParameter="CenterX" ToolTip="Centre horizontally" Margin="0,0,2,4">
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8E3;" />
+                        </Button>
+                        <Button Command="{Binding AlignCommand}" CommandParameter="Right" ToolTip="Align right" Margin="0,0,2,4">
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8E2;" />
+                        </Button>
+                        <Button Command="{Binding AlignCommand}" CommandParameter="Top" Content="Top" Margin="0,0,2,4" />
+                        <Button Command="{Binding AlignCommand}" CommandParameter="CenterY" Content="Middle" Margin="0,0,2,4" />
+                        <Button Command="{Binding AlignCommand}" CommandParameter="Bottom" Content="Bottom" Margin="0,0,12,4" />
+                        <Button Command="{Binding DuplicateSelectedObjectsCommand}" Content="Duplicate" Margin="0,0,4,4" />
+                        <Button Command="{Binding DeleteSelectedObjectsCommand}" Content="Delete" Margin="0,0,4,4" />
+                    </WrapPanel>
+
+                    <Border DockPanel.Dock="Bottom" Style="{StaticResource Panel}" Padding="8,6" Margin="0,8,0,0" IsEnabled="{Binding HasLayout}">
+                        <WrapPanel>
+                            <TextBlock Text="Shows" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <ComboBox SelectedIndex="{Binding DataIndex}" Width="150" Margin="0,0,12,0" ToolTip="What the boxes read while you design: sample words and times, or what's live now">
+                                <ComboBoxItem Content="Sample words" />
+                                <ComboBoxItem Content="What's live now" />
+                            </ComboBox>
+                            <TextBlock Text="Safe margin" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <ComboBox ItemsSource="{Binding SafeMargins}" SelectedItem="{Binding SafeMargin}" Width="140" Margin="0,0,12,0"
+                                      ToolTip="A guide in from the edges that boxes snap to: some monitors cut the edges off" />
+                            <TextBlock Text="Canvas" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <ComboBox ItemsSource="{Binding CanvasSizes}" SelectedItem="{Binding CanvasSize}" Width="160" IsEnabled="{Binding CanEdit}"
+                                      ToolTip="The layout's shape: a portrait monitor beside the stage, a 4:3 monitor…" />
+                            <TextBlock Text="{Binding OutsideSafeNote}" Foreground="{StaticResource Warn}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"
+                                       Visibility="{Binding OutsideSafeNote, Converter={StaticResource VisibleWhenSet}}" Width="2000" />
+                        </WrapPanel>
+                    </Border>
+
+                    <Border Background="#141414" CornerRadius="6">
+                        <Grid>
+                            <v:SlideCanvasEditor x:Name="CanvasEditor" Margin="8" IsEnabled="{Binding CanEdit}" />
+                            <TextBlock Text="Pick a layout on the left, or make a new one." Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Visibility="{Binding HasLayout, Converter={StaticResource Visible}, ConverterParameter=invert}" />
+                        </Grid>
+                    </Border>
+                </DockPanel>
+
+                <!-- The selected box -->
+                <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="0,0,6,0" IsEnabled="{Binding HasLayout}">
+                        <Border Style="{StaticResource Panel}" Margin="0,0,0,10" Visibility="{Binding IsMultiView, Converter={StaticResource Visible}}">
+                            <TextBlock TextWrapping="Wrap" FontSize="12"
+                                       Text="This layout is made of multi-view tiles, a Mac feature. Windows shows it on stage screens, but its tiles are edited on a Mac." />
+                        </Border>
+                        <TextBlock Text="LAYOUT" Style="{StaticResource SectionLabel}" />
+                        <DockPanel Margin="0,0,0,10">
+                            <TextBlock Text="Name" Width="56" VerticalAlignment="Center" />
+                            <TextBox Text="{Binding LayoutName, UpdateSourceTrigger=LostFocus}" KeyDown="Box_KeyDown" />
+                        </DockPanel>
+                        <TextBlock Text="BOXES (TOP FIRST)" Style="{StaticResource SectionLabel}" />
+                        <ListBox ItemsSource="{Binding ObjectRows}" SelectedItem="{Binding SelectedObjectRow}" MaxHeight="150" Background="{StaticResource Card}" BorderThickness="0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:OverlayObjectRow}">
+                                    <DockPanel Margin="2,1">
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Kind}" Style="{StaticResource Muted}" FontSize="10" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Text="Click a box on the canvas (or in the list) to choose what it shows and how it looks. Drag to move it; it snaps to the edges, the middle, other boxes and the safe margin (hold Alt to stop it)."
+                                   Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,10,0,0"
+                                   Visibility="{Binding Inspector, Converter={StaticResource VisibleWhenSet}, ConverterParameter=invert}" />
+
+                        <!-- What a text box shows (StageLinkViewModel) -->
+                        <Border Style="{StaticResource Panel}" Margin="0,10,0,0" Visibility="{Binding Link, Converter={StaticResource VisibleWhenSet}}">
+                            <StackPanel DataContext="{Binding Link}">
+                                <TextBlock Text="SHOWS" Style="{StaticResource SectionLabel}" />
+                                <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding Source}" Margin="0,0,0,6" />
+                                <DockPanel Margin="0,0,0,6" Visibility="{Binding IsTimer, Converter={StaticResource Visible}}">
+                                    <TextBlock Text="Timer" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                                    <ComboBox ItemsSource="{Binding Timers}" SelectedItem="{Binding Timer}" ToolTip="A timer from the Timers panel, or one of the service-tracking timers" />
+                                </DockPanel>
+                                <DockPanel Margin="0,0,0,6" Visibility="{Binding UsesTimerFormat, Converter={StaticResource Visible}}">
+                                    <TextBlock Text="Reads" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                                    <ComboBox ItemsSource="{Binding TimerFormats}" SelectedItem="{Binding TimerFormat}" />
+                                </DockPanel>
+                                <CheckBox Content="Amber, then red, as it runs out" IsChecked="{Binding UsesWarningColor}" Margin="64,0,0,6"
+                                          Visibility="{Binding UsesTimerFormat, Converter={StaticResource Visible}}" />
+                                <DockPanel Margin="0,0,0,6" Visibility="{Binding IsClock, Converter={StaticResource Visible}}">
+                                    <TextBlock Text="Format" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                                    <ComboBox ItemsSource="{Binding ClockFormats}" SelectedItem="{Binding ClockFormat}" />
+                                </DockPanel>
+                                <StackPanel Visibility="{Binding IsSlide, Converter={StaticResource Visible}}">
+                                    <CheckBox Content="Chords above the words" IsChecked="{Binding ShowChords}" Margin="0,0,0,6" />
+                                    <DockPanel Margin="0,0,0,6">
+                                        <TextBlock Text="Lines" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                                        <TextBox Text="{Binding MaxLines, UpdateSourceTrigger=LostFocus}" Width="48" HorizontalAlignment="Left" KeyDown="Box_KeyDown"
+                                                 ToolTip="How many lines to show (0: all of them)" />
+                                    </DockPanel>
+                                </StackPanel>
+                                <StackPanel Visibility="{Binding IsVideo, Converter={StaticResource Visible}}">
+                                    <DockPanel Margin="0,0,0,6">
+                                        <TextBlock Text="{Binding VideoTargetLabel}" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                                        <ComboBox ItemsSource="{Binding VideoTargets}" SelectedItem="{Binding VideoTarget}"
+                                                  ToolTip="What the box counts to on the playing video, or which video action's name it shows" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,0,0,6" Visibility="{Binding IsNamedMark, Converter={StaticResource Visible}}">
+                                        <TextBlock Text="Name" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                                        <TextBox Text="{Binding VideoMarkName, UpdateSourceTrigger=LostFocus}" KeyDown="Box_KeyDown"
+                                                 ToolTip="The video action, matched by name (any capitalisation) in whichever video is playing" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,0,0,6" Visibility="{Binding IsVideoCountdown, Converter={StaticResource Visible}}">
+                                        <TextBlock Text="Direction" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                                        <ComboBox SelectedIndex="{Binding DirectionIndex}" Width="90" HorizontalAlignment="Left"
+                                                  ToolTip="Up counts from the previous video action (or the start of the video) and stops at the target">
+                                            <ComboBoxItem Content="Down" />
+                                            <ComboBoxItem Content="Up" />
+                                        </ComboBox>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,0,0,6">
+                                        <TextBlock Text="Video" Style="{StaticResource Muted}" Width="64" VerticalAlignment="Center" />
+                                        <ComboBox ItemsSource="{Binding VideoLayers}" SelectedItem="{Binding VideoLayer}" />
+                                    </DockPanel>
+                                    <CheckBox Content="Show the video's name" IsChecked="{Binding ShowsVideoName}" Margin="64,0,0,6"
+                                              Visibility="{Binding IsVideoCountdown, Converter={StaticResource Visible}}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding SampleLine}" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <v:ObjectInspectorPanel x:Name="InspectorPanel" DataContext="{Binding Inspector}" Margin="0,10,0,0"
+                                                Visibility="{Binding Converter={StaticResource VisibleWhenSet}}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>

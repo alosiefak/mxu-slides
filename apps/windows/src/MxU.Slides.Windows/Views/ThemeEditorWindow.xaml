@@ -1,0 +1,283 @@
+<Window x:Class="MxU.Slides.Windows.Views.ThemeEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:MxU.Slides.Windows.ViewModels"
+        xmlns:r="clr-namespace:MxU.Slides.Windows.Rendering"
+        xmlns:v="clr-namespace:MxU.Slides.Windows.Views"
+        Title="Themes" Width="1320" Height="820" MinWidth="980" MinHeight="580"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource BasePlane}">
+    <!--
+        The theme editor. Left: the theme and its designs. Middle: the canvas (the slide editor's
+        canvas, drawing the design over the theme's background), the animation timeline and the
+        preview strip. Right: the selected object, the animations, the design and the theme.
+        The data comes from ThemeEditorViewModel.
+    -->
+    <Window.Resources>
+        <v:BoolToVisibility x:Key="Visible" />
+        <v:NotNullToVisibility x:Key="VisibleWhenSet" />
+        <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+        <Style x:Key="TabButton" TargetType="{x:Type ToggleButton}" BasedOn="{StaticResource {x:Type ToggleButton}}">
+            <Setter Property="Padding" Value="12,3" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+    </Window.Resources>
+
+    <Border Padding="12">
+        <DockPanel>
+            <!-- Footer -->
+            <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                <Button DockPanel.Dock="Right" Content="Done" MinWidth="90" Style="{StaticResource AccentButton}" Click="Done_Click" />
+                <TextBlock Text="{Binding Notice}" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0" />
+            </DockPanel>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="230" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" MinWidth="400" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="340" />
+                </Grid.ColumnDefinitions>
+
+                <!-- The theme and its designs -->
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="THEME" Style="{StaticResource SectionLabel}" />
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                        <Button x:Name="ThemeMenuButton" DockPanel.Dock="Right" Margin="6,0,0,0" ToolTip="New, copy, rename or delete a theme" Click="ThemeMenu_Click">
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE712;" />
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="New theme" Click="NewTheme_Click" />
+                                    <MenuItem Header="Duplicate this theme" Click="DuplicateTheme_Click" />
+                                    <MenuItem Header="Rename this theme…" Click="RenameTheme_Click" />
+                                    <Separator />
+                                    <MenuItem Header="Delete this theme…" Click="DeleteTheme_Click" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                        <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding SelectedTheme}" />
+                    </DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="DESIGNS" Style="{StaticResource SectionLabel}" />
+                    <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <Button Command="{Binding AddDesignCommand}" Content="+ New" Margin="0,0,4,4" ToolTip="A new design (a category of slide) with one text placeholder" />
+                        <Button Command="{Binding DuplicateDesignCommand}" Content="Duplicate" Margin="0,0,4,4" />
+                        <Button Content="Rename…" Click="RenameDesign_Click" Margin="0,0,4,4" />
+                        <Button Content="Delete" Click="DeleteDesign_Click" Margin="0,0,4,4" />
+                        <Button Command="{Binding MoveDesignCommand}" CommandParameter="up" ToolTip="Earlier in the list (the first is what slides without a design use)" Margin="0,0,2,4">
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE70E;" />
+                        </Button>
+                        <Button Command="{Binding MoveDesignCommand}" CommandParameter="down" ToolTip="Later in the list" Margin="0,0,4,4">
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE70D;" />
+                        </Button>
+                    </WrapPanel>
+                    <ListBox x:Name="DesignList" ItemsSource="{Binding Designs}" SelectedItem="{Binding SelectedDesign}" Background="{StaticResource Card}" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:DesignRowViewModel}">
+                                <DockPanel Margin="2,3">
+                                    <Border DockPanel.Dock="Left" Width="80" Height="45" Background="#141414" CornerRadius="3" ClipToBounds="True">
+                                        <r:SceneView StaticScene="{Binding Preview}" PlaysVideo="False" />
+                                    </Border>
+                                    <StackPanel Margin="8,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Folder}" Style="{StaticResource Muted}" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+
+                <!-- Canvas -->
+                <DockPanel Grid.Column="2">
+                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8" IsEnabled="{Binding HasTheme}">
+                        <TextBlock Text="ADD" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <Button Command="{Binding AddTextCommand}" Content="Placeholder" Margin="0,0,4,4" ToolTip="A text box for a slide's words (slides fill placeholders by name, then in order)" />
+                        <Button Command="{Binding AddBoxCommand}" Content="Box" Margin="0,0,4,4" />
+                        <Button Command="{Binding AddCircleCommand}" Content="Circle" Margin="0,0,4,4" />
+                        <Button Command="{Binding AddMediaCommand}" Content="Media" Margin="0,0,12,4" ToolTip="Place the image or video selected in the main window's Media bin" />
+                        <TextBlock Text="ARRANGE" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <Button Command="{Binding BringToFrontCommand}" Content="Front" Margin="0,0,4,4" />
+                        <Button Command="{Binding SendToBackCommand}" Content="Back" Margin="0,0,4,4" />
+                        <Button Command="{Binding AlignCommand}" CommandParameter="Left" ToolTip="Align left (to the screen when one is selected)" Margin="0,0,2,4">
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8E4;" />
+                        </Button>
+                        <Button Command="{Binding AlignCommand}" CommandParameter="CenterX" ToolTip="Centre horizontally" Margin="0,0,2,4">
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8E3;" />
+                        </Button>
+                        <Button Command="{Binding AlignCommand}" CommandParameter="Right" ToolTip="Align right" Margin="0,0,2,4">
+                            <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8E2;" />
+                        </Button>
+                        <Button Command="{Binding AlignCommand}" CommandParameter="Top" Content="Top" Margin="0,0,2,4" />
+                        <Button Command="{Binding AlignCommand}" CommandParameter="CenterY" Content="Middle" Margin="0,0,2,4" />
+                        <Button Command="{Binding AlignCommand}" CommandParameter="Bottom" Content="Bottom" Margin="0,0,12,4" />
+                        <Button Command="{Binding DuplicateSelectedObjectsCommand}" Content="Duplicate" Margin="0,0,4,4" />
+                        <Button Command="{Binding DeleteSelectedObjectsCommand}" Content="Delete" Margin="0,0,4,4" />
+                    </WrapPanel>
+
+                    <!-- Preview strip: the design as a slide with the sample words, playing its builds -->
+                    <Border DockPanel.Dock="Bottom" Style="{StaticResource Panel}" Padding="8,6" Margin="0,8,0,0" IsEnabled="{Binding HasTheme}">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                                <Button Command="{Binding PlayPreviewCommand}" Width="34" Margin="0,0,4,0" ToolTip="Play a slide using this design: its words come in, each click, a hold, then out">
+                                    <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE768;" />
+                                </Button>
+                                <Button Command="{Binding StopPreviewCommand}" Width="34" Margin="0,0,8,0" ToolTip="Stop the preview and go back to designing">
+                                    <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE71A;" />
+                                </Button>
+                            </StackPanel>
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding PlayheadText}" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" Width="76" Margin="6,0,0,0" />
+                            <Slider Minimum="0" Maximum="{Binding PreviewDuration}" Value="{Binding Playhead}" VerticalAlignment="Center"
+                                    ToolTip="Drag to see a slide using this design at any moment of its builds" />
+                        </DockPanel>
+                    </Border>
+
+                    <!-- The animation timeline (Views/AnimationTimelineView.cs) -->
+                    <Border DockPanel.Dock="Bottom" Background="{StaticResource Card}" CornerRadius="6" Margin="0,8,0,0" Padding="0,4" MaxHeight="170" IsEnabled="{Binding HasTheme}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <v:AnimationTimelineView x:Name="Timeline" DataContext="{Binding Animation}" />
+                        </ScrollViewer>
+                    </Border>
+
+                    <Border Background="#141414" CornerRadius="6">
+                        <Grid>
+                            <v:SlideCanvasEditor x:Name="CanvasEditor" Margin="8" />
+                            <TextBlock Text="Pick a theme and one of its designs on the left, or make a new theme from the ⋯ menu." Style="{StaticResource Muted}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Visibility="{Binding HasTheme, Converter={StaticResource Visible}, ConverterParameter=invert}" />
+                        </Grid>
+                    </Border>
+                </DockPanel>
+
+                <!-- Object, animations, design, theme -->
+                <DockPanel Grid.Column="4">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                        <ToggleButton Content="Object" IsChecked="{Binding ShowingObjectTab}" Style="{StaticResource TabButton}" />
+                        <ToggleButton Content="Animation" IsChecked="{Binding ShowingAnimationTab}" Style="{StaticResource TabButton}" />
+                        <ToggleButton Content="Design" IsChecked="{Binding ShowingDesignTab}" Style="{StaticResource TabButton}" />
+                        <ToggleButton Content="Theme" IsChecked="{Binding ShowingThemeTab}" Style="{StaticResource TabButton}" />
+                    </StackPanel>
+
+                    <Grid>
+                        <!-- Object -->
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding ShowingObjectTab, Converter={StaticResource Visible}}">
+                            <StackPanel Margin="0,0,6,0">
+                                <TextBlock Text="OBJECTS (TOP FIRST)" Style="{StaticResource SectionLabel}" />
+                                <ListBox ItemsSource="{Binding ObjectRows}" SelectedItem="{Binding SelectedObjectRow}" MaxHeight="150" Background="{StaticResource Card}" BorderThickness="0"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:OverlayObjectRow}">
+                                            <DockPanel Margin="2,1">
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Kind}" Style="{StaticResource Muted}" FontSize="10" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <Border Style="{StaticResource Panel}" Margin="0,8,0,0" Visibility="{Binding HasKinetic, Converter={StaticResource Visible}}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding KineticNote}" TextWrapping="Wrap" FontSize="11" />
+                                        <Button Content="Remove the kinetic build" Command="{Binding RemoveKineticCommand}" HorizontalAlignment="Left" Margin="0,6,0,0"
+                                                ToolTip="The words play the theme's own steps instead, as on a Mac" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Text="Click something on the canvas (or in the list) to change its font, colour, size, position, effects and mask. Text boxes are placeholders: each slide puts its words there."
+                                           Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,10,0,0"
+                                           Visibility="{Binding Inspector, Converter={StaticResource VisibleWhenSet}, ConverterParameter=invert}" />
+                                <v:ObjectInspectorPanel x:Name="InspectorPanel" DataContext="{Binding Inspector}" Margin="0,10,0,0"
+                                                        Visibility="{Binding Converter={StaticResource VisibleWhenSet}}" />
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- Animation (Views/AnimationTab.xaml, shared with the overlay and stage layout editors) -->
+                        <v:AnimationTab x:Name="AnimationTab" DataContext="{Binding Animation}"
+                                        Visibility="{Binding DataContext.ShowingAnimationTab, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource Visible}}" />
+
+                        <!-- Design -->
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding ShowingDesignTab, Converter={StaticResource Visible}}">
+                            <StackPanel Margin="0,0,6,0" IsEnabled="{Binding HasTheme}">
+                                <TextBlock Text="PREVIEW: A SLIDE USING THIS DESIGN" Style="{StaticResource SectionLabel}" />
+                                <Border Background="Black" CornerRadius="4" ClipToBounds="True" Height="180">
+                                    <r:SceneView x:Name="SampleView" PlaysVideo="False" />
+                                </Border>
+                                <TextBlock Text="Sample words" Style="{StaticResource Muted}" Margin="0,6,0,2" />
+                                <TextBox Text="{Binding SampleText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="70"
+                                         ToolTip="The words the preview puts in the design's first placeholder (nothing is saved)" />
+
+                                <TextBlock Text="DESIGN" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
+                                <DockPanel Margin="0,0,0,6">
+                                    <TextBlock Text="Name" Width="72" VerticalAlignment="Center" />
+                                    <TextBox Text="{Binding DesignName, UpdateSourceTrigger=LostFocus}" KeyDown="Box_KeyDown"
+                                             ToolTip="Slides pick their design by this name" />
+                                </DockPanel>
+                                <DockPanel Margin="0,0,0,6">
+                                    <TextBlock Text="Group" Width="72" VerticalAlignment="Center" />
+                                    <TextBox Text="{Binding DesignFolder, UpdateSourceTrigger=LostFocus}" KeyDown="Box_KeyDown"
+                                             ToolTip="A heading the design is listed under, like Lower Thirds" />
+                                </DockPanel>
+                                <DockPanel Margin="0,0,0,6">
+                                    <TextBlock Text="Background" Width="72" VerticalAlignment="Center" />
+                                    <v:ColorPicker Hex="{Binding DesignBackgroundColor}" HorizontalAlignment="Left" ToolTip="The design's own background colour (none: the theme's)" />
+                                </DockPanel>
+
+                                <TextBlock Text="PLACEHOLDERS" Style="{StaticResource SectionLabel}" Margin="0,14,0,4" />
+                                <TextBlock Text="The text boxes a slide's words go into: matched by name (Lyrics, Title…), then in order. The words here are only a sample."
+                                           Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6" />
+                                <ItemsControl ItemsSource="{Binding Placeholders}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:PlaceholderRowViewModel}">
+                                            <Border Style="{StaticResource Panel}" Padding="8" Margin="0,0,0,6">
+                                                <StackPanel>
+                                                    <DockPanel Margin="0,0,0,4">
+                                                        <TextBlock Text="Name" Style="{StaticResource Muted}" Width="48" VerticalAlignment="Center" />
+                                                        <TextBox Text="{Binding Name, UpdateSourceTrigger=LostFocus}" KeyDown="Box_KeyDown" />
+                                                    </DockPanel>
+                                                    <TextBox Text="{Binding Sample, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="70" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="+ Add a placeholder" Command="{Binding AddTextCommand}" HorizontalAlignment="Left" Margin="0,0,0,14" />
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- Theme -->
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding ShowingThemeTab, Converter={StaticResource Visible}}">
+                            <StackPanel Margin="0,0,6,0" IsEnabled="{Binding HasTheme}">
+                                <Border Style="{StaticResource Panel}" Margin="0,0,0,10" Visibility="{Binding IsStarter, Converter={StaticResource Visible}}">
+                                    <StackPanel>
+                                        <TextBlock TextWrapping="Wrap" FontSize="12"
+                                                   Text="This is one of the app's starter themes. An update can refresh it, and it comes back if deleted. To keep your changes for good, make your own copy." />
+                                        <Button Content="Make my copy" Command="{Binding DuplicateThemeCommand}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Text="THEME" Style="{StaticResource SectionLabel}" />
+                                <DockPanel Margin="0,0,0,6">
+                                    <TextBlock Text="Name" Width="72" VerticalAlignment="Center" />
+                                    <TextBox Text="{Binding ThemeName, UpdateSourceTrigger=LostFocus}" KeyDown="Box_KeyDown" />
+                                </DockPanel>
+                                <TextBlock Text="Used where a design's text says nothing of its own:" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,6" />
+                                <DockPanel Margin="0,0,0,6">
+                                    <TextBlock Text="Font" Width="72" VerticalAlignment="Center" />
+                                    <TextBox DockPanel.Dock="Right" Text="{Binding ThemeFontSize, UpdateSourceTrigger=LostFocus}" Width="48" Margin="6,0,0,0" ToolTip="Size" KeyDown="Box_KeyDown" />
+                                    <ComboBox ItemsSource="{Binding FontChoices}" SelectedItem="{Binding ThemeFont}" />
+                                </DockPanel>
+                                <DockPanel Margin="0,0,0,6">
+                                    <TextBlock Text="Text colour" Width="72" VerticalAlignment="Center" />
+                                    <v:ColorPicker Hex="{Binding ThemeTextColor}" HorizontalAlignment="Left" />
+                                </DockPanel>
+                                <DockPanel Margin="0,0,0,6">
+                                    <TextBlock Text="Background" Width="72" VerticalAlignment="Center" />
+                                    <v:ColorPicker Hex="{Binding ThemeBackgroundColor}" HorizontalAlignment="Left" />
+                                </DockPanel>
+                                <TextBlock Text="Every slide using this theme follows these changes. A slide's own changes to its text (Reset to theme in the slide editor) stay."
+                                           Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </DockPanel>
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>

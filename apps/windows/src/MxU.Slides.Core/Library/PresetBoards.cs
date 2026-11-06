@@ -65,6 +65,16 @@ public static class PresetBoards
         return preset;
     }
 
+    /// <summary>Saves a chain over a saved effect preset (its name stays): the Mac's Save Over. False when there's no such preset.</summary>
+    public static bool OverwriteEffect(LibraryStore library, string id, IEnumerable<Effect> effects)
+    {
+        var board = Effects(library);
+        if (board.Presets.FirstOrDefault(p => p.Id == id) is not { } preset) return false;
+        preset.Effects = [.. effects.Select(MxuJson.Clone)];
+        library.Save(board);
+        return true;
+    }
+
     public static bool DeleteEffect(LibraryStore library, string id)
     {
         var board = Effects(library);

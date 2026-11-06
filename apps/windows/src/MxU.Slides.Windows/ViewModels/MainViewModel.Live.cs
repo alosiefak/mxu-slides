@@ -394,10 +394,11 @@ public sealed partial class MainViewModel
             Show.Pager ??= TextLayout.Pager;
             Show.PageTurn = PageTurn();
             var looks = SyncLooks();
-            var audience = Show.AnimatedScene(resolveLinkedText: ResolveLinkedText);
+            // Full-screen media wears its media item's effects and look (MainViewModel.MediaLooks.cs).
+            var audience = DressMedia(Show.AnimatedScene(resolveLinkedText: ResolveLinkedText));
             var lookScenes = new Dictionary<string, Core.Animation.AnimatedScene>(StringComparer.Ordinal);
             foreach (var (key, look) in looks)
-                lookScenes[key] = Show.AnimatedScene(resolveLinkedText: ResolveLinkedText, slideThemeOverride: look);
+                lookScenes[key] = DressMedia(Show.AnimatedScene(resolveLinkedText: ResolveLinkedText, slideThemeOverride: look));
             var push = LayerTransitions(transition, refreshOnly);
             Outputs?.Present(OutputRole.Audience, audience, push, lookScenes);
             ShowPreviews(OutputRole.Audience, audience, push);

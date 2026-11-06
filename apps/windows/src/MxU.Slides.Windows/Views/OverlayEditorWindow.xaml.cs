@@ -29,11 +29,10 @@ public partial class OverlayEditorWindow : Window
             Model.ShowingObjectTab = true;
             InspectorPanel.FocusText();
         }, DispatcherPriority.Loaded);
-        // Picking a step scrolls its settings into view, as the Mac's inspector does.
+        // The timeline's playhead follows the preview (and scrubbing it moves the preview).
         Model.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(OverlayEditorViewModel.StepEditor) && Model.StepEditor is not null)
-                Dispatcher.BeginInvoke(() => StepEditorPanel.BringIntoView(), DispatcherPriority.Loaded);
+            if (e.PropertyName == nameof(OverlayEditorViewModel.Playhead)) Timeline.Playhead = Model.Playhead;
         };
         Closed += (_, _) =>
         {
@@ -42,14 +41,12 @@ public partial class OverlayEditorWindow : Window
         };
     }
 
-    /// <summary>The steps list grows to fit, so the mouse wheel scrolls the whole Animation tab instead.</summary>
-    private void StepList_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        AnimationScroll.ScrollToVerticalOffset(AnimationScroll.VerticalOffset - e.Delta / 3.0);
-        e.Handled = true;
-    }
-
     public OverlayEditorViewModel Model { get; }
+
+    /// <summary>The Animation tab's presets gallery and its scroller (the self-test drives and pictures them).</summary>
+    internal AnimationPresetGallery PresetGallery => AnimationTab.PresetGallery;
+
+    internal ScrollViewer AnimationScroll => AnimationTab.AnimationScroll;
 
     /// <summary>
     /// Opens the overlay editor (or brings the open one forward) on <paramref name="overlayId"/>,
