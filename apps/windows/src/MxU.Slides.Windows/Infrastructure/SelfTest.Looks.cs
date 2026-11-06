@@ -415,7 +415,7 @@ public sealed partial class SelfTest
     {
         var copy = new RenderScene(scene.CanvasSize, scene.Background);
         foreach (var layer in scene.Layers)
-            foreach (var item in layer.Items) copy.AddItem(item, layer.Kind);
+            foreach (var item in layer.Items) copy.AddItem(item, layer.Id);
         return copy;
     }
 

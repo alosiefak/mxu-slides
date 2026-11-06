@@ -155,7 +155,10 @@ public sealed partial class SceneView : FrameworkElement
         public bool Animating;
 
         /// <summary>The layers a Windows-only transition is mixing right now (SceneView.Transitions.cs).</summary>
-        public Dictionary<LayerKind, MixPass> Mixes { get; } = [];
+        public Dictionary<string, MixPass> Mixes { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>Layers drawn as one picture this frame: dissolving stacks and Screen Map placements (SceneView.Layers.cs).</summary>
+        public Dictionary<string, LayerPicture> Pictures { get; } = new(StringComparer.Ordinal);
     }
 
     private readonly VisualCollection children;
@@ -492,7 +495,12 @@ public sealed partial class SceneView : FrameworkElement
         {
             if (layer.IsHidden) continue;
             // A layer under a Windows-only transition: its items go into its two pictures, and one mix pass stands in for them.
-            var mix = BeginMix(root, layer.Kind);
+            var mix = BeginMix(root, layer.Id);
+            // A layer drawn as one picture: a placed layer's room picture, or a dissolve's two stacks.
+            var placed = layer.Placed is null ? null : BeginPicture(root, layer.Id + "#placed");
+            var (from, to) = layer.CrossfadeProgress is null || placed is not null || mix is not null
+                ? (null, null)
+                : (BeginPicture(root, layer.Id + "#from"), BeginPicture(root, layer.Id + "#to"));
             // Mattes are never drawn; they only clip the items masked by them.
             var mattes = new Dictionary<string, Geometry>(StringComparer.Ordinal);
             foreach (var matte in layer.Items.Where(r => r.Item.Render.MatteGroup is not null && !r.Item.Id.EndsWith("::text", StringComparison.Ordinal)))
@@ -507,6 +515,8 @@ public sealed partial class SceneView : FrameworkElement
                     if (!root.Slots.TryGetValue(id, out var slot)) root.Slots[id] = slot = new Slot();
                     Apply(slot, resolvedItem, root, ppd, mattes, canvasRect, now);
                     if (mix is not null) mix.Place(resolvedItem.Item.Id, slot.Outer);
+                    else if (placed is not null) placed.Items.Add(slot.Outer);
+                    else if (from is not null && to is not null) (resolvedItem.Item.CrossfadeLeaving ? from : to).Items.Add(slot.Outer);
                     else order.Add(slot.Outer);
                 }
                 catch (Exception ex)
@@ -517,12 +527,26 @@ public sealed partial class SceneView : FrameworkElement
             }
             if (mix is not null)
             {
-                FinishMix(mix, scene[layer.Kind].Mix!, canvasRect);
+                FinishMix(mix, scene.Layer(layer.Id)!.Mix!, canvasRect);
                 order.Add(mix.Layer);
+            }
+            else if (placed is not null)
+            {
+                DrawPlaced(placed, layer.Placed!, canvasRect);
+                order.Add(placed.Face);
+            }
+            else if (from is not null && to is not null)
+            {
+                var progress = layer.CrossfadeProgress!.Value;
+                from.Container.Opacity = 1 - progress;
+                to.Container.Opacity = progress;
+                order.Add(from.Container);
+                order.Add(to.Container);
             }
         }
         // A hidden layer isn't drawn, so it isn't mixed either.
-        foreach (var layer in resolved.Layers.Where(l => l.IsHidden)) root.Mixes.Remove(layer.Kind);
+        foreach (var layer in resolved.Layers.Where(l => l.IsHidden)) root.Mixes.Remove(layer.Id);
+        SweepPictures(root);
         foreach (var gone in root.Slots.Keys.Where(k => !seen.Contains(k)).ToList()) root.Slots.Remove(gone);
         ReleaseUnusedPlayers(root);
         Reparent(root, order, mixing.Where(pass => !root.Mixes.ContainsValue(pass)));
@@ -549,9 +573,14 @@ public sealed partial class SceneView : FrameworkElement
     private static RenderScene Still(AnimatedScene scene)
     {
         var still = new RenderScene(scene.CanvasSize, scene.Background);
+        string? below = null;
         foreach (var layer in scene.Layers)
-            foreach (var item in layer.Items)
-                still.AddItem(item.Render, layer.Kind);
+        {
+            var into = still.Matching(layer.Id, layer.Kind, layer.Name, below);
+            below = layer.Id;
+            into.Placed = layer.Placed;
+            into.Items.AddRange(layer.Items.Select(item => item.Render));
+        }
         return still;
     }
 

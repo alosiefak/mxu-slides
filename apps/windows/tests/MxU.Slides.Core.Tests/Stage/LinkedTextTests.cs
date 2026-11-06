@@ -488,4 +488,57 @@ public class LinkedTextTests
         resolved.Chords![0].Symbol = "X";
         Assert.Equal("G", info.Current!.Chords[0].Symbol);
     }
+    // Ports of LinkedTextTests.swift's video-mark tests (MxU's Video Actions).
+    private static ConfidenceInfo MarkedInfo() => FixtureInfo() with
+    {
+        VideoCountdown = new VideoCountdown("Bumper", 120, 30, FixedDate, IsPlaying: true)
+        {
+            Marks = [new("a", "Lights", 45), new("b", "Walk On", 60), new("c", "walk on", 90)],
+        },
+    };
+
+    private static TextLink Countdown(VideoCountdownTarget? target, string? name = null, bool up = false) => new()
+    {
+        Source = TextSourceKind.VideoCountdown, ShowsVideoName = false, VideoTarget = target, VideoMarkName = name, CountsUp = up ? true : null,
+    };
+
+    [Fact]
+    public void VideoCountdownCountsToTheNextOrANamedActionThenTheEnd()
+    {
+        var info = MarkedInfo();
+        Assert.Equal("1:30", LinkedText.Resolve(Countdown(null), info, FixedDate)); // absent = the end, as before
+        Assert.Equal("0:15", LinkedText.Resolve(Countdown(VideoCountdownTarget.NextMark), info, FixedDate));
+        Assert.Equal("0:10", LinkedText.Resolve(Countdown(VideoCountdownTarget.NextMark), info, FixedDate.AddSeconds(20))); // past Lights: to Walk On
+        Assert.Equal("0:30", LinkedText.Resolve(Countdown(VideoCountdownTarget.NamedMark, "WALK ON"), info, FixedDate));
+        Assert.Equal("0:20", LinkedText.Resolve(Countdown(VideoCountdownTarget.NextMark), info, FixedDate.AddSeconds(70))); // none left: the end
+    }
+
+    [Fact]
+    public void VideoCountdownCountsUpFromThePreviousAction()
+    {
+        var info = MarkedInfo();
+        Assert.Equal("0:30", LinkedText.Resolve(Countdown(VideoCountdownTarget.NextMark, up: true), info, FixedDate)); // from the top
+        Assert.Equal("0:05", LinkedText.Resolve(Countdown(VideoCountdownTarget.NextMark, up: true), info, FixedDate.AddSeconds(20))); // from Lights
+        Assert.Equal("0:50", LinkedText.Resolve(Countdown(null, up: true), info, FixedDate.AddSeconds(20))); // to the end: elapsed
+    }
+
+    [Fact]
+    public void VideoActionNameShowsTheUpcomingMarkOrNothing()
+    {
+        var info = MarkedInfo();
+        var title = new TextLink { Source = TextSourceKind.VideoMarkName };
+        Assert.Equal("Lights", LinkedText.Resolve(title, info, FixedDate));
+        Assert.Equal("Walk On", LinkedText.Resolve(title, info, FixedDate.AddSeconds(20)));
+        Assert.Null(LinkedText.Resolve(title, info, FixedDate.AddSeconds(70))); // none left
+        Assert.Null(LinkedText.Resolve(title, new ConfidenceInfo(), FixedDate)); // nothing playing
+        Assert.True(LinkedText.IsTimeVarying(title));
+    }
+
+    [Fact]
+    public void CountingUpNeverReadsAmber()
+    {
+        var info = MarkedInfo();
+        Assert.Equal(TimerWarning.AmberHex, LinkedText.WarningColorHex(Countdown(VideoCountdownTarget.NextMark), info, FixedDate.AddSeconds(10)));
+        Assert.Null(LinkedText.WarningColorHex(Countdown(VideoCountdownTarget.NextMark, up: true), info, FixedDate.AddSeconds(10)));
+    }
 }

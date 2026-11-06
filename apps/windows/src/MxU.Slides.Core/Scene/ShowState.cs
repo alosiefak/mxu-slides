@@ -616,9 +616,13 @@ public sealed partial class ShowState
     {
         var animated = AnimatedScene(canvasSize, resolveLinkedText, slideThemeOverride);
         var scene = new RenderScene(animated.CanvasSize) { Background = animated.Background };
+        string? below = null;
         foreach (var layer in animated.Layers)
-            foreach (var item in layer.Items)
-                scene.AddItem(item.Render, layer.Kind);
+        {
+            var into = scene.Matching(layer.Id, layer.Kind, layer.Name, below);
+            below = layer.Id;
+            into.Items.AddRange(layer.Items.Select(item => item.Render));
+        }
         return scene;
     }
 

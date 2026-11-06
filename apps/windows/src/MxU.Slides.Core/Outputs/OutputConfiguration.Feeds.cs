@@ -130,24 +130,36 @@ public sealed partial class OutputConfiguration
     /// </summary>
     public RenderScene Program(OutputFeed feed, RenderScene scene)
     {
+        var room = scene;
         if (feed.ScreenId is { } id && feed.CanvasSize is { } size && !IsSpanned(id))
             scene = scene.Scaled(size, ScaleMode(id));
+        scene = Placed(feed, room, scene) ?? scene;
         if (!layerRouting.TryGetValue(feed.RoutingKey, out var enabled)) return scene;
         var routed = new RenderScene(scene.CanvasSize, scene.Background);
-        foreach (var layer in scene.Layers.Where(layer => enabled.Contains(layer.Kind.Raw())))
-            routed[layer.Kind].Items.AddRange(layer.Items);
+        string? below = null;
+        foreach (var layer in scene.Layers)
+        {
+            var into = routed.Matching(layer.Id, layer.Kind, layer.Name, below);
+            below = layer.Id;
+            // A layer the Screen Map places shows wherever it's placed, whatever the routing.
+            if (layer.Placed is null && !enabled.Contains(layer.Id)) continue;
+            into.Placed = layer.Placed;
+            into.Items.AddRange(layer.Items);
+        }
         return routed;
     }
 
     /// <summary>The animated program as this output should draw it: as <see cref="Program(OutputFeed, RenderScene)"/>, hiding unrouted layers.</summary>
     public AnimatedScene Program(OutputFeed feed, AnimatedScene scene)
     {
+        var room = scene;
         if (feed.ScreenId is { } id && feed.CanvasSize is { } size && !IsSpanned(id))
             scene = scene.Scaled(size, ScaleMode(id));
+        scene = Placed(feed, room, scene) ?? scene;
         if (!layerRouting.TryGetValue(feed.RoutingKey, out var enabled)) return scene;
         var routed = scene.Copy();
         foreach (var layer in routed.Layers)
-            if (!enabled.Contains(layer.Kind.Raw())) layer.IsHidden = true;
+            if (layer.Placed is null && !enabled.Contains(layer.Id)) layer.IsHidden = true;
         return routed;
     }
 

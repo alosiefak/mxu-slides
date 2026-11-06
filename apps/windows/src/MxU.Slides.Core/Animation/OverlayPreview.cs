@@ -97,9 +97,13 @@ public static class OverlayPreview
     {
         var prefix = ItemPrefix(overlay);
         var copy = new RenderScene(live.CanvasSize, live.Background);
+        string? below = null;
         foreach (var layer in live.Layers)
-            foreach (var item in layer.Items.Where(i => !i.Id.StartsWith(prefix, StringComparison.Ordinal)))
-                copy.AddItem(item, layer.Kind);
+        {
+            var into = copy.Matching(layer.Id, layer.Kind, layer.Name, below);
+            below = layer.Id;
+            into.Items.AddRange(layer.Items.Where(i => !i.Id.StartsWith(prefix, StringComparison.Ordinal)));
+        }
         return copy;
     }
 }

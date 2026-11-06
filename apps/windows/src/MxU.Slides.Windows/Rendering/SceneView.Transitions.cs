@@ -123,9 +123,9 @@ public sealed partial class SceneView
     }
 
     /// <summary>The mix pass for a layer this frame (made, or kept from the last frame); null when the layer isn't mixed.</summary>
-    private static MixPass? BeginMix(Root root, LayerKind kind)
+    private static MixPass? BeginMix(Root root, string kind)
     {
-        if (root.Scene[kind].Mix is not { } mix)
+        if (root.Scene.Layer(kind)?.Mix is not { } mix)
         {
             root.Mixes.Remove(kind);
             return null;
@@ -176,6 +176,7 @@ public sealed partial class SceneView
             wanted.Add((pass.From, pass.FromItems));
             wanted.Add((pass.To, pass.ToItems));
         }
+        foreach (var picture in root.Pictures.Values) wanted.Add((picture.Container, picture.Items));
         var changed = wanted.Where(w => !Same(w.Container.Children, w.Children)).ToList();
         foreach (var (container, _) in changed) container.Children.Clear();
         foreach (var (container, children) in changed)

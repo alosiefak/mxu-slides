@@ -1,4 +1,5 @@
 using MxU.Slides.Core.Json;
+using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Model;
 
 namespace MxU.Slides.Core.Stage;
@@ -38,9 +39,14 @@ public static class LinkedText
             case TextSourceKind.VideoCountdown:
             {
                 if (info.VideoCountdownFor(link.VideoLayer) is not { Duration: > 0 } video) return null;
-                var timecode = TimerSnapshot.Text(video.Remaining(at), link.TimerFormat, link.TimerPattern);
+                var seconds = video.Seconds(at, link.VideoTarget ?? VideoCountdownTarget.End, link.VideoMarkName, link.CountsUp == true);
+                var timecode = TimerSnapshot.Text(seconds, link.TimerFormat, link.TimerPattern);
                 return link.ShowsVideoName == false ? timecode : $"{video.Name}  {timecode}";
             }
+            case TextSourceKind.VideoMarkName:
+                // The coming mark's name ("Band Walk-On"), or nothing when none is left.
+                return NonEmpty(info.VideoCountdownFor(link.VideoLayer)?
+                    .Target(at, link.VideoTarget ?? VideoCountdownTarget.NextMark, link.VideoMarkName)?.Name);
             case TextSourceKind.SlidePosition:
                 return info.SlidePosition is { } position ? $"{position.Index} of {position.Total}" : null;
             case TextSourceKind.CurrentServiceItem: return NonEmpty(info.CurrentItemName);
@@ -112,7 +118,10 @@ public static class LinkedText
                 return Timer(link, info)?.ActiveWarning(at)?.ColorHex;
             case TextSourceKind.VideoCountdown:
                 if (info.VideoCountdownFor(link.VideoLayer) is not { Duration: > 0 } video) return null;
-                return video.Remaining(at) <= TimerSnapshot.WarningThreshold ? TimerWarning.AmberHex : null;
+                // Counting up has no deadline to warn about.
+                if (link.CountsUp == true) return null;
+                var left = video.Seconds(at, link.VideoTarget ?? VideoCountdownTarget.End, link.VideoMarkName, countsUp: false);
+                return left <= TimerSnapshot.WarningThreshold ? TimerWarning.AmberHex : null;
             default:
                 return null;
         }
@@ -123,7 +132,8 @@ public static class LinkedText
         Enum.GetValues<TextSourceKind>().Where(s => s != TextSourceKind.NextServiceTitle || s == current).ToList();
 
     public static bool IsTimeVarying(TextLink link) =>
-        link.Source is TextSourceKind.Clock or TextSourceKind.Timer or TextSourceKind.VideoCountdown or TextSourceKind.Timecode;
+        link.Source is TextSourceKind.Clock or TextSourceKind.Timer or TextSourceKind.VideoCountdown or TextSourceKind.Timecode
+            or TextSourceKind.VideoMarkName;
 
     public static bool TicksSubSecond(TextLink link) => link.Source switch
     {
@@ -133,6 +143,9 @@ public static class LinkedText
     };
 
     public const double SubSecondTickInterval = 1.0 / 30;
+
+    // Declared before PreviewInfo, which reads it (static fields start in the order they are written).
+    private static readonly IReadOnlyList<VideoMarks.Point> PreviewMarks = [new("sample.walk-on", "Band Walk-On", 222)];
 
     public static readonly DateTimeOffset PreviewDate = DateTimeOffset.FromUnixTimeSeconds(1_784_800_000);
 
@@ -153,10 +166,10 @@ public static class LinkedText
         Alert = new CueAlert("Mics hot after this song", AlertBehavior.Persist, AlertTarget.Confidence),
         AlertVisible = true,
         Timers = [new TimerSnapshot("Sermon", TimerMode.Countdown, banked: 753.58, durationSeconds: 1800)],
-        VideoCountdown = new VideoCountdown("Announcements", 300, 180, PreviewDate, IsPlaying: false),
+        VideoCountdown = new VideoCountdown("Announcements", 300, 180, PreviewDate, IsPlaying: false) { Marks = PreviewMarks },
         VideoCountdowns = new Dictionary<string, VideoCountdown>
         {
-            ["videos"] = new("Announcements", 300, 180, PreviewDate, IsPlaying: false),
+            ["videos"] = new("Announcements", 300, 180, PreviewDate, IsPlaying: false) { Marks = PreviewMarks },
             ["loopingVideos"] = new("Background Loop", 240, 60, PreviewDate, IsPlaying: false),
             ["slide"] = new("Slide Video", 90, 35, PreviewDate, IsPlaying: false),
             ["overlays"] = new("Overlay Video", 60, 20, PreviewDate, IsPlaying: false),

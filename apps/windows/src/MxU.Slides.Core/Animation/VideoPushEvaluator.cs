@@ -24,7 +24,7 @@ public static class VideoPushEvaluator
         (double Anchor, State State)? best = null;
         foreach (var layer in scene.Layers)
         {
-            if (layer.IsHidden || PushedLayers.Contains(layer.Kind)) continue;
+            if (layer.IsHidden || (layer.Kind is { } kind && PushedLayers.Contains(kind))) continue;
             foreach (var item in layer.Items)
             {
                 if (item.AnimationContext is not { } context || item.AnimationSteps.Count == 0) continue;
