@@ -279,7 +279,32 @@ fonts the app ships.
 
 ## 9. Speed
 
-SPEED-PLACEHOLDER
+Measured on this laptop (Intel Core i5-10500H, 6 cores), shared at the time with five other
+engineers' builds and tests, so the numbers move by up to two times from run to run.
+
+| Template, 1920 × 1080 | One thread | In bands (4 threads) |
+|---|---|---|
+| Name Strap (lower third) | 0.8–1.5 ms a frame | not needed |
+| Scripture Bar (lower third) | 2.4 ms a frame | not needed |
+| Title Card (full screen, three big soft glows) | 28–57 ms a frame | 12 ms a frame |
+
+- **A lower third is easily 60 frames a second**, and once it has settled it costs nothing at all
+  until it's taken down (section 4).
+- **The Title Card was too slow on one thread** (the first self-test measured 21 frames a second on
+  screen): soft gradients across most of a 1080p frame are what a processor draws slowest. So a
+  template that takes more than 8 ms a frame, three frames running, is drawn in **bands**
+  (`BandedRenderer`): four horizontal strips, each by its own copy of the animation (Skottie can only
+  be used by one thread at a time) on a small crew of threads of its own, each into its own slice
+  of the same picture. The pictures match a whole-frame drawing (a difference of 16 levels summed
+  over all 8 million bytes). In the self-test it then drew **39 frames a second at 9.8 ms each**,
+  with the screens copying 36 a second; on a quiet PC it's about 12 ms a frame. The export uses
+  the same bands.
+- **Copying to the screens**: 1.7–2.5 ms a picture on the UI thread for a full-screen template that
+  changes everywhere; a lower third copies only the strip that moved.
+
+So: lower thirds, the common case, play at the screen's own rate. A heavy full-screen background
+plays at 30–40 frames a second on this laptop while it's shared, smoother on a quiet one; a
+30 fps Lottie (as most are) loses nothing at that rate.
 
 ## 10. Trying it with real After Effects
 
@@ -315,6 +340,19 @@ In, Hold and Out markers, export with *Glyphs* off and *Include in json* on, and
   live copy carries that step, and every way of taking an overlay down plays the template's Out.
 - **A full-screen template's still would have been wrong**, and a lower third's video would have
   covered the slide (section 5).
+- **Progress made on the wrong thread crashed the app.** `new Progress<T>(…)` remembers the thread it
+  was made on and reports there. Made inside the render's own thread, its reports went to the shared
+  pool and touched a window: WPF refuses that, and the app closed. The reporters are now made on the
+  UI thread before the render starts, and a job hands any stray report to the UI thread anyway.
+- **A restarted animation showed stale pixels.** The screen remembers which picture it last copied
+  (a version number). When the same picture id started again (a preview looping round, a lower
+  third put up again), the new animation's version 1 was "older" than the screen's, and the change
+  since then came out empty. A version the animation hasn't reached now means "copy it all".
+- **Bins don't draw live fills.** An overlay's picture is a shape *filled* with the picture, and views
+  that don't play video (bins, thumbnails) draw a placeholder for live fills, which are cameras. A
+  motion template's picture is the app's own drawing, so those views show it too.
+- **A raised Click doesn't run a Command.** The self-test's first click on *Motion templates…* did
+  nothing: `RaiseEvent(Click)` only reaches Click handlers. It runs the button's command instead.
 
 ## Where to look
 
@@ -323,7 +361,7 @@ In, Hold and Out markers, export with *Glyphs* off and *Include in json* on, and
 | Reading Lottie, fields, timing | `Core/MotionTemplates/LottieDocument.cs`, `LottieFiles.cs`, `MotionFields.cs`, `MotionTimeline.cs` |
 | The library and the Mac's documents | `Core/MotionTemplates/MotionTemplateStore.cs`, `MotionTemplate.cs` |
 | The starters | `Core/MotionTemplates/StarterMotionTemplates.cs`, `LottieBuilder.cs` |
-| Drawing and playing | `MotionTemplates/Lottie/LottieRenderer.cs`, `MotionPlayers.cs`, `LottieFonts.cs`, `LottieStills.cs` |
+| Drawing and playing | `MotionTemplates/Lottie/LottieRenderer.cs`, `BandedRenderer.cs`, `MotionPlayers.cs`, `LottieFonts.cs`, `LottieStills.cs` |
 | Video files | `MotionTemplates/Export/LottieVideoMaker.cs`, `Nv12Over.cs` |
 | After Effects | `MotionTemplates/AfterEffects/AfterEffectsInstall.cs`, `Aerender.cs`, `ExtendScripts.cs`, `AfterEffectsBridge.cs` |
 | The app | `ViewModels/MainViewModel.MotionTemplates.cs`, `Rendering/MediaHub.Motion.cs`, `Rendering/MotionPreviews.cs`, `Views/MotionTemplatesWindow.cs`, `Views/AfterEffectsWindow.cs`, `Views/LottieGuideWindow.cs`, `Views/MainWindow.MotionTemplates.cs` |
@@ -364,7 +402,7 @@ Windows-only (no Swift twin; add under "Windows only"):
 
 Small changes to ported files (no behaviour change for anything that isn't a motion template):
 
-- `Rendering/SceneView.cs`: a video that stands in for a live template draws the template; a template's picture shows nothing (not "Waiting for…") before its first frame.
+- `Rendering/SceneView.cs`: a video that stands in for a live template draws the template; a template's picture shows nothing (not "Waiting for…") before its first frame, and is drawn as a fill in views that don't play video (bins).
 - `Rendering/MediaHub.LiveInputs.cs`: `motion::` pictures are live pictures, drawn from MediaHub.Motion.cs.
 - `ViewModels/MainViewModel.Overlays.cs`: an overlay goes up (and is re-sent after an edit) through `ForShow`; a motion template's fields join the bin's.
 
