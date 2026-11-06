@@ -33,7 +33,9 @@ public partial class MainWindow
         DependencyObject? at = e.OriginalSource as DependencyObject;
         while (at is not null && (at as FrameworkElement)?.ContextMenu is null)
             at = at is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(at) : LogicalTreeHelper.GetParent(at);
-        if (at is FrameworkElement element) PrepareMotionMenu(element);
+        if (at is not FrameworkElement element) return;
+        PrepareMotionMenu(element);
+        PrepareLayerMenu(element);
     }
 
     /// <summary>
