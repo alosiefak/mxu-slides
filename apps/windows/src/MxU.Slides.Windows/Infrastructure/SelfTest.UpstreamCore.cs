@@ -30,6 +30,9 @@ public sealed partial class SelfTest
             await DissolveStacksCheck();
             await ScreenMapCheck();
             await VideoMarksAndEndFadeCheck();
+            // The stream checks put the open deck's second slide up: open the sample song again
+            // (the checks above left their own one-slide decks open, then deleted them).
+            if (model.Library.Get<Presentation>(StarterContent.SampleSongId) is { } song) model.Open(song, null, null);
             await UpstreamStreamsChecks();
         }
         finally
@@ -81,7 +84,8 @@ public sealed partial class SelfTest
         model.Library.Save(deck);
         model.Open(deck, null, null);
         model.GoLiveCommand.Execute(model.Slides[0]);
-        await Delay(300);
+        // The spots slide in (their builds): picture them once they've landed.
+        await Delay(2000);
         var scene = model.Show.AnimatedScene();
         var spots = theme.Slides!.First(s => s.Name == "2 Photos").PhotoSpotsOf();
         var drawn = scene[LayerKind.Slide].Items.Select(i => i.Render).Where(r => r.Content is ItemContent.Shape { Style.Fill: SceneFill.Media }).ToList();
@@ -166,6 +170,7 @@ public sealed partial class SelfTest
             Check("a slide placed across two screens lands half on each",
                 onLeft[LayerKind.Slide].Placed?.Frames.Single().Rect == new SceneRect(0, 0, 3840, 1080)
                 && onRight[LayerKind.Slide].Placed?.Frames.Single().Rect == new SceneRect(-1920, 0, 3840, 1080));
+            report.AppendLine($"      screen map: the slide layer holds {onLeft[LayerKind.Slide].Items.Count} items on the left, {onRight[LayerKind.Slide].Items.Count} on the right; live: {TextOf(model.Show.Scene()).Replace('\n', ' ')}");
             await Picture("upstream-screen-map-left", AnimatedScene.From(onLeft));
             await Picture("upstream-screen-map-right", AnimatedScene.From(onRight));
 
