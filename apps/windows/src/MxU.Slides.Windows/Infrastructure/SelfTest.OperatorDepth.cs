@@ -81,6 +81,7 @@ public sealed partial class SelfTest
             await VolunteerCheck();
             await ServiceListExtrasCheck(service);
             await OperatorExtrasCheck();
+            await TransportMarksCheck();
             Check("nothing went wrong along the way (no error banner)", model.Problem == problemBefore);
         }
         finally
@@ -325,6 +326,21 @@ public sealed partial class SelfTest
 
         Check("settings can't be changed in volunteer mode", model.SetVolunteerPin(null) is not null && model.HasVolunteerPin);
 
+        // The library's decks (the Mac's "Libraries volunteers keep"): one plays on its own, the service stays.
+        var serviceBefore = model.SelectedService?.Id;
+        Check("volunteers keep the library's decks (the Presentations bin)", view?.ShownPanels.Contains("Presentations") == true
+            && view.ShownDecks.Any(d => d.Presentation.Id == "selftest-depth-song"));
+        Check("…and a deck picked there shows on its own, ready to take live",
+            model.PresentFromLibrary("selftest-depth-song") && model.CurrentContextItemId is null && model.CurrentPresentation?.Id == "selftest-depth-song"
+            && model.SelectedService?.Id == serviceBefore);
+        var alone = await Until(() => model.ContinuousCards.Count, n => n == 1, 5000);
+        Check("…its slides alone in the middle", alone == 1 && model.ContinuousCards[0].ItemId is null);
+        if (alone != 1)
+            report.AppendLine($"      (row {model.SelectedServiceItem?.Item.Id ?? "none"}, context {model.CurrentContextItemId ?? "none"}, open {model.CurrentPresentation?.Id}, cards {model.ContinuousCards.Count}, active {model.ContinuousActive})");
+        await Step("p8o-10b-volunteer-library-deck", () => { }, settle: 600);
+        model.SelectedServiceItem = model.ServiceItems.FirstOrDefault(r => r.Item.Id == "d-morning");
+        await Delay(300);
+
         view?.Leave("1111");
         await Delay(300);
         Check("a wrong PIN leaves volunteer mode on", model.IsVolunteer && VolunteerLayout.Current(window) is not null);
@@ -472,6 +488,8 @@ public sealed partial class SelfTest
         await Delay(400);
         if (timers is not null && FirstDescendant<Border>(timers, b => b.AllowDrop && b.ActualHeight > 20) is { } card)
         {
+            card.BringIntoView();
+            await Delay(200);
             var line = DropLine.Show(card, DropEdge.Top);
             await Delay(200);
             SaveWithAdorners(timers, "p8o-18-timers-drop-line");
@@ -554,6 +572,90 @@ public sealed partial class SelfTest
         foreach (var id in made) model.Library.Delete<ConfidenceLayout>(id);
     }
 
+    // MARK: MxU's update #12 on the strip: video marks, and the UI thread while a video plays
+
+    /// <summary>
+    /// The basics' test video with two marks: they're drawn on the strip's scrub bar and the next
+    /// one is named beside the video's name. While it plays, the strip and the auto-advance chip
+    /// must not keep the UI thread busy (MxU found theirs redrawing 30 times a second on the Mac).
+    /// </summary>
+    private async Task TransportMarksCheck()
+    {
+        var video = model.MediaItems.Select(m => m.Item).FirstOrDefault(m => m.MediaKind == MediaKind.Video && m.Name.StartsWith("MxU self-test video", StringComparison.Ordinal))
+            ?? model.MediaItems.Select(m => m.Item).FirstOrDefault(m => m.MediaKind == MediaKind.Video && m.Classification != MediaClassification.Background);
+        if (video is null || Descendant<LiveShowControls>(window) is not { } controls)
+        {
+            Skip("video marks on the transport strip", "the basics' test video isn't in the library (Windows' encoder couldn't make it)");
+            return;
+        }
+        var marksBefore = video.Marks;
+        var loopsBefore = video.Loops;
+        try
+        {
+            video.Marks =
+            [
+                new VideoMark { Id = "selftest-mark-a", Name = "Chorus", At = 4, Actions = [], ColorHex = "#3B82F6FF" },
+                new VideoMark { Id = "selftest-mark-b", Name = "Offering slide", At = 7, Actions = [] },
+            ];
+            video.Loops = false;
+            model.Library.Save(video);
+            model.FireMedia(video);
+            await WhenShown(() => model.TransportHasVideo && model.TransportShowsControls && model.TransportMarks.Count == 2, 15);
+            Check("a video's marks are drawn on the strip's scrub bar", model.TransportMarks.Count == 2
+                && model.TransportMarks[0].Name == "Chorus" && Math.Abs(model.TransportMarks[0].Fraction - 4 / Math.Max(model.TransportDuration, 0.01)) < 0.01);
+            Check("…and the next one is named beside the video, with the time until it", model.TransportNextMark.StartsWith("· Next: Chorus ", StringComparison.Ordinal)
+                || model.TransportNextMark.StartsWith("· Next: Offering slide ", StringComparison.Ordinal));
+            SaveElement(controls.TransportStrip, "p8o-22-transport-marks");
+
+            // The UI thread while it plays (after a second to settle): what the strip's refreshes
+            // cost, and how soon the thread answers. Then the same with nothing playing, to compare.
+            await Delay(1000);
+            var playing = await MeasureUiThread(2.5);
+            model.ClearMediaCommand.Execute(null);
+            await Delay(1000);
+            var still = await MeasureUiThread(2.0);
+            report.AppendLine($"      while a video plays: {playing.Summary}");
+            report.AppendLine($"      with nothing playing: {still.Summary}");
+            Check("while a video plays, the strip and chip refresh a few times a second, not every frame", playing.Refreshes is > 0 and <= 16);
+            Check("…and keep the UI thread under 5% of the time", playing.PerSecond < 50);
+        }
+        finally
+        {
+            model.ClearMediaCommand.Execute(null);
+            video.Marks = marksBefore;
+            video.Loops = loopsBefore;
+            model.Library.Save(video);
+        }
+        await Delay(300);
+    }
+
+    /// <summary>For a few seconds: the show-flow refreshes (how many, their cost a second, by part) and how soon the UI thread answers input (median, worst).</summary>
+    private async Task<(int Refreshes, double PerSecond, string Summary)> MeasureUiThread(double seconds)
+    {
+        var (busyBefore, countBefore) = model.ShowFlowCost;
+        var partsBefore = model.ShowFlowCostByPart;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var answers = new List<double>();
+        while (watch.Elapsed < TimeSpan.FromSeconds(seconds))
+        {
+            var asked = System.Diagnostics.Stopwatch.StartNew();
+            await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Input);
+            answers.Add(asked.Elapsed.TotalMilliseconds);
+            await Delay(50);
+        }
+        var (busyAfter, countAfter) = model.ShowFlowCost;
+        var span = watch.Elapsed.TotalSeconds;
+        var refreshes = countAfter - countBefore;
+        var perSecond = (busyAfter - busyBefore).TotalMilliseconds / span;
+        var parts = model.ShowFlowCostByPart.Zip(partsBefore, (after, before) => (after - before).TotalMilliseconds / span).ToList();
+        string[] names = ["chip", "strip", "clears", "music", "tracking"];
+        answers.Sort();
+        var summary = $"{refreshes} strip/chip refreshes in {span:0.0} s, {perSecond:0.0} ms of the UI thread a second "
+            + $"({string.Join(", ", names.Zip(parts, (name, ms) => $"{name} {ms:0.0}"))}); "
+            + $"it answered input in {answers[answers.Count / 2]:0} ms (median), {answers[^1]:0} ms at worst";
+        return (refreshes, perSecond, summary);
+    }
+
     /// <summary>
     /// A picture of an element with what's drawn over it (a drag's line lives on the window's
     /// adorner layer, which a picture of the element alone leaves out): the layer's whole area,
@@ -578,7 +680,16 @@ public sealed partial class SelfTest
             whole.Render(host);
             var bounds = element.TransformToAncestor(host).TransformBounds(new Rect(0, 0, element.ActualWidth, element.ActualHeight));
             bounds.Intersect(new Rect(0, 0, host.ActualWidth, host.ActualHeight));
-            var crop = new Int32Rect((int)(bounds.X * dpi.DpiScaleX), (int)(bounds.Y * dpi.DpiScaleY), (int)(bounds.Width * dpi.DpiScaleX), (int)(bounds.Height * dpi.DpiScaleY));
+            if (bounds.IsEmpty || bounds.Width < 1 || bounds.Height < 1)
+            {
+                // Scrolled out of the window's sight: the element alone, without the line.
+                SaveElement(element, name);
+                return;
+            }
+            // In whole pixels, inside the picture (rounding can reach one pixel past its edge).
+            var x = Math.Clamp((int)(bounds.X * dpi.DpiScaleX), 0, whole.PixelWidth - 1);
+            var y = Math.Clamp((int)(bounds.Y * dpi.DpiScaleY), 0, whole.PixelHeight - 1);
+            var crop = new Int32Rect(x, y, Math.Clamp((int)(bounds.Width * dpi.DpiScaleX), 1, whole.PixelWidth - x), Math.Clamp((int)(bounds.Height * dpi.DpiScaleY), 1, whole.PixelHeight - y));
             Write(new CroppedBitmap(whole, crop), name);
         }
         catch (Exception ex)

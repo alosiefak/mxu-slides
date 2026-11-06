@@ -133,6 +133,8 @@ public sealed partial class MainViewModel
         if (IsVolunteer && !VolunteerKeeps(VolunteerPanel.Presentations)) return false;
         SelectedServiceItem = null;
         Open(deck, null, null);
+        // The deck may be the one already open from its row: the cards change all the same.
+        RefreshContinuous();
         return true;
     }
 

@@ -2,7 +2,7 @@
 
 Phase 5 gave the operator the panels a service needs. This phase is about running a service *well*: playing a song in the order the band is singing it tonight, seeing the whole service at once, keys you can change, a locked mode for a volunteer, a service list that copes with long services, and the small things that make the panels easier to use.
 
-Six pieces, each with its rules in Core (with unit tests) and its screens in the app:
+Six pieces (and a seventh: MxU's Mac updates that arrived meanwhile), each with its rules in Core (with unit tests) and its screens in the app:
 
 | | What it is | Rules (Core) | Screens (app) |
 |---|---|---|---|
@@ -12,6 +12,7 @@ Six pieces, each with its rules in Core (with unit tests) and its screens in the
 | 4 | Keyboard shortcuts | `Control/KeyboardControl.cs` | `Views/Keys/*`, `Views/MainWindow.Keys.cs`, `ViewModels/MainViewModel.Shortcuts.cs` |
 | 5 | Service list extras | `Library/RunOrderSelection.cs`, `Library/ServicePicking.cs` | `Views/ServicePicker.cs`, `Views/ServiceListExtras.cs`, `Views/ServiceMenus.cs`, `ViewModels/MainViewModel.ServiceList.cs` |
 | 6 | Operator panel and board extras | `Automation/BoardDrops.cs`, `Library/FolderTree.cs` | `Views/Operator/BoardDragging.cs`, `DropLine.cs`, `PreviewShape.cs`, `LiveToolbar.cs`, `StagePanel.cs` |
+| 7 | MxU's November updates (operator side) | `Control/VolunteerMode.cs` | `Views/Volunteer/VolunteerView.xaml`, `Views/Operator/ScrubMarks.cs`, `ViewModels/MainViewModel.Transport.cs` |
 
 Everything a PC chooses for itself (its shortcuts, its volunteer PIN, which headers it has collapsed, which plan time it runs, grid or continuous) is in `settings.json` (`Infrastructure/AppSettings.Operator.cs`), never in a shared document. Arrangements are part of the song, so they *are* shared: they use the schema's existing `arrangements` and `defaultArrangementId` fields, so a Mac reads every change.
 
@@ -62,7 +63,8 @@ A song opened from the library (not from the service) shows on a card of its own
 - the service (pick a row, double-click to take it live, choose the service, version and plan time);
 - its slides as one continuous scroll (click to take one live);
 - the live preview, **Next**, **Previous** and the **clears**;
-- the panels volunteers keep: **Timers** (start, pause, reset), **Alerts** (fill in the blanks, Go Live, Turn Off), **Service Tracking**, the **Stage Message**, and along the bottom **Overlays**, **Media**, **Music** and **Combos** to click.
+- the panels volunteers keep: **Timers** (start, pause, reset), **Alerts** (fill in the blanks, Go Live, Turn Off), **Service Tracking**, the **Stage Message**, and along the bottom **Presentations**, **Overlays**, **Media**, **Music** and **Combos** to click.
+- **Presentations** is the library's songs and decks, with a search box: click one and its slides take the middle on their own, ready to take live, while the service stays as it was (click a service row to go back). This is the Mac's newer "Libraries volunteers keep": a volunteer can play from the library but not edit or reorganize it.
 
 Nothing in it edits: no library, no slide editor, no settings, no screens on or off, no looks, no Edit mode. Keys that would edit (Ctrl+N, Ctrl+E…) say they're locked. **Panels volunteers keep** (in the same Settings section) chooses which of the panels and bins appear.
 
@@ -115,10 +117,24 @@ The defaults are the keys the window always had: F1–F6 clear, →, Space, Ente
 - **The transition chips' sliders.** Beside each room-default chip (Media, Slides) is a small slider for its length, 0.1 to 3 seconds, saved when you let go (the Mac's mini slider), with the length written after it; the chip itself now names just the kind. Longer lengths are typed in the chip's popover.
 - **The Stage panel's folder submenus.** A stage screen's layout chip lists Built-in Layout, the layouts in no folder, then a submenu per folder (and folders inside folders), using `Core/Library/FolderTree.cs`, a port of the Mac's `FolderTreeLogic`.
 
+## 7. MxU's November updates in this area
+
+MxU released three Mac updates (their #10, #12 and #13) while this phase was being built. These are the parts that touch the operator's controls, and what Windows does with each.
+
+- **Libraries volunteers keep** (Settings › Present on the Mac). Ported as the **Presentations** bin above. The Mac's other kinds (Overlays, Media, Audio) were already bins here, so the one setting, **Panels volunteers keep**, covers them all. A PC that saved its panels before this keeps what it chose (Presentations stays off there until it's ticked), the same rule as the Mac's `volunteerKinds(stored:)`.
+- **Video marks on the transport strip.** A video can now have named marks (made in the Mac's media editor). The strip draws each one as a short coloured line on the scrub bar, and while the video plays it names the next one beside the video's name: "· Next: Chorus 0:12", in the mark's colour. `Views/Operator/ScrubMarks.cs` draws the lines over the slider (clicks go through to it); `MainViewModel.Transport.cs` works out which marks are in the pass (`MarksInPass`, the Mac's `VideoMarks.points`) and the caption.
+- **"Playing a video no longer pins the main thread."** On the Mac, the strip and the auto-advance chip were redrawn by SwiftUI up to 30 times a second while a video played, which kept the main thread busy; MxU moved their ticking onto Core Animation layers. **Windows doesn't have that problem**: its strip and chip are a handful of property sets four times a second, on a Background-priority timer (`MainViewModel.ShowFlow.cs`), and WPF only redraws the text that changed. The self-test now measures it while a video plays: how many refreshes there were, how long they kept the UI thread, and how soon the UI thread answered input (the numbers are in the report, on the line after the check).
+- **Nothing to port:** "one main window, never tabs" (macOS adds window tabs on its own; Windows doesn't), "Present card settings and header height redraw again" (a SwiftUI redraw fix in the Mac's continuous view; Windows' cards don't keep that state), the focus fixes ("name the front app when focus is lost": AppKit's activation, which WPF doesn't share), and the audio mixer's change (a diagnostics line, nothing an operator sees).
+- **Waiting for the engine catch-up (wt\up-core), to join at integration:**
+  - *Custom layers in the strip's layer picker and the Clear buttons.* The Mac now lists the screens' layer stack, custom layers included (`TransportTarget.pickerLayers`, `clear(layerID:)`). Windows lists its fixed layers until Core's `ShowState` has custom layers; then `TransportPicker()` and the Clear row read the stack instead.
+  - *A mark's actions firing as the video passes it* (the Mac's `fireVideoActions`). It needs Core's `VideoMarks.Crossed`; the place for it is `RefreshTransport`, which already reads each live video four times a second.
+  - `MarksInPass` is the Mac's `VideoMarks.points` (five lines, the same rule and the Mac's test cases); once Core's `VideoMarks` lands, it's swapped for `VideoMarks.Points`.
+- **Not this area:** the fire feed the Mac now publishes on every fire, timer and transport press (`APIFireFeed`) is for backing up another computer (wt\up-features), as is the Backup page in Settings and the dot on its rows.
+
 ## Tests
 
-- **Unit tests** (Core): `Lyrics/ArrangementEditingTests.cs` (ports `arrangementControlsNeedASectionedSlide` and the arrangement rules; the order text round trip), `Control/KeyboardControlTests.cs` (a port of `KeyboardControlTests.swift`, plus reserved keys and run-only), `Control/VolunteerModeTests.cs` (a port of `VolunteerModeLogicTests.swift`, plus the PIN, the panels and the run-only table), `Library/RunOrderSelectionTests.cs` (ports `ListMultiSelectTests.swift` and `RunOrderSelectionTests.swift`, plus the bulk edits), `Library/ServicePickingTests.cs` (ports `ServiceMenuLogicTests.swift`, plus grouping and plan times), `Automation/BoardDropsTests.cs`, `Library/FolderTreeTests.cs`, `Scene/ContinuousRowsTests.cs`. In the app's test project, `Views/KeyTokensTests.cs` checks the key tokens, that the defaults still do what the old hard-coded keys did, and the preview's shape.
-- **Self-test** section `OperatorDepth` (`Infrastructure/SelfTest.OperatorDepth.cs`, pictures `p8o-…`): an arrangement made, typed, moved, duplicated, picked per row and live; the song editor's order in step; the continuous view's cards, a click going live and Next following; a key rebound (the old key stops working), an overlay's own key, a clash in the Conflicts filter, keys ignored while typing, the cheat sheet; volunteer mode's layout, what it refuses, fewer panels, a wrong and a right PIN; a collapsed header and a folded row going live; two rows and the bulk menu, bulk Transition and Hide; the picker's groups; a plan time's rows and order; a board's drop line and a drop; a 4:3 preview; the slide chip's slider; the Stage panel's folders.
+- **Unit tests** (Core): `Lyrics/ArrangementEditingTests.cs` (ports `arrangementControlsNeedASectionedSlide` and the arrangement rules; the order text round trip), `Control/KeyboardControlTests.cs` (a port of `KeyboardControlTests.swift`, plus reserved keys and run-only), `Control/VolunteerModeTests.cs` (a port of `VolunteerModeLogicTests.swift`, plus the PIN, the panels and the run-only table), `Library/RunOrderSelectionTests.cs` (ports `ListMultiSelectTests.swift` and `RunOrderSelectionTests.swift`, plus the bulk edits), `Library/ServicePickingTests.cs` (ports `ServiceMenuLogicTests.swift`, plus grouping and plan times), `Automation/BoardDropsTests.cs`, `Library/FolderTreeTests.cs`, `Scene/ContinuousRowsTests.cs`. `Control/VolunteerModeTests.cs` also checks the Presentations bin's default and an older saved list. In the app's test project, `Views/KeyTokensTests.cs` checks the key tokens, that the defaults still do what the old hard-coded keys did, and the preview's shape; `ViewModels/TransportMarksTests.cs` ports the Mac's `VideoMarks.points` cases and checks the next-mark caption.
+- **Self-test** section `OperatorDepth` (`Infrastructure/SelfTest.OperatorDepth.cs`, pictures `p8o-…`): an arrangement made, typed, moved, duplicated, picked per row and live; the song editor's order in step; the continuous view's cards, a click going live and Next following; a key rebound (the old key stops working), an overlay's own key, a clash in the Conflicts filter, keys ignored while typing, the cheat sheet; volunteer mode's layout, what it refuses, fewer panels, a wrong and a right PIN; a collapsed header and a folded row going live; two rows and the bulk menu, bulk Transition and Hide; the picker's groups; a plan time's rows and order; a board's drop line and a drop; a 4:3 preview; the slide chip's slider; the Stage panel's folders; a volunteer playing a deck from the library (`p8o-10b`); a video's marks on the strip (`p8o-22`), and the UI thread's load while it plays.
 
 ## Things to try
 
@@ -131,7 +147,7 @@ The defaults are the keys the window always had: F1–F6 clear, →, Space, Ente
 ## Different from the Mac
 
 - **Volunteer mode's PIN.** The Mac retired its passcode: anyone can leave by picking Present or Edit. Windows has an optional PIN, per PC. With none set it works as the Mac does.
-- **Volunteer mode is a layout of its own.** The Mac hides the library and gates each control in its normal layout; Windows shows a separate locked layout (the same panels, built for running). The Mac's saved Present layouts ("Volunteer Layout") aren't ported; Windows has one volunteer layout with a choice of panels.
+- **Volunteer mode is a layout of its own.** The Mac gates each control in its normal layout (its sidebar keeps only the libraries volunteers keep); Windows shows a separate locked layout (the same panels, built for running, with those libraries as bins). The Mac's saved Present layouts ("Volunteer Layout") aren't ported; Windows has one volunteer layout with a choice of panels.
 - **Shortcuts.** Windows keeps its own defaults where it already had them (Ctrl+N is a new song, Ctrl+B the Bible, Ctrl+E Show/Edit, PageDown and ↓ also go to the next slide); the Mac's editor commands (Bold, Italic, Underline), its sidebar toggles and its Settings-page keys have no Windows command yet. Windows refuses the text-editing keys and the ones Windows keeps for itself. The cheat sheet (?) is Windows-only.
 - **Plan times** have a picker on Windows; the Mac always runs every row in the service's order.
 - **A folded row going live opens its group** on Windows; the Mac leaves it collapsed.
@@ -167,6 +183,15 @@ The defaults are the keys the window always had: F1–F6 clear, →, Space, Ente
 | `Sources/LivePanel.swift` (the preview's `aspectRatio`) | `Views/Operator/PreviewShape.cs` |
 | `Sources/PerformanceHUD.swift` (`TransitionChip`'s slider) | `Views/Operator/LiveToolbar.cs` (`LengthSlider`) |
 
+**MxU's updates #10, #12 and #13 (771a319), operator side**
+
+| Swift | C# |
+|---|---|
+| `SettingsView.swift` (`present.volunteerLibraries`, `VolunteerLibrariesControl`), `PresentLayoutController.swift` (`runOnlyLibraryKinds`), `LibraryPresentLogic.volunteerKinds` | `VolunteerPanel.Presentations` in `Core/Control/VolunteerMode.cs`, the Presentations bin in `Views/Volunteer/VolunteerView.xaml(.cs)`, `MainViewModel.PresentFromLibrary` |
+| `MediaTransportStrip.swift` (the next-mark caption), `ScrubBar.swift` (`marks`), `MediaTransportController.swift` (`Row.marks`) | `Views/Operator/ScrubMarks.cs`, `Views/LiveShowControls.xaml`, `MainViewModel.Transport.cs` (`TransportMarks`, `TransportNextMark`, `MarksInPass`) |
+| `AutoAdvanceChip.swift`, `ScrubBar.swift`, `MediaTransportStrip.swift` (`ClockLayers` ticking) | nothing to port: Windows ticks four times a second already; measured by the self-test (`MainViewModel.ShowFlowCost`) |
+| `AppShell.swift` (one window, never tabs; `PresentCards`), `FocusWatchRecorder.swift`, `AudioMixerController.swift` (`feedLossSummary`) | nothing to port (macOS or SwiftUI only; diagnostics) |
+
 **Windows-only**
 
 - `Infrastructure/AppSettings.Operator.cs`: the key map, volunteer mode, its PIN hash and panels, grid or continuous, collapsed headers and plan times, all per PC.
@@ -181,5 +206,6 @@ The defaults are the keys the window always had: F1–F6 clear, →, Space, Ente
 - *Shortcuts:* the Mac's editor commands (Bold, Italic, Underline), sidebar toggles and Settings-page keys.
 - *Volunteer mode:* saved Present layouts ("Volunteer Layout"); the Local API and the browser remote aren't limited by it.
 - *Continuous view:* sticky card headers, inline playlist editing, and dropping slides between cards.
+- *From MxU's updates, waiting for Core (wt\up-core):* custom layers in the strip's layer picker and the Clear row (`ClearChip.swift`, `PresentCommands.swift`, `MediaTransportStrip.pickerMenu`); a video mark's actions firing (`MediaTransportController.fireVideoActions`); swapping `MarksInPass` for Core's `VideoMarks.Points`. The fire feed in `ServiceControls.swift`, `TimersController.swift`, `AudioController.swift` and `MediaTransportController.swift` (`APIFireFeed.publish`) belongs to the backup computer (wt\up-features).
 
 *This is the walkthrough; see also [HOW-IT-WORKS.md](../HOW-IT-WORKS.md) and [PORTING.md](../PORTING.md).*

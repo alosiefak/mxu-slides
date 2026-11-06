@@ -124,7 +124,7 @@
                         <!-- The name, and while a marked video plays, the next mark and the time until it (in its colour). -->
                         <DockPanel>
                             <TextBlock x:Name="NextMark" DockPanel.Dock="Right" Text="{Binding TransportNextMark}" Foreground="{Binding TransportNextMarkBrush}"
-                                       FontSize="9" FontFamily="Consolas" VerticalAlignment="Center" Margin="4,0,0,0" MaxWidth="150" TextTrimming="CharacterEllipsis"
+                                       FontSize="9" FontFamily="Consolas" VerticalAlignment="Center" Margin="4,0,0,0" MaxWidth="104" TextTrimming="CharacterEllipsis"
                                        ToolTip="The video's next mark, and the time until it" />
                             <TextBlock Text="{Binding TransportName}" Style="{StaticResource Muted}" FontSize="10" TextTrimming="CharacterEllipsis" />
                         </DockPanel>

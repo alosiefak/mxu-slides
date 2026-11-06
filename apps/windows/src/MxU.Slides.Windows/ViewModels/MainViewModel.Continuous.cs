@@ -170,8 +170,10 @@ public sealed partial class MainViewModel
         {
             if (!ContinuousActive) return;
             if (e.PropertyName == nameof(SelectedServiceItem) && !suppressContinuousFocus) ContinuousFocusRequested?.Invoke(SelectedServiceItem?.Item.Id);
-            // A library song opened on its own, or back to the service (the same rows rebuild nothing).
-            if (e.PropertyName is nameof(CurrentPresentation) or nameof(SelectedService) or nameof(SelectedArrangement)) RefreshContinuous();
+            // A library song opened on its own, or back to the service (the same rows rebuild nothing). The
+            // library pick is listened to as well: the song may be the one already open from its row.
+            if (e.PropertyName is nameof(CurrentPresentation) or nameof(SelectedService) or nameof(SelectedArrangement) or nameof(SelectedLibraryEntry))
+                RefreshContinuous();
         };
     }
 
