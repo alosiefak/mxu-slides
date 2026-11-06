@@ -49,7 +49,7 @@ public class ScreenSetupTests
         Assert.Equal(outputs.Screens, restored.Screens);
         Assert.Equal(ScreenRole.Confidence, restored.Role(stage.Id));
         Assert.Equal(OutputScaleMode.Fill, restored.ScaleMode(wall.Id));
-        Assert.Equal(OutputLayoutKind.Custom, restored.Layout(wall.Id)); // edge blend + a placed lobby feed
+        Assert.Equal(OutputLayoutKind.EdgeBlend, restored.Layout(wall.Id)); // a placed lobby feed no longer changes the shape (MxU)
         Assert.Equal(outputs.ExtraSlices(wall.Id), restored.ExtraSlices(wall.Id));
         Assert.Equal(outputs.Devices.OrderBy(p => p.Key), restored.Devices.OrderBy(p => p.Key));
         Assert.Equal(outputs.DeviceNames.OrderBy(p => p.Key), restored.DeviceNames.OrderBy(p => p.Key));

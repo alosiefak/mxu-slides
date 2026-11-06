@@ -7,34 +7,32 @@ namespace MxU.Slides.Core.Tests.Outputs;
 public class OutputLayoutTests
 {
     [Fact]
-    public void LedWallRoundTripsAndReleasesItsPlacement()
+    public void PlacementIsOrthogonalToTheShape()
     {
         var outputs = new OutputConfiguration();
         var screen = outputs.AddScreen("Wall", 832, 416)!;
-        outputs.ApplyLayout(OutputLayoutKind.LedWall, 1, 0, screen.Id);
+        outputs.SeedPlacement(screen.Id, 1920, 1080);
         var placement = outputs.Placement(screen.Id);
         Assert.NotNull(placement);
-        Assert.Equal(1920, placement.FrameWidth); // the wall fits HD, so the seed frame is 1080p
-        Assert.Equal(832, placement.Width); // seeded 1:1 at wall-native pixels
-        Assert.Equal(OutputLayoutKind.LedWall, outputs.Layout(screen.Id));
-
-        outputs.SetPlacement(screen.Id, placement with { X = 512 });
-        outputs.ApplyLayout(OutputLayoutKind.LedWall, 1, 0, screen.Id);
-        Assert.Equal(512, outputs.Placement(screen.Id)?.X); // re-picking LED Wall keeps a moved placement
-
-        outputs.ApplyLayout(OutputLayoutKind.Single, 1, 0, screen.Id);
-        Assert.Null(outputs.Placement(screen.Id));
+        Assert.Equal(832, placement.Width); // seeded 1:1 at wall-native pixels, top-left
+        Assert.Equal(0, placement.Y);
         Assert.Equal(OutputLayoutKind.Single, outputs.Layout(screen.Id));
+        outputs.ApplyLayout(OutputLayoutKind.Single, 1, 0, screen.Id);
+        Assert.Equal(832, outputs.Placement(screen.Id)?.Width); // a layout no longer takes the placement away
     }
 
     [Fact]
-    public void PlacedExtraSliceReadsBackAsCustom()
+    public void ShareItSeedsTheJoinerBelowTheIncumbent()
     {
         var outputs = new OutputConfiguration();
-        var screen = outputs.AddScreen("Wall", 832, 416)!;
-        var banner = outputs.AddSlice(screen.Id, "Banner")!;
-        outputs.SetPlacement(banner.Id, new OutputPlacement(1920, 1080, 0, 0, 384, 768));
-        Assert.Equal(OutputLayoutKind.Custom, outputs.Layout(screen.Id)); // multi-region frames are Custom
+        var wall = outputs.AddScreen("Wall", 1536, 864)!;
+        var ribbon = outputs.AddScreen("Ribbon", 1920, 192)!;
+        outputs.SeedPlacement(wall.Id, 1920, 1080);
+        outputs.SeedPlacement(ribbon.Id, 1920, 1080, [outputs.Placement(wall.Id)!]);
+        Assert.Equal(864, outputs.Placement(ribbon.Id)?.Y); // lands under the wall
+        var tall = outputs.AddScreen("Tall", 400, 400)!;
+        outputs.SeedPlacement(tall.Id, 1920, 1080, [outputs.Placement(ribbon.Id)!]);
+        Assert.Equal(0, outputs.Placement(tall.Id)?.Y);
     }
 
     [Fact]
@@ -109,7 +107,7 @@ public class OutputLayoutTests
         Assert.Equal(0.06, tiles[0].Right - tiles[1].X, 0.0001);
         Assert.Equal("Left", OutputLayout.TileName(0, 2));
         Assert.Equal("Right", OutputLayout.TileName(2, 3));
-        Assert.Equal("Output 4", OutputLayout.TileName(3, 4));
+        Assert.Equal("Slice 4", OutputLayout.TileName(3, 4));
     }
 
     // Beyond the Mac tests: the edges of the classifier and the tile maths.
@@ -163,24 +161,9 @@ public class OutputLayoutTests
     }
 
     [Fact]
-    public void LedWallOnABigScreenUsesA4KFrameAndAnHdScreenNeedsNoPlacement()
-    {
-        var outputs = new OutputConfiguration();
-        var big = outputs.AddScreen("Big", 2500, 900)!;
-        outputs.ApplyLayout(OutputLayoutKind.LedWall, 1, 0, big.Id);
-        Assert.Equal(new OutputPlacement(3840, 2160, 0, 0, 2500, 900), outputs.Placement(big.Id));
-
-        // A 1920×1080 wall fills its 1080p frame, which is the same as no placement.
-        var hd = outputs.AddScreen("HD", 1920, 1080)!;
-        outputs.ApplyLayout(OutputLayoutKind.LedWall, 1, 0, hd.Id);
-        Assert.Null(outputs.Placement(hd.Id));
-    }
-
-    [Fact]
     public void RawNamesAndDisplayNamesMatchTheMac()
     {
-        Assert.Equal(["single", "mirror", "grouped", "edgeBlend", "ledWall", "custom"], OutputLayoutKinds.All.Select(kind => kind.Raw()));
+        Assert.Equal(["single", "mirror", "grouped", "edgeBlend", "custom"], OutputLayoutKinds.All.Select(kind => kind.Raw()));
         Assert.Equal("Edge Blend", OutputLayoutKind.EdgeBlend.DisplayName());
-        Assert.Equal("LED Wall", OutputLayoutKind.LedWall.DisplayName());
     }
 }
