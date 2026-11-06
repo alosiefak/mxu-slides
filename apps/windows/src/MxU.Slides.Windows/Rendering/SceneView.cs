@@ -479,7 +479,9 @@ public sealed partial class SceneView : FrameworkElement
         ResolvedScene resolved;
         try
         {
-            resolved = AnimationEvaluator.Resolve(scene, now, (text, width) => TextLayout.Build(text, new SceneRect(0, 0, width, 1e6), ppd).Bounds.Height);
+            // Scale and Blur and video end fades become plain items for this frame (MediaLooks).
+            var looks = PlaysVideo || HasMediaLooks(scene) ? MediaLooks.Expanding(scene, PlaybackRemaining) : scene;
+            resolved = AnimationEvaluator.Resolve(looks, now, (text, width) => TextLayout.Build(text, new SceneRect(0, 0, width, 1e6), ppd).Bounds.Height);
         }
         catch (Exception ex)
         {
@@ -550,7 +552,9 @@ public sealed partial class SceneView : FrameworkElement
         foreach (var gone in root.Slots.Keys.Where(k => !seen.Contains(k)).ToList()) root.Slots.Remove(gone);
         ReleaseUnusedPlayers(root);
         Reparent(root, order, mixing.Where(pass => !root.Mixes.ContainsValue(pass)));
-        root.Animating = AnimationTimeline.IsAnimating(scene, now, tickers: PlaysVideo);
+        root.Animating = AnimationTimeline.IsAnimating(scene, now, tickers: PlaysVideo)
+            // A video's end fade follows its playback, so it is drawn afresh every frame.
+            || (PlaysVideo && scene.AllItems.Any(item => item.Render.EndFade is not null));
     }
 
     /// <summary>
@@ -1306,7 +1310,7 @@ public sealed partial class SceneView : FrameworkElement
     public static Rect Place(Size natural, Rect frame, SceneMediaScaleMode mode)
     {
         if (mode == SceneMediaScaleMode.Stretch || natural.Width <= 0 || natural.Height <= 0) return frame;
-        var scale = mode == SceneMediaScaleMode.Fit
+        var scale = mode is SceneMediaScaleMode.Fit or SceneMediaScaleMode.ScaleAndBlur
             ? Math.Min(frame.Width / natural.Width, frame.Height / natural.Height)
             : Math.Max(frame.Width / natural.Width, frame.Height / natural.Height);
         var w = natural.Width * scale;

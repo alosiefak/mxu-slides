@@ -136,9 +136,6 @@ public sealed record AnimatedItem
     /// <summary>Part of the picture a dissolve takes away (see <see cref="AnimatedLayer.CrossfadeProgress"/>).</summary>
     public bool CrossfadeLeaving { get; init; }
 
-    /// <summary>A video that fades out over its last second, to black or to clear (MediaLooks). Port of RenderItem.endFade.</summary>
-    public MediaEndFade? EndFade { get; init; }
-
     public IReadOnlyList<SceneAnimationStep> AnimationSteps { get; init; } = [];
     public AnimationContext? AnimationContext { get; init; }
 

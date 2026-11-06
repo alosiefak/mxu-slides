@@ -1,3 +1,4 @@
+using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Model;
 
 namespace MxU.Slides.Core.Scene;
@@ -205,11 +206,24 @@ public static partial class SlideSceneBuilder
     {
         if (template is null) return objects.Select(o => new ComposedEntry(o, false)).ToList();
         var placeholders = PlaceholderAssignments(objects, template);
+        // The slide's photos fill the design's photo spots in reading order: each takes its
+        // spot's place in the stack and its look (PhotoSpots.FilledWith).
+        var photos = new Dictionary<string, SlideObject>(StringComparer.Ordinal);
+        foreach (var (spot, photo) in template.PhotoSpotsOf().Zip(objects.Where(o => o.IsPhotoSpot())))
+            photos.TryAdd(spot.Id, photo);
         var stack = new List<ComposedEntry>();
         var bound = new HashSet<string>();
         foreach (var templateObject in template.Objects)
         {
-            if (templateObject.ObjectKind == SlideObjectKind.Text)
+            if (templateObject.IsPhotoSpot())
+            {
+                if (photos.TryGetValue(templateObject.Id, out var photo))
+                {
+                    bound.Add(photo.Id);
+                    stack.Add(new ComposedEntry(templateObject.FilledWith(photo), false));
+                }
+            }
+            else if (templateObject.ObjectKind == SlideObjectKind.Text)
             {
                 var boundAny = false;
                 foreach (var o in objects.Where(o => placeholders.TryGetValue(o.Id, out var p) && p.Id == templateObject.Id))
@@ -366,8 +380,10 @@ public static partial class SlideSceneBuilder
     {
         Id = id,
         Frame = new SceneRect(canvas),
-        Content = new ItemContent.Media(media.MediaId, SceneMediaScaleMode.Fill),
+        // A picture or video slide's own scale (Scale and Blur for a portrait photo) and end fade.
+        Content = new ItemContent.Media(media.MediaId, ScaleMode(media.ScaleMode)),
         Loops = media.Loops ?? true,
+        EndFade = media.EndFade,
     };
 
     public static RenderItem? BackdropItem(ObjectFill fill, SceneSize canvas, string baseId)
@@ -710,6 +726,7 @@ public static partial class SlideSceneBuilder
     {
         MediaScaleMode.Fit => SceneMediaScaleMode.Fit,
         MediaScaleMode.Stretch => SceneMediaScaleMode.Stretch,
+        MediaScaleMode.ScaleAndBlur => SceneMediaScaleMode.ScaleAndBlur,
         _ => SceneMediaScaleMode.Fill,
     };
 

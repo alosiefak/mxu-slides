@@ -1,4 +1,5 @@
 using System.Globalization;
+using MxU.Slides.Core.Model;
 
 namespace MxU.Slides.Core.Scene;
 
@@ -104,7 +105,11 @@ public enum SceneTextVerticalAlignment { Top, Middle, Bottom }
 
 public enum SceneTextTransform { None, Uppercase }
 
-public enum SceneMediaScaleMode { Fill, Fit, Stretch }
+/// <summary>
+/// How media meets its frame. <see cref="ScaleAndBlur"/> fits the picture over a blurred, zoomed
+/// copy of itself that fills the frame (MediaLooks expands it into those two before drawing).
+/// </summary>
+public enum SceneMediaScaleMode { Fill, Fit, Stretch, ScaleAndBlur }
 
 public enum SceneBlendMode { Normal, Multiply, Screen, Add }
 
@@ -300,6 +305,9 @@ public sealed record RenderItem
 
     /// <summary>The media this item should play when it is a video, so playback can be shared across views.</summary>
     public bool Loops { get; init; } = true;
+
+    /// <summary>A video that fades out over its last second, to black or to clear (see MediaLooks). Port of RenderItem.endFade.</summary>
+    public MediaEndFade? EndFade { get; init; }
 }
 
 public sealed class RenderLayer

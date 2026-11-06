@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using MxU.Slides.Core.Animation;
 using MxU.Slides.Core.Scene;
 
 namespace MxU.Slides.Windows.Rendering;
@@ -89,5 +90,25 @@ public sealed partial class SceneView
             root.Pictures.Remove(key);
         }
         foreach (var picture in root.Pictures.Values) picture.Used = false;
+    }
+
+    private static bool HasMediaLooks(AnimatedScene scene) => scene.Layers.Any(layer => layer.Items.Any(item =>
+        item.Render.Content is ItemContent.Media { ScaleMode: SceneMediaScaleMode.ScaleAndBlur }
+        || item.Render.Content is ItemContent.Shape { Style.Fill: SceneFill.Media { ScaleMode: SceneMediaScaleMode.ScaleAndBlur } }));
+
+    /// <summary>
+    /// Seconds left in a video this view plays (its pass), for an end fade; null when it has no
+    /// player here or its length isn't known yet. A looping video never ends, so it never fades.
+    /// </summary>
+    private double? PlaybackRemaining(string mediaId)
+    {
+        if (media is null) return null;
+        foreach (var (key, id) in media.ActiveVideos)
+        {
+            if (id != mediaId || !key.StartsWith(PlaybackScope + ":", StringComparison.Ordinal)) continue;
+            if (media.Transport(key) is { Duration: { } duration } transport && duration > TimeSpan.Zero)
+                return Math.Max(0, (duration - transport.Position).TotalSeconds);
+        }
+        return null;
     }
 }
