@@ -34,7 +34,7 @@ public sealed partial class MediaHub
 
     private readonly Func<string, Resolved?> resolve;
     private readonly Dispatcher dispatcher;
-    private readonly Dictionary<string, BitmapSource> images = new(StringComparer.Ordinal);
+    private readonly ImageCache images = new(ImageCache.DefaultBudget);
     private readonly HashSet<string> decoding = new(StringComparer.Ordinal);
     private readonly HashSet<string> failedImages = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Player> players = new(StringComparer.Ordinal);
@@ -66,7 +66,7 @@ public sealed partial class MediaHub
         var key = $"{mediaId}@{bucket}";
         if (images.TryGetValue(key, out var image)) return image;
         // Any larger cached decode is a fine stand-in while the right size loads.
-        var larger = images.Where(p => p.Key.StartsWith(mediaId + "@", StringComparison.Ordinal)).Select(p => p.Value).FirstOrDefault();
+        var larger = images.Keys.Where(k => k.StartsWith(mediaId + "@", StringComparison.Ordinal)).Select(k => images.TryGetValue(k, out var any) ? any : null).FirstOrDefault();
         if (failedImages.Contains(key) || !decoding.Add(key)) return larger;
         if (resolve(mediaId) is not { Kind: MediaKind.Image } media)
         {
@@ -134,7 +134,8 @@ public sealed partial class MediaHub
 
     // MARK: Poster frames
 
-    private readonly Dictionary<string, BitmapSource> posters = new(StringComparer.Ordinal);
+    // Posters are small (grid-sized), so they share a smaller budget.
+    private readonly ImageCache posters = new(ImageCache.DefaultBudget / 4);
     private readonly HashSet<string> posterFailed = new(StringComparer.Ordinal);
     private readonly Queue<string> posterQueue = new();
     private bool posterBusy;
