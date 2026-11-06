@@ -23,9 +23,12 @@ internal sealed class FakeRtmpServer : IAsyncDisposable
     private readonly List<FakeRtmpConnection> connections = [];
     private readonly SemaphoreSlim arrived = new(0);
 
-    public FakeRtmpServer(X509Certificate2? certificate = null)
+    public FakeRtmpServer(X509Certificate2? certificate = null, int? receiveBufferSize = null)
     {
         this.certificate = certificate;
+        // A small, fixed receive buffer (accepted sockets inherit it) means a server that stops
+        // reading is felt by the publisher within a few kilobytes, as over a congested uplink.
+        if (receiveBufferSize is { } size) listener.Server.ReceiveBufferSize = size;
         listener.Start();
         accepting = Task.Run(AcceptAsync);
     }
@@ -45,6 +48,12 @@ internal sealed class FakeRtmpServer : IAsyncDisposable
 
     /// <summary>The server's own chunk size (sent before the connect result).</summary>
     public int ServerChunkSize { get; set; } = 4096;
+
+    /// <summary>While true, the server stops reading: the publisher's upload stalls.</summary>
+    public bool Paused { get; set; }
+
+    /// <summary>Reads at most this many bytes a second (a slow uplink); null reads as fast as it comes.</summary>
+    public int? ReadLimitBytesPerSecond { get; set; }
 
     public IReadOnlyList<FakeRtmpConnection> Connections
     {
@@ -156,7 +165,7 @@ internal sealed class FakeRtmpConnection(FakeRtmpServer server, TcpClient client
             }
             C1 = await RtmpHandshake.ServerAsync(stream, cancellation);
             HandshakeVerified = true;
-            var reader = new RtmpChunkReader(stream);
+            var reader = new RtmpChunkReader(new ThrottledReads(stream, server));
             var writer = new RtmpChunkWriter();
             async Task Send(int chunkStream, RtmpMessage message)
             {
@@ -232,4 +241,46 @@ internal sealed class FakeRtmpConnection(FakeRtmpServer server, TcpClient client
                 break;
         }
     }
+}
+
+/// <summary>
+/// The server's side of a slow or stalled network: reads wait while the server is paused, and
+/// take at most a slice of its read limit every 50 ms. Writes go straight through.
+/// </summary>
+internal sealed class ThrottledReads(Stream inner, FakeRtmpServer server) : Stream
+{
+    private const int SliceMilliseconds = 50;
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => inner.CanWrite;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        while (server.Paused) await Task.Delay(SliceMilliseconds, cancellationToken);
+        if (server.ReadLimitBytesPerSecond is not { } limit) return await inner.ReadAsync(buffer, cancellationToken);
+        await Task.Delay(SliceMilliseconds, cancellationToken);
+        var slice = Math.Max(1, limit * SliceMilliseconds / 1000);
+        return await inner.ReadAsync(buffer[..Math.Min(buffer.Length, slice)], cancellationToken);
+    }
+
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+        ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+    public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer, offset, count).GetAwaiter().GetResult();
+
+    public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
+
+    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+        inner.WriteAsync(buffer, cancellationToken);
+
+    public override void Flush() => inner.Flush();
+
+    public override Task FlushAsync(CancellationToken cancellationToken) => inner.FlushAsync(cancellationToken);
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
 }

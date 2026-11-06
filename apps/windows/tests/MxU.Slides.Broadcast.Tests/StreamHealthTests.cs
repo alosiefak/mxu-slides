@@ -21,6 +21,58 @@ public sealed class StreamHealthTests
     }
 
     [Fact]
+    public void EndedBroadcastIsRedUntilForgotten()
+    {
+        var tracker = new PlatformHealthTracker();
+        tracker.Record("yt", "good", [], 200);
+        tracker.Record("yt", "ended", [], 300);
+        Assert.Equal(PlatformVerdict.Ended, tracker.Verdict("yt"));
+        Input[] inputs = [new(StreamSessionState.Publishing, PlatformVerdict.Ended)];
+        Assert.Equal(Tint.Red, StreamHealthRollup.TintOf(inputs));
+        Assert.Equal("BROADCAST ENDED", StreamHealthRollup.Word(inputs));
+        tracker.Forget("yt");
+        Assert.Null(tracker.Verdict("yt"));
+        Assert.True(tracker.PollsHot("yt"));
+    }
+
+    [Fact]
+    public void UploadStallsWhenNothingLeavesOrTheBacklogGrows()
+    {
+        var stall = new UploadStall();
+        for (var i = 1; i < UploadStall.SilentSeconds; i++) stall.Record(bytesOutPerSecond: 0, queuedBytes: 0);
+        Assert.Null(stall.Stalled(targetKbps: 6000)); // a short silence is a blip
+        stall.Record(bytesOutPerSecond: 0, queuedBytes: 0);
+        Assert.Equal("nothing sent for 10s", stall.Stalled(targetKbps: 6000));
+        stall.Record(bytesOutPerSecond: 100_000, queuedBytes: 6000 * 125 * 20);
+        Assert.Null(stall.Stalled(targetKbps: 6000)); // bytes leaving clear the silence
+        stall.Record(bytesOutPerSecond: 100_000, queuedBytes: 6000 * 125 * 20 + 1);
+        Assert.Equal("upload 15 MB behind", stall.Stalled(targetKbps: 6000));
+    }
+
+    [Fact]
+    public void NetworkHealthReadsTheBacklogNotTheSendRate()
+    {
+        static StreamSessionStatus Status(int? upload, int video = 10000, double backlog = 0, StreamSessionState? state = null) =>
+            new(state ?? StreamSessionState.Publishing, 0, 0) { UploadKbps = upload, VideoKbps = video, BacklogSeconds = backlog };
+        Assert.Null(NetworkHealths.Of(Status(null), fullKbps: 10000)); // not measured yet
+        Assert.Null(NetworkHealths.Of(Status(500, state: StreamSessionState.Reconnecting(1)), fullKbps: 10000));
+        Assert.Equal(NetworkHealth.Good, NetworkHealths.Of(Status(80), fullKbps: 10000)); // a still slide sends little
+        Assert.Equal(NetworkHealth.Slow, NetworkHealths.Of(Status(4000, backlog: 2), fullKbps: 10000));
+        Assert.Equal(NetworkHealth.Slow, NetworkHealths.Of(Status(2000, video: 2000), fullKbps: 10000)); // quality lowered
+        Assert.Equal(NetworkHealth.Stalled, NetworkHealths.Of(Status(0, backlog: 3), fullKbps: 10000));
+        Assert.Equal("stalled", NetworkHealth.Stalled.Raw());
+    }
+
+    [Fact]
+    public void AdaptiveFloorFollowsThePresetChoice()
+    {
+        Assert.Null(StreamVideoConfiguration.AdaptiveFloor(adapt: false, minKbps: 3000, bitrateKbps: 6000)); // constant
+        Assert.Equal(2000, StreamVideoConfiguration.AdaptiveFloor(adapt: null, minKbps: null, bitrateKbps: 6000));
+        Assert.Equal(4000, StreamVideoConfiguration.AdaptiveFloor(adapt: true, minKbps: 4000, bitrateKbps: 6000));
+        Assert.Equal(2500, StreamVideoConfiguration.AdaptiveFloor(adapt: true, minKbps: 4000, bitrateKbps: 2500)); // never above its own bitrate
+    }
+
+    [Fact]
     public void NoDataEscalatesOnlyAfterConsecutivePolls()
     {
         var tracker = new PlatformHealthTracker(escalationPolls: 3);

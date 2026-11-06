@@ -167,6 +167,9 @@ public sealed class RecordingController : IDisposable
             IncludesAudio: true)
         { Encoder = Encoder };
         var recorder = new Recorder(path, configuration);
+        // A blackout above the lower third goes in the diagnostics log with its time in the file.
+        recorder.BlackSpan += (start, seconds) => BroadcastLog.Warning("recording.black",
+            $"{targetName}: black above the lower third at {FileClock(start)} in the file for {(int)(seconds * 1000)}ms");
         var sound = audio ?? SessionAudioRequest.Program;
         IDisposable attachment;
         try
@@ -192,6 +195,10 @@ public sealed class RecordingController : IDisposable
         SessionsChanged?.Invoke();
         return session;
     }
+
+    /// <summary>"m:ss.ss" into the file, as the Mac writes it ("1:05.25").</summary>
+    internal static string FileClock(double seconds) =>
+        string.Create(CultureInfo.InvariantCulture, $"{(int)seconds / 60}:{seconds % 60:00.00}");
 
     private static string SafeFileName(string name)
     {
@@ -247,7 +254,10 @@ public sealed class RecordingController : IDisposable
             FinalizeIfNeeded(session);
             BroadcastLog.Info("recording.heartbeat",
                 $"{session.TargetName} state={status.State} frames={status.AppendedFrames} dropped={status.DroppedFrames} "
-                + $"audioDropped={status.DroppedAudioBuffers} freeDiskMB={(status.FreeDiskBytes == long.MaxValue ? -1 : status.FreeDiskBytes / 1_000_000)}");
+                + $"audioDropped={status.DroppedAudioBuffers} "
+                // The picture's length against the sound's: a growing gap is sound falling behind.
+                + string.Create(CultureInfo.InvariantCulture, $"video={status.ElapsedSeconds:0.00}s audio={status.AudioSeconds:0.00}s ")
+                + $"freeDiskMB={(status.FreeDiskBytes == long.MaxValue ? -1 : status.FreeDiskBytes / 1_000_000)}");
         }
     }
 

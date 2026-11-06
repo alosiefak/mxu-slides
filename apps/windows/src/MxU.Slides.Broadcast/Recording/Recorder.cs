@@ -27,7 +27,11 @@ public readonly record struct RecorderState(RecorderStateKind Kind, RecordingSto
     };
 }
 
-/// <summary>A snapshot for status lines. <see cref="FreeDiskBytes"/> is <see cref="long.MaxValue"/> until first measured.</summary>
+/// <summary>
+/// A snapshot for status lines. <see cref="FreeDiskBytes"/> is <see cref="long.MaxValue"/> until
+/// first measured. <see cref="AudioSeconds"/> is how much sound reached the file: beside
+/// <see cref="ElapsedSeconds"/> (the picture's length) it shows whether sound fell behind.
+/// </summary>
 public readonly record struct RecorderStatus(
     RecorderState State,
     double ElapsedSeconds,
@@ -35,7 +39,10 @@ public readonly record struct RecorderStatus(
     int DroppedFrames,
     int DroppedAudioBuffers,
     long FreeDiskBytes,
-    string Path);
+    string Path)
+{
+    public double AudioSeconds { get; init; }
+}
 
 /// <summary>
 /// Records the program to an MP4 file. Frames and audio arrive on the app's threads (it is an
@@ -81,6 +88,7 @@ public sealed class Recorder : IProgramSink, IDisposable
     private int acceptedFrames;
     private int droppedFrames;
     private int droppedAudioBuffers;
+    private double appendedAudioSeconds;
     private int queuedFrames;
     private int queuedAudio;
     private long freeDiskBytes = long.MaxValue;
@@ -129,12 +137,22 @@ public sealed class Recorder : IProgramSink, IDisposable
     /// <summary>Raised (on a recorder thread) when <see cref="Status"/>'s state changes.</summary>
     public event Action<Recorder, RecorderState>? StateChanged;
 
+    /// <summary>
+    /// Raised (on the recorder thread) when the picture has been black above its lower third
+    /// and comes back: when in the file the black began, and for how long, in seconds. A
+    /// blackout on the projector is then easy to find in the recording. Port of onBlackSpan.
+    /// </summary>
+    public event Action<double, double>? BlackSpan;
+
     public RecorderStatus Status
     {
         get
         {
             lock (gate)
-                return new RecorderStatus(state, lastVideoSeconds, appendedFrames, droppedFrames, droppedAudioBuffers, freeDiskBytes, path);
+                return new RecorderStatus(state, lastVideoSeconds, appendedFrames, droppedFrames, droppedAudioBuffers, freeDiskBytes, path)
+                {
+                    AudioSeconds = appendedAudioSeconds,
+                };
         }
     }
 
@@ -254,6 +272,12 @@ public sealed class Recorder : IProgramSink, IDisposable
         catch (Exception e) { BroadcastLog.Error("recording", $"StateChanged handler threw: {e.Message}"); }
     }
 
+    private void RaiseBlackSpan(double start, double seconds)
+    {
+        try { BlackSpan?.Invoke(start, seconds); }
+        catch (Exception e) { BroadcastLog.Error("recording", $"BlackSpan handler threw: {e.Message}"); }
+    }
+
     private void SetFailed(string message)
     {
         bool changed;
@@ -302,6 +326,7 @@ public sealed class Recorder : IProgramSink, IDisposable
         var converter = new Nv12Converter(settings.Width, settings.Height);
         var nv12 = new byte[converter.FrameSize];
         var frameDuration = Timescale / Math.Max(1, Configuration.FrameRate);
+        var black = new DropoutWatch();
         (int, int)? audioFormat = null;
         var failed = false;
         try
@@ -316,6 +341,10 @@ public sealed class Recorder : IProgramSink, IDisposable
                         case VideoWork video:
                             try
                             {
+                                // A coarse grid of the picture (5,184 pixels) is read on this thread, not the app's.
+                                var lumas = SyncTestReader.GridLuma(video.Frame.Span, video.Frame.Width, video.Frame.Height, video.Frame.Stride);
+                                if (black.Update(lumas is not null && SyncTestReader.IsBlackAbove(lumas), (double)video.Time / Timescale) is { } span)
+                                    RaiseBlackSpan(span.Start, span.Seconds);
                                 converter.Convert(video.Frame.Span, video.Frame.Width, video.Frame.Height, video.Frame.Stride, nv12);
                                 var droppedBefore = pipeline.DroppedPictures;
                                 pipeline.WriteVideo(nv12, video.Time, frameDuration);
@@ -345,7 +374,11 @@ public sealed class Recorder : IProgramSink, IDisposable
                                 if (audioFormat != (sound.Buffer.SampleRate, sound.Buffer.Channels))
                                     lock (gate) droppedAudioBuffers++;
                                 else
+                                {
                                     pipeline.WriteAudio(sound.Buffer, sound.Time);
+                                    var seconds = (double)sound.Buffer.Length / Math.Max(1, sound.Buffer.Channels) / Math.Max(1, sound.Buffer.SampleRate);
+                                    lock (gate) appendedAudioSeconds += seconds;
+                                }
                             }
                             finally
                             {

@@ -29,5 +29,26 @@ public readonly record struct StreamSessionState(StreamStateKind Kind, int Attem
     };
 }
 
-/// <summary>A snapshot of a session for status lines: its state and how many frames went out or were dropped.</summary>
-public readonly record struct StreamSessionStatus(StreamSessionState State, int FramesSubmitted, int FramesDropped);
+/// <summary>
+/// A snapshot of a session for status lines: its state and how many frames went out or were
+/// dropped; how much sound went out (beside the stream's age it shows sound falling behind)
+/// and how many audio buffers a full queue dropped; and, once an RTMP stream has run a second,
+/// what the network is doing: <see cref="UploadKbps"/> really leaving the PC,
+/// <see cref="VideoKbps"/> the encoder is set to now (lower than the preset's when Adaptive has
+/// stepped down), and <see cref="BacklogSeconds"/> of stream waiting to be sent.
+/// <see cref="LastDrop"/> says why the connection last dropped.
+/// </summary>
+public readonly record struct StreamSessionStatus(StreamSessionState State, int FramesSubmitted, int FramesDropped)
+{
+    public double AudioSecondsSent { get; init; }
+
+    public int AudioBuffersDropped { get; init; }
+
+    public int? UploadKbps { get; init; }
+
+    public int? VideoKbps { get; init; }
+
+    public double? BacklogSeconds { get; init; }
+
+    public string? LastDrop { get; init; }
+}

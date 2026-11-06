@@ -65,7 +65,11 @@ public static class BroadcastStatus
 
     private static string Clock(int seconds) => string.Create(CultureInfo.InvariantCulture, $"{seconds / 60}:{seconds % 60:00}");
 
-    /// <summary>One destination's line in the status menu, e.g. "YouTube — Reconnecting (try 2) · 14 dropped".</summary>
+    /// <summary>
+    /// One destination's line in the status menu, e.g. "YouTube — Reconnecting (try 2) · 14 dropped"
+    /// or, live, "YouTube — Live · Network slow · sending  2.41 Mbps · quality lowered to 2.6 of 6.0 Mbps".
+    /// The window redraws it every second, so the network numbers tick.
+    /// </summary>
     public static string HealthLine(StreamSession session)
     {
         var status = session.Status;
@@ -79,8 +83,28 @@ public static class BroadcastStatus
         };
         var parts = new List<string> { $"{session.Destination.Name} — {state}" };
         if (status.FramesDropped > 0) parts.Add($"{status.FramesDropped} dropped");
+        var full = session.Video.BitrateKbps;
+        if (NetworkHealths.Of(status, full) is { } health) parts.Add($"Network {health.Raw()}");
+        if (status.State.Kind == StreamStateKind.Publishing && status.UploadKbps is { } upload)
+            parts.Add($"sending {FixedMbps(upload)} Mbps");
+        if (status.VideoKbps is { } videoKbps && videoKbps < full * 9 / 10)
+            parts.Add($"quality lowered to {Mbps(videoKbps)} of {Mbps(full)} Mbps");
+        else if (status.State.Kind == StreamStateKind.Publishing && status.UploadKbps is not null)
+            parts.Add($"max {Mbps(full)} Mbps");
         return string.Join(" · ", parts);
     }
+
+    /// <summary>
+    /// "2.41" padded with figure spaces to five characters, so the line doesn't jitter as the
+    /// number ticks (the Mac draws it with monospaced digits). Capped at 99.99.
+    /// </summary>
+    public static string FixedMbps(int kbps)
+    {
+        var text = (Math.Min(kbps, 99_990) / 1000.0).ToString("0.00", CultureInfo.InvariantCulture);
+        return new string('\u2007', Math.Max(0, 5 - text.Length)) + text;
+    }
+
+    private static string Mbps(int kbps) => (kbps / 1000.0).ToString("0.0", CultureInfo.InvariantCulture);
 
     /// <summary>A recording's line, e.g. "Sunday — Recording · 41.2 GB free · 3 dropped".</summary>
     public static string RecordingHealthLine(RecordingSession session)

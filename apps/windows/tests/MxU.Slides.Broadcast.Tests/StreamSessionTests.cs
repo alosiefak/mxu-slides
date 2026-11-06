@@ -55,6 +55,38 @@ public sealed class StreamSessionTests
     }
 
     [Fact]
+    public void RetargetPublishesToTheNewDestination()
+    {
+        var session = new StreamSession(
+            new StreamEndpoint("Renew", StreamEndpointKind.Rtmps, "rtmps://a/live2", "old", id: "yt"),
+            new StreamVideoConfiguration(320, 180));
+        session.Retarget(new StreamEndpoint("Renew", StreamEndpointKind.Rtmps, "rtmps://a/live2", "new", id: "yt"));
+        Assert.Equal("new", session.Destination.StreamKey);
+        Assert.Equal("yt", session.Destination.Id);
+    }
+
+    [Fact]
+    public void AFullAudioPipeCountsItsDrop()
+    {
+        var count = new AudioPipeCount();
+        var pipe = PendingQueues.Newest<PendingAudioBuffer>(1, dropped =>
+        {
+            count.Lost(dropped);
+            dropped.Return();
+        });
+        var buffer = new AudioBuffer(48_000, 2, new float[480 * 2], 0);
+        foreach (var expected in new[] { (Seconds: 0.01, Dropped: 0), (Seconds: 0.01, Dropped: 1) })
+        {
+            var copy = PendingAudioBuffer.Copy(buffer);
+            count.Sent(copy);
+            Assert.True(pipe.Writer.TryWrite(copy));
+            Assert.Equal(expected.Seconds, count.Seconds, 9);
+            Assert.Equal(expected.Dropped, count.Dropped);
+        }
+        PendingQueues.Drain(null, pipe);
+    }
+
+    [Fact]
     public void AppendAudioIsSafeWhenNotPublishing()
     {
         var session = Session();

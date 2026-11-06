@@ -1,3 +1,4 @@
+using System.Globalization;
 using MxU.Slides.Broadcast.Library;
 using MxU.Slides.Broadcast.Media;
 using MxU.Slides.Broadcast.Recording;
@@ -262,7 +263,8 @@ public sealed class StreamingController : IDisposable
             height = cap;
         }
         if (plan.MaxBitrateKbps is { } bitrateCap) bitrate = Math.Min(bitrate, bitrateCap);
-        return new StreamVideoConfiguration(width, height, rate, bitrate, plan.Codec, plan.Hdr);
+        return new StreamVideoConfiguration(width, height, rate, bitrate, plan.Codec, plan.Hdr,
+            AdaptiveFloorKbps: StreamVideoConfiguration.AdaptiveFloor(preset.AdaptBitrate, preset.MinBitrateKbps, bitrate));
     }
 
     /// <summary>
@@ -352,16 +354,32 @@ public sealed class StreamingController : IDisposable
         Live = null;
     }
 
+    /// <summary>
+    /// Every ten seconds, a line per destination for the diagnostics log: beside the frame counts,
+    /// how long the stream has run against how much sound it sent (a gap means the sound fell
+    /// behind), the upload, the backlog, the bitrate in use against the full one, and why the
+    /// connection last dropped. Port of the Mac's stream.heartbeat note.
+    /// </summary>
     private void Heartbeat()
     {
         if (live is not { } current) return;
         foreach (var session in current.Sessions)
-        {
-            var status = session.Status;
-            BroadcastLog.Info("stream.heartbeat",
-                $"{session.Destination.Name} state={status.State} submitted={status.FramesSubmitted} dropped={status.FramesDropped} encoder={session.EncoderName ?? "-"}"
-                + (current.FileSource is { } file ? $" replayDelivered={file.FramesDelivered} replayDropped={file.FramesDropped}" : ""));
-        }
+            BroadcastLog.Info("stream.heartbeat", HeartbeatLine(session, current, DateTimeOffset.Now));
+    }
+
+    internal static string HeartbeatLine(StreamSession session, LiveStream current, DateTimeOffset now)
+    {
+        var status = session.Status;
+        var line = string.Create(CultureInfo.InvariantCulture,
+            $"{session.Destination.Name} state={status.State} frames={status.FramesSubmitted} dropped={status.FramesDropped} "
+            + $"elapsed={(now - current.StartedAt).TotalSeconds:0.00}s audio={status.AudioSecondsSent:0.00}s audioDropped={status.AudioBuffersDropped} ");
+        if (status.UploadKbps is { } upload) line += $"upload={upload}kbps ";
+        if (status.BacklogSeconds is { } backlog) line += string.Create(CultureInfo.InvariantCulture, $"backlog={backlog:0.0}s ");
+        if (status.VideoKbps is { } video) line += $"video={video}/{session.Video.BitrateKbps}kbps ";
+        if (status.LastDrop is { } drop) line += $"lastDrop={drop} ";
+        line += $"encoder={session.EncoderName ?? "-"}";
+        if (current.FileSource is { } file) line += $" replayDelivered={file.FramesDelivered} replayDropped={file.FramesDropped}";
+        return line;
     }
 
     private void Post(Action action)
