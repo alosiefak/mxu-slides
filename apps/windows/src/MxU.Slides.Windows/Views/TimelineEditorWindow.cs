@@ -76,6 +76,8 @@ public sealed partial class TimelineEditorWindow : Window
         ViewModel.ResolveStems = (plan, channels) => UnmatchedStemsWindow.Ask(this, plan, channels);
         Lanes.MenuRequested += ShowLaneMenu;
         PreviewKeyDown += OnPreviewKeyDown;
+        // Its own history answers Ctrl+Z; a scope keeps its saves out of the main window's undo.
+        Infrastructure.UndoWindows.AttachEditor(this, model.Library, "Timeline editor", handleKeys: false);
         Closed += (_, _) =>
         {
             ViewModel.Dispose();

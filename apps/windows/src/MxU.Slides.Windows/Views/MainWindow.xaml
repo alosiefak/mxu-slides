@@ -24,6 +24,8 @@
                         <r:SceneView StaticScene="{Binding Scene}" Letterbox="#000000"
                                      Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource SixteenByNine}}" />
                         <v:MediaBadge Compact="True" Text="{Binding MissingMedia}" Detail="{Binding MissingMedia}" />
+                        <!-- What the slide does when it goes live; a pause over a badge names it (Views/TileActionBadges.cs) -->
+                        <v:TileActionBadges Slide="{Binding Slide}" />
                     </Grid>
                     <Grid Background="{Binding GroupBrush}" Height="22">
                         <Grid.ColumnDefinitions>
@@ -81,6 +83,7 @@
                         <TextBlock Text="Edit" />
                     </StackPanel>
                 </ToggleButton>
+                <v:EditBar DockPanel.Dock="Left" Margin="0,0,16,0" />
 
                 <Button DockPanel.Dock="Left" Click="NewSong_Click" ToolTip="New song from lyrics (Ctrl+N)" Margin="0,0,6,0">
                     <StackPanel Orientation="Horizontal">
@@ -330,6 +333,8 @@
                                 <ComboBox ItemsSource="{Binding Arrangements}" SelectedItem="{Binding SelectedArrangement}" MinWidth="120" Margin="0,0,12,0" />
                                 <TextBlock Text="Theme" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding CurrentThemeChoice}" MinWidth="150" Margin="0,0,12,0" />
+                                <!-- The song's key: transpose, capo, chords (Views/SongKeyChip.cs) -->
+                                <v:SongKeyChip Margin="0,0,6,0" />
                                 <Button Click="EditLyrics_Click" Margin="0,0,6,0" ToolTip="Edit the words, sections and order (double-click a song)">
                                     <TextBlock Text="Edit lyrics" />
                                 </Button>
@@ -396,6 +401,8 @@
                                 <TextBlock Text="ARRANGE" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <Button Command="{Binding BringToFrontCommand}" Content="Front" Margin="0,0,4,0" />
                                 <Button Command="{Binding SendToBackCommand}" Content="Back" Margin="0,0,4,0" />
+                                <Button Command="{Binding BringForwardCommand}" ToolTip="Bring forward one" Margin="0,0,2,0"><TextBlock FontFamily="{StaticResource Icons}" Text="&#xE70E;" /></Button>
+                                <Button Command="{Binding SendBackwardCommand}" ToolTip="Send backward one" Margin="0,0,6,0"><TextBlock FontFamily="{StaticResource Icons}" Text="&#xE70D;" /></Button>
                                 <Button Command="{Binding AlignCommand}" CommandParameter="Left" ToolTip="Align left (to the slide when one is selected)" Margin="0,0,2,0">
                                     <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE8E4;" />
                                 </Button>
@@ -407,7 +414,11 @@
                                 </Button>
                                 <Button Command="{Binding AlignCommand}" CommandParameter="Top" Content="Top" Margin="0,0,2,0" />
                                 <Button Command="{Binding AlignCommand}" CommandParameter="CenterY" Content="Middle" Margin="0,0,2,0" />
-                                <Button Command="{Binding AlignCommand}" CommandParameter="Bottom" Content="Bottom" Margin="0,0,14,0" />
+                                <Button Command="{Binding AlignCommand}" CommandParameter="Bottom" Content="Bottom" Margin="0,0,6,0" />
+                                <Button Command="{Binding DistributeCommand}" CommandParameter="Horizontal" Content="Space ↔" ToolTip="Distribute three or more evenly, left to right" Margin="0,0,2,0" />
+                                <Button Command="{Binding DistributeCommand}" CommandParameter="Vertical" Content="Space ↕" ToolTip="Distribute three or more evenly, top to bottom" Margin="0,0,6,0" />
+                                <Button Command="{Binding GroupObjectsCommand}" Content="Group" ToolTip="Group (Ctrl+G): they select and move together" Margin="0,0,2,0" />
+                                <Button Command="{Binding UngroupObjectsCommand}" Content="Ungroup" ToolTip="Ungroup (Ctrl+Shift+G)" Margin="0,0,14,0" />
                                 <Button Command="{Binding ResetToThemeCommand}" Content="Reset to theme" Margin="0,0,4,0"
                                         ToolTip="Give the selected text (or all text) its theme position and style back" />
                                 <Button Command="{Binding DuplicateSelectedObjectsCommand}" Content="Duplicate" Margin="0,0,4,0" />
@@ -415,12 +426,16 @@
                             </WrapPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.3*" />
+                                    <ColumnDefinition Width="1.2*" />
                                     <ColumnDefinition Width="12" />
-                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="0.8*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="0.9*" />
                                     <ColumnDefinition Width="12" />
                                     <ColumnDefinition Width="1.6*" />
                                 </Grid.ColumnDefinitions>
+                                <!-- The slide's objects, top first (Views/LayersPanel.cs) -->
+                                <v:LayersPanel Grid.Column="4" />
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <ItemsControl ItemsSource="{Binding SlideTextFields}">
                                         <ItemsControl.ItemTemplate>
@@ -428,7 +443,7 @@
                                                 <StackPanel Margin="0,0,0,8">
                                                     <TextBlock Text="{Binding Name}" Style="{StaticResource Muted}" FontSize="11" Margin="0,0,0,3" />
                                                     <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
-                                                             MinHeight="56" FontSize="14" VerticalScrollBarVisibility="Auto" />
+                                                             MinHeight="56" FontSize="14" VerticalScrollBarVisibility="Auto" SpellCheck.IsEnabled="True" />
                                                 </StackPanel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
@@ -436,9 +451,10 @@
                                 </ScrollViewer>
                                 <StackPanel Grid.Column="2">
                                     <TextBlock Text="Notes (shown to you, never to the room)" Style="{StaticResource Muted}" FontSize="11" Margin="0,0,0,3" />
-                                    <TextBox Text="{Binding SlideNotes, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
+                                    <TextBox Text="{Binding SlideNotes, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80"
+                                             SpellCheck.IsEnabled="True" />
                                 </StackPanel>
-                                <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto">
+                                <ScrollViewer Grid.Column="6" VerticalScrollBarVisibility="Auto">
                                     <Grid>
                                         <TextBlock Text="Click something on the slide to change its font, colour, size and position."
                                                    Style="{StaticResource Muted}" TextWrapping="Wrap"
@@ -467,7 +483,9 @@
                                                         <!-- Text -->
                                                         <StackPanel Visibility="{Binding IsText, Converter={StaticResource Visible}}">
                                                             <TextBox x:Name="InspectorText" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True"
-                                                                     TextWrapping="Wrap" MinHeight="48" Margin="0,0,0,6" />
+                                                                     TextWrapping="Wrap" MinHeight="48" Margin="0,0,0,6" SpellCheck.IsEnabled="True" />
+                                                            <!-- Style just the selected words (Views/TextFormatBar.cs) -->
+                                                            <v:TextFormatBar Target="{Binding ElementName=InspectorText}" />
                                                             <WrapPanel Margin="0,0,0,6">
                                                                 <ComboBox ItemsSource="{Binding FontChoices}" SelectedItem="{Binding FontFamily}"
                                                                           Width="160" Margin="0,0,6,0" ToolTip="Font" />
@@ -501,6 +519,18 @@
                                                                 <CheckBox Content="Shadow" IsChecked="{Binding Shadow}" Margin="0,0,10,0" />
                                                                 <TextBlock Text="Outline" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
                                                                 <v:ColorPicker Hex="{Binding OutlineColor}" />
+                                                            </WrapPanel>
+                                                            <!-- Text fit, as the Mac's typography section has it -->
+                                                            <WrapPanel Margin="0,6,0,0">
+                                                                <CheckBox Content="Balanced wrap" IsChecked="{Binding BalancedWrap}" Margin="0,0,10,0"
+                                                                          ToolTip="When a line wraps, spread its words evenly: never one lone word on the last row" />
+                                                                <CheckBox Content="Page on click" IsChecked="{Binding PageOnClick}" Margin="0,0,10,0"
+                                                                          ToolTip="Text that still doesn't fit continues on the next click, as the next page" />
+                                                                <CheckBox Content="Keep lines whole" IsChecked="{Binding KeepLinesWhole}" Margin="0,0,10,0"
+                                                                          IsEnabled="{Binding AutoShrink}" ToolTip="Shrink further so no line breaks mid-phrase" />
+                                                                <TextBlock Text="Min" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                                <TextBox Text="{Binding MinFontSize, UpdateSourceTrigger=LostFocus}" Width="42" KeyDown="NumberBox_KeyDown"
+                                                                         IsEnabled="{Binding AutoShrink}" ToolTip="The smallest size shrinking may go to" />
                                                             </WrapPanel>
                                                             <TextBlock Text="This text takes its look from the theme until you change something here."
                                                                        Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
@@ -542,7 +572,7 @@
                     <!-- Filmstrip (Edit mode) -->
                     <Border DockPanel.Dock="Top" Padding="10,8,10,0" Visibility="{Binding IsEditing, Converter={StaticResource Visible}}">
                         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                            <ItemsControl ItemsSource="{Binding Slides}">
+                            <ItemsControl x:Name="Filmstrip" ItemsSource="{Binding Slides}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <StackPanel Orientation="Horizontal" />

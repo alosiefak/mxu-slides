@@ -444,6 +444,12 @@ public sealed partial class OverlayEditorViewModel : ObservableObject, IDisposab
     private void OnChangedElsewhere(Overlay overlay)
     {
         if (changing || !ReferenceEquals(overlay, Current)) return;
+        // An undo puts back the overlay's objects as new ones: load them.
+        if (!ReferenceEquals(Mirror?.Objects, overlay.Objects))
+        {
+            LoadCurrent();
+            return;
+        }
         canvas?.Refresh();
         Inspector?.Refresh();
         RefreshFields();

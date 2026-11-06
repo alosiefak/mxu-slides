@@ -80,7 +80,8 @@ public sealed partial class MainViewModel : ISchedulerHost
     {
         if (Library.Get<ScheduleTrigger>(triggerId) is not { } trigger) return;
         trigger.Archived = true;
-        Library.Save(trigger);
+        // The scheduler did it, not the operator: not something Ctrl+Z should take back.
+        using (Library.Undo.Unrecorded()) Library.Save(trigger);
     }
 
     // MARK: Local API

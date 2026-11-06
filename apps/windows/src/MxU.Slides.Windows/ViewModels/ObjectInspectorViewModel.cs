@@ -106,7 +106,8 @@ public sealed partial class ObjectInspectorViewModel : ObservableObject
     public string Text
     {
         get => o.Text;
-        set => Set(() => o.Text = value.Replace("\r\n", "\n"));
+        // Styled words and chords stay on their words as the text is typed (Core/Editing/TextStyleRuns.cs).
+        set => Set(() => Core.Editing.ObjectText.SetText(o, value.Replace("\r\n", "\n")));
     }
 
     public IReadOnlyList<string> FontFamilies { get; } = FontMap.InstalledFamilies();

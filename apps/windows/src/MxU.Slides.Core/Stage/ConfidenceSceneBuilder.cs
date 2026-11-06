@@ -61,7 +61,8 @@ public static partial class ConfidenceSceneBuilder
         {
             Chords = LyricChords(slide),
             MusicKey = presentation?.MusicKey,
-            DisplayKey = presentation?.DisplayKey,
+            // Windows: a capo shows the shapes the guitarist plays (ConfidenceSceneBuilder.Capo.cs).
+            DisplayKey = StageKey(presentation),
             ObjectTexts = objectTexts.Count == 0 ? null : objectTexts,
         };
     }

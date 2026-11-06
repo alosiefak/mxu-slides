@@ -120,6 +120,7 @@ public sealed class MusicManagerWindow : Window
 
         model.Library.Changed += OnLibraryChanged;
         model.Audio.TransportChanged += OnTransport;
+        Infrastructure.UndoWindows.AttachEditor(this, model.Library, "Music manager");
         Closed += (_, _) =>
         {
             model.Library.Changed -= OnLibraryChanged;
@@ -288,6 +289,8 @@ public sealed class MusicManagerWindow : Window
         if (rows.Count == 0)
             panel.Children.Add(EditorKit.Muted("Press + Add Song, double-click a song on the left, or right-click a song in the Music tab and choose Add to Playlist.", 12));
         foreach (var track in rows) panel.Children.Add(TrackRow(track, track.EntryId == current, rows.Count));
+        // Songs drag into a new order, and in from the Music tab (Views/PlaylistDrops.cs).
+        PlaylistDrops.Attach(panel, id, model);
         detail.Content = panel;
     }
 
@@ -333,6 +336,7 @@ public sealed class MusicManagerWindow : Window
             menu.IsOpen = true;
             e.Handled = true;
         };
+        PlaylistDrops.Draggable(card, track.EntryId);
         return card;
     }
 

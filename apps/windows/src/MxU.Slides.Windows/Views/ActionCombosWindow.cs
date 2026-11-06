@@ -128,6 +128,7 @@ public sealed class ActionCombosWindow : Window
         Content = new Border { Padding = new Thickness(12), Child = root };
 
         model.Library.Changed += OnLibraryChanged;
+        Infrastructure.UndoWindows.AttachEditor(this, model.Library, "Action combos");
         Closed += (_, _) =>
         {
             model.Library.Changed -= OnLibraryChanged;

@@ -23,7 +23,8 @@ public sealed partial class SlideTextFieldViewModel(SlideObject target, Action c
         {
             var normalized = value.Replace("\r\n", "\n");
             if (Object.Text == normalized) return;
-            Object.Text = normalized;
+            // Styled words and chords stay on their words as the text is typed (Core/Editing/TextStyleRuns.cs).
+            Core.Editing.ObjectText.SetText(Object, normalized);
             OnPropertyChanged();
             changed();
         }
@@ -65,6 +66,7 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(SlideNotes));
         OnPropertyChanged(nameof(SlideHasBackground));
         OnPropertyChanged(nameof(SlideBackgroundColor));
+        SelectionPicks(newValue);
     }
 
     public DesignChoice? SelectedDesign
@@ -123,6 +125,8 @@ public sealed partial class MainViewModel
     private void SlideEdited()
     {
         if (CurrentPresentation is not { } p || SelectedSlide is not { } tile) return;
+        // Words typed in the Lyrics box show on the canvas as they're typed.
+        if (IsEditing) canvas?.Refresh();
         tile.Scene = SlideSceneBuilder.Scene(tile.Slide, ThemeFor(tile.Slide, p), p, SelectedArrangement?.Id, pager: Rendering.TextLayout.Pager);
         foreach (var other in Slides.Where(t => t != tile && t.Slide.Id == tile.Slide.Id))
             other.Scene = SlideSceneBuilder.Scene(other.Slide, ThemeFor(other.Slide, p), p, SelectedArrangement?.Id, pager: Rendering.TextLayout.Pager);
@@ -142,7 +146,8 @@ public sealed partial class MainViewModel
         saveTimer?.Stop();
         if (pendingSave is not { } p) return;
         pendingSave = null;
-        Library.Save(p);
+        // The edit was made here, even if another window has the keyboard by the time it's saved.
+        using (UndoScope.Use()) Library.Save(p);
     }
 
     // MARK: Slides
@@ -168,30 +173,13 @@ public sealed partial class MainViewModel
         SelectedSlide = Slides.FirstOrDefault(t => t.Slide.Id == slide.Id);
     }
 
+    /// <summary>Duplicates the picked slides (new ids, Windows extras copied: MainViewModel.Clipboard.cs).</summary>
     [RelayCommand]
-    private void DuplicateSlide()
-    {
-        if (CurrentPresentation is not { } p || EditedSlide is not { } source) return;
-        var copy = MxuJson.Clone(source);
-        copy.Id = LibraryStore.NewId();
-        foreach (var o in copy.Objects) o.Id = LibraryStore.NewId();
-        TransitionExtras.Copied(source, copy);
-        p.Slides.Insert(p.Slides.IndexOf(source) + 1, copy);
-        SavePresentation(p);
-        RebuildSlides();
-        SelectedSlide = Slides.FirstOrDefault(t => t.Slide.Id == copy.Id);
-    }
+    private void DuplicateSlide() => DuplicatePickedSlides();
 
+    /// <summary>Deletes the picked slides; a presentation keeps at least one.</summary>
     [RelayCommand]
-    private void DeleteSlide()
-    {
-        if (CurrentPresentation is not { } p || EditedSlide is not { } slide || p.Slides.Count <= 1) return;
-        var index = p.Slides.IndexOf(slide);
-        p.Slides.Remove(slide);
-        SavePresentation(p);
-        RebuildSlides();
-        SelectedSlide = Slides.ElementAtOrDefault(Math.Min(index, Slides.Count - 1));
-    }
+    private void DeleteSlide() => DeletePickedSlides();
 
     [RelayCommand]
     private void MoveSlideEarlier() => MoveSlide(-1);

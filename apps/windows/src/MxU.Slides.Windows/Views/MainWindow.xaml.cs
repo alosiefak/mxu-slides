@@ -43,6 +43,7 @@ public partial class MainWindow : Window
         PreviewKeyDown += OnPreviewKeyDown;
         Transitions.TransitionMenus.Attach(this, model);
         EditorMenus.Attach(this, model); // the Phase 7 editors' menu items: Edit…, Auto Advance…, Apply Theme… (Views/EditorMenus.cs)
+        AttachEditing();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -224,6 +225,9 @@ public partial class MainWindow : Window
             case Key.F6: model.ClearAlertsCommand.Execute(null); e.Handled = true; return;
         }
 
+        // Undo, redo, the clipboard, find and replace (MainWindow.Editing.cs).
+        if (HandleEditKeys(e)) return;
+
         if (ctrl)
         {
             switch (key)
@@ -287,7 +291,8 @@ public partial class MainWindow : Window
 
     private void SlideTile_Click(object sender, MouseButtonEventArgs e)
     {
-        if (ContextOf<SlideTileViewModel>(sender) is { } tile) model.SlideClickedCommand.Execute(tile);
+        // Ctrl or Shift picks several instead (MainWindow.Editing.cs).
+        if (ContextOf<SlideTileViewModel>(sender) is { } tile && !PickTile(tile)) model.SlideClickedCommand.Execute(tile);
         Keyboard.ClearFocus();
         Focus();
     }
@@ -295,14 +300,14 @@ public partial class MainWindow : Window
     private void SlideTile_RightClick(object sender, MouseButtonEventArgs e)
     {
         if (ContextOf<SlideTileViewModel>(sender) is not { } tile) return;
-        model.SelectedSlide = tile;
+        // Right-clicking one of several picked slides keeps them all picked, for "Copy 3 Slides".
+        if (!model.PickedSlideIds.Contains(tile.Slide.Id)) model.SelectedSlide = tile;
         var menu = new ContextMenu();
         menu.Items.Add(Item("Go live", () => model.GoLiveCommand.Execute(tile)));
         menu.Items.Add(Item("Edit this slide", () => { model.IsEditing = true; model.SelectedSlide = tile; }));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("Add a slide after", () => model.AddSlideCommand.Execute(null)));
-        menu.Items.Add(Item("Duplicate", () => model.DuplicateSlideCommand.Execute(null)));
-        menu.Items.Add(Item("Delete", () => model.DeleteSlideCommand.Execute(null)));
+        AddSlideEditItems(menu); // Cut, Copy, Paste, Duplicate, Delete (MainWindow.Editing.cs)
         if (model.SelectedMedia is { } media)
         {
             menu.Items.Add(new Separator());
@@ -456,35 +461,10 @@ public partial class MainWindow : Window
         DragDrop.DoDragDrop(this, new DataObject(format, payload), DragDropEffects.Copy | DragDropEffects.Move);
     }
 
-    private void ServiceList_DragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = e.Data.GetDataPresent("mxu/presentation") ? DragDropEffects.Copy
-            : e.Data.GetDataPresent("mxu/service-item") ? DragDropEffects.Move
-            : e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy
-            : DragDropEffects.None;
-        e.Handled = true;
-    }
+    // Rows, songs, media, music and files dropped into the service, with a line where they'll land (Views/EditorDragDrop.cs).
+    private void ServiceList_DragOver(object sender, DragEventArgs e) => EditorDragDrop.ServiceDragOver(ServiceList, model, e);
 
-    private void ServiceList_Drop(object sender, DragEventArgs e)
-    {
-        var target = (e.OriginalSource as FrameworkElement)?.DataContext as ServiceItemViewModel;
-        if (e.Data.GetData("mxu/presentation") is string presentationId && model.Library.Get<Presentation>(presentationId) is { } p)
-        {
-            model.SelectedServiceItem = target;
-            model.Open(p, null, null);
-            model.AddCurrentToServiceCommand.Execute(null);
-        }
-        else if (e.Data.GetData("mxu/service-item") is string itemId && model.SelectedService is { } service)
-        {
-            var index = target is null ? service.Items.Count - 1 : service.Items.FindIndex(i => i.Id == target.Item.Id);
-            model.MoveServiceItemTo(itemId, index);
-        }
-        else if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
-        {
-            // Asks about duplicates once the drop has finished (MainViewModel.MediaImport.cs).
-            _ = model.ImportMediaFilesAsync(files, addToService: true);
-        }
-    }
+    private void ServiceList_Drop(object sender, DragEventArgs e) => EditorDragDrop.ServiceDrop(ServiceList, model, e);
 
     private void ServiceList_DoubleClick(object sender, MouseButtonEventArgs e)
     {

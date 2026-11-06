@@ -28,6 +28,7 @@ public sealed partial class MainViewModel
             }
             canvas = value;
             if (canvas is null) return;
+            canvas.IsLocked = id => Locks.IsLocked(id);
             canvas.SelectionChanged += OnCanvasSelectionChanged;
             canvas.Edited += OnCanvasEdited;
             canvas.DeleteRequested += DeleteSelectedObjects;
@@ -41,7 +42,11 @@ public sealed partial class MainViewModel
 
     public bool HasCanvasSelection => canvas?.Selection.Count > 0;
 
-    private void LoadCanvas() => canvas?.Load(IsEditing ? EditedSlide : null, EditedSlideTheme, CurrentPresentation);
+    private void LoadCanvas()
+    {
+        canvas?.Load(IsEditing ? EditedSlide : null, EditedSlideTheme, CurrentPresentation);
+        RaiseLayersChanged();
+    }
 
     private List<SlideObject> SelectedObjects() =>
         EditedSlide is { } slide && canvas is not null ? slide.Objects.Where(o => canvas.Selection.Contains(o.Id)).ToList() : [];
@@ -61,6 +66,7 @@ public sealed partial class MainViewModel
             Inspector = null;
         }
         OnPropertyChanged(nameof(HasCanvasSelection));
+        RaiseLayersChanged();
     }
 
     private void OnCanvasEdited(bool final)
@@ -73,6 +79,7 @@ public sealed partial class MainViewModel
     {
         canvas?.Refresh();
         SlideEdited();
+        RaiseLayersChanged(); // a rename in the inspector shows in the layers list
         // Keep the text boxes list in step when the inspector edits text.
         foreach (var field in SlideTextFields) field.Refresh();
     }
@@ -97,6 +104,7 @@ public sealed partial class MainViewModel
         canvas?.Select(select);
         RefreshSlideFields();
         SlideEdited();
+        RaiseLayersChanged();
     }
 
     private void RefreshSlideFields()
@@ -160,24 +168,19 @@ public sealed partial class MainViewModel
         AfterStructureChange([]);
     }
 
+    /// <summary>
+    /// Copies of the selection, 24 points down and right, grouped objects in a new group of their
+    /// own (the Mac's duplicateSelectedObjects). Their Windows extras come too.
+    /// </summary>
     [RelayCommand]
     private void DuplicateSelectedObjects()
     {
-        if (EditedSlide is not { } slide || SelectedObjects() is not { Count: > 0 } selected || canvas is null) return;
-        var copies = new List<SlideObject>();
-        foreach (var o in selected)
-        {
-            var frame = canvas.FrameOf(o);
-            var copy = MxuJson.Clone(o);
-            copy.Id = LibraryStore.NewId();
-            copy.X = frame.X + 40;
-            copy.Y = frame.Y + 40;
-            copy.Width = frame.Width;
-            copy.Height = frame.Height;
-            copies.Add(copy);
-        }
-        slide.Objects.AddRange(copies);
+        if (EditedSlide is not { } slide || canvas is not { Selection.Count: > 0 } editor) return;
+        var clip = Core.Editing.EditorClipboard.CopyObjects(slide, editor.Selection);
+        var copies = Core.Editing.EditorClipboard.PasteObjects(slide, clip, cascade: 1, editor.FrameOf);
+        for (var i = 0; i < copies.Count; i++) Library.Extras.CopyOwner(clip.Objects[i].Id, copies[i].Id);
         AfterStructureChange(copies.Select(c => c.Id));
+        FlushPendingSave();
     }
 
     [RelayCommand]

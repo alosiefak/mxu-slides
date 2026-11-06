@@ -52,6 +52,15 @@ public sealed class SlideCanvasEditor : Grid
 
     private IReadOnlyList<SlideObject> Objects => Slide?.Objects ?? [];
 
+    /// <summary>
+    /// Says which objects are locked (Core/Editing/ObjectLocks.cs): clicks and drags go through them
+    /// to what's behind, and arrow keys leave them where they are. Null: nothing is locked.
+    /// </summary>
+    public Func<string, bool>? IsLocked { get; set; }
+
+    // What a click, a drag or the marquee can pick: everything but the locked objects.
+    private IReadOnlyList<SlideObject> Pickable => IsLocked is { } locked ? [.. Objects.Where(o => !locked(o.Id))] : Objects;
+
     public void Load(Slide? slide, Theme? theme, Presentation? presentation)
     {
         var changedSlide = slide?.Id != Slide?.Id;
@@ -163,6 +172,15 @@ public sealed class SlideCanvasEditor : Grid
         return new(origin.X + p.X * scale, origin.Y + p.Y * scale);
     }
 
+    /// <summary>The slide point under a point of this control (for drops).</summary>
+    public EditorGeometry.Point ScenePointAt(Point viewPoint) => ToScene(viewPoint);
+
+    /// <summary>Where a slide rectangle shows on this control (for drop outlines).</summary>
+    public Rect ViewRectOf(SceneRect r) => ToView(r);
+
+    /// <summary>The object a drop at this slide point would land on, if any (locked ones let it through).</summary>
+    public SlideObject? ObjectAt(EditorGeometry.Point scenePoint) => Slide is null ? null : HitObject(scenePoint, Pickable, Template);
+
     private Rect ToView(SceneRect r)
     {
         var (scale, origin) = Fit();
@@ -196,7 +214,7 @@ public sealed class SlideCanvasEditor : Grid
         moved = false;
         guides = [];
 
-        if (Selection.Count == 1 && Objects.FirstOrDefault(o => o.Id == Selection.First()) is { } only
+        if (Selection.Count == 1 && Pickable.FirstOrDefault(o => o.Id == Selection.First()) is { } only
             && (only.RotationDegrees ?? 0) == 0 && HandleAt(e.GetPosition(this), FrameOf(only)) is { } grabbed)
         {
             gesture = Gesture.Resize;
@@ -209,7 +227,7 @@ public sealed class SlideCanvasEditor : Grid
             return;
         }
 
-        var target = PressTarget(p, Objects, Selection, Template);
+        var target = PressTarget(p, Pickable, Selection, Template);
         if (target is not null)
         {
             if (e.ClickCount == 2 && target.ObjectKind == SlideObjectKind.Text)
@@ -235,7 +253,7 @@ public sealed class SlideCanvasEditor : Grid
                 gesture = Gesture.Move;
                 primaryId = target.Id;
                 originals.Clear();
-                foreach (var o in Objects.Where(o => Selection.Contains(o.Id))) originals[o.Id] = FrameOf(o);
+                foreach (var o in Pickable.Where(o => Selection.Contains(o.Id))) originals[o.Id] = FrameOf(o);
                 CaptureMouse();
             }
         }
@@ -298,7 +316,7 @@ public sealed class SlideCanvasEditor : Grid
             case Gesture.Marquee:
             {
                 marquee = new SceneRect(Math.Min(start.X, p.X), Math.Min(start.Y, p.Y), Math.Abs(p.X - start.X), Math.Abs(p.Y - start.Y));
-                var swept = SweptObjectIds(marquee.Value, EditorGeometry.ComposedOrder(Objects, Template), FrameOf);
+                var swept = SweptObjectIds(marquee.Value, EditorGeometry.ComposedOrder(Pickable, Template), FrameOf);
                 Selection.Clear();
                 Selection.UnionWith(marqueeBase);
                 Selection.UnionWith(ExpandSelectionToGroups(swept, Objects));
@@ -308,13 +326,13 @@ public sealed class SlideCanvasEditor : Grid
             }
             default:
             {
-                var hover = HitObject(p, Objects, Template)?.Id;
+                var hover = HitObject(p, Pickable, Template)?.Id;
                 if (hover != hoverId)
                 {
                     hoverId = hover;
                     overlay.InvalidateVisual();
                 }
-                Cursor = Selection.Count == 1 && Objects.FirstOrDefault(o => o.Id == Selection.First()) is { } sel
+                Cursor = Selection.Count == 1 && Pickable.FirstOrDefault(o => o.Id == Selection.First()) is { } sel
                     && (sel.RotationDegrees ?? 0) == 0 && HandleAt(e.GetPosition(this), FrameOf(sel)) is { } h
                         ? CursorFor(h)
                         : hover is null ? Cursors.Arrow : Cursors.SizeAll;
@@ -358,7 +376,7 @@ public sealed class SlideCanvasEditor : Grid
         };
         if (nudge is { } n && Selection.Count > 0)
         {
-            foreach (var o in Objects.Where(o => Selection.Contains(o.Id)))
+            foreach (var o in Pickable.Where(o => Selection.Contains(o.Id)))
             {
                 var f = FrameOf(o);
                 SetFrame(o, f with { X = f.X + n.Dx, Y = f.Y + n.Dy });
@@ -415,6 +433,7 @@ public sealed class SlideCanvasEditor : Grid
         private static readonly Pen Hover = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(0xA0, 0x60, 0xA5, 0xFA)), 1));
         private static readonly Pen Selected = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(0x3B, 0x82, 0xF6)), 1.5));
         private static readonly Pen GuidePen = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(0xF4, 0x72, 0xB6)), 1));
+        private static readonly Pen LockedPen = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B)), 1.5) { DashStyle = DashStyles.Dash });
         private static readonly Brush HandleFill = Brushes.White;
         private static readonly Brush MarqueeFill = Frozen(new SolidColorBrush(Color.FromArgb(0x30, 0x3B, 0x82, 0xF6)));
 
@@ -438,10 +457,12 @@ public sealed class SlideCanvasEditor : Grid
             foreach (var o in objects.Where(o => o.Hidden != true))
             {
                 var frame = editor.FrameOf(o);
-                var pen = editor.Selection.Contains(o.Id) ? Selected : o.Id == editor.hoverId ? Hover : Faint;
+                var locked = editor.IsLocked?.Invoke(o.Id) == true;
+                var pen = editor.Selection.Contains(o.Id) ? locked ? LockedPen : Selected : o.Id == editor.hoverId ? Hover : Faint;
                 DrawFrame(dc, frame, o.RotationDegrees ?? 0, pen);
             }
-            if (editor.Selection.Count == 1 && objects.FirstOrDefault(o => o.Id == editor.Selection.First()) is { } only && (only.RotationDegrees ?? 0) == 0)
+            if (editor.Selection.Count == 1 && objects.FirstOrDefault(o => o.Id == editor.Selection.First()) is { } only && (only.RotationDegrees ?? 0) == 0
+                && editor.IsLocked?.Invoke(only.Id) != true)
             {
                 var frame = editor.FrameOf(only);
                 foreach (var h in Enum.GetValues<Handle>())

@@ -28,6 +28,7 @@ public sealed partial class MainViewModel : ObservableObject
         Media.GainOf = GainFor; // and its own volume (MainViewModel.MediaLooks.cs)
         SceneView.DefaultMedia = Media;
         Library.Changed += OnLibraryChanged;
+        InitializeUndo();
         InitializeSound();
 
         RefreshThemes();
