@@ -333,6 +333,8 @@
                                 <ComboBox ItemsSource="{Binding Arrangements}" SelectedItem="{Binding SelectedArrangement}" MinWidth="120" Margin="0,0,12,0" />
                                 <TextBlock Text="Theme" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding CurrentThemeChoice}" MinWidth="150" Margin="0,0,12,0" />
+                                <!-- The song's key: transpose, capo, chords (Views/SongKeyChip.cs) -->
+                                <v:SongKeyChip Margin="0,0,6,0" />
                                 <Button Click="EditLyrics_Click" Margin="0,0,6,0" ToolTip="Edit the words, sections and order (double-click a song)">
                                     <TextBlock Text="Edit lyrics" />
                                 </Button>

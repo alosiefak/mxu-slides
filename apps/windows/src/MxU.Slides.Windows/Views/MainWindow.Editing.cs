@@ -99,6 +99,8 @@ public partial class MainWindow
         menu.Items.Add(EditBar.Item("Paste", "Ctrl+V", AppClipboard.HasAnything(), () => _ = model.Paste(EditTarget.Slides)));
         menu.Items.Add(EditBar.Item($"Duplicate{slides}", "Ctrl+D", count > 0, () => model.Duplicate(EditTarget.Slides)));
         if (count > 1) menu.Items.Add(EditBar.Item($"Merge{slides}", null, true, () => model.MergePickedSlides()));
+        menu.Items.Add(EditBar.Item("Chords…", null, model.SelectedSlide is not null,
+            () => ChordEditorWindow.Open(this, model, model.SelectedSlide?.Slide.Id)));
         menu.Items.Add(EditBar.Item($"Delete{slides}", model.IsEditing ? "Delete" : null, count > 0, () => model.DeletePickedSlides()));
     }
 }

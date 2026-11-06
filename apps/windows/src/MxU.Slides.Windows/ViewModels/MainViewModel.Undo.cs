@@ -19,6 +19,8 @@ public sealed partial class MainViewModel
     private void InitializeUndo()
     {
         UndoWindows.Initialize(Library);
+        // The stage display follows each song's capo (MainViewModel.Chords.cs).
+        HookCapos();
         UndoScope = Library.Undo.NewScope("Main window");
         // Typing waits half a second before it's saved. Any undo (here or in an editor) saves it
         // first: here, so it's what's undone; in an editor, so it isn't lost under what comes back.

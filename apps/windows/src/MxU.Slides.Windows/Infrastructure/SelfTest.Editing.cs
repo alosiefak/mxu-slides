@@ -35,6 +35,8 @@ public sealed partial class SelfTest
             await ClipboardChecks(copy);
             await LayersChecks(copy);
             await DragDropChecks(copy);
+            await TextToolsChecks(copy);
+            await ChordChecks(copy);
         }
         finally
         {
@@ -462,6 +464,174 @@ public sealed partial class SelfTest
             }
         }
         model.IsEditing = false;
+    }
+
+    // MARK: Text tools
+
+    private async Task TextToolsChecks(Presentation song)
+    {
+        model.Open(model.Library.Get<Presentation>(song.Id)!, null, null);
+        model.IsEditing = true;
+        // A slide whose words have "grace" in them (the earlier checks moved slides about).
+        model.SelectedSlide = model.Slides.FirstOrDefault(t => t.Slide.Objects.Any(o => o.Text.Contains("grace", StringComparison.OrdinalIgnoreCase)))
+            ?? model.Slides[1];
+        await Delay(300);
+        var slide = model.CurrentPresentation!.Slides.First(s => s.Id == model.SelectedSlide!.Slide.Id);
+        var lyric = slide.Objects.First(o => o.ObjectKind == SlideObjectKind.Text && o.TextLink is null && o.Text.Length > 0);
+        window.CanvasEditor.Select([lyric.Id]);
+        await Delay(200);
+        if (model.Inspector is not { IsText: true } inspector)
+        {
+            Check("text: the lyric's inspector opens", false);
+            return;
+        }
+        var words = lyric.Text;
+        var grace = words.IndexOf("grace", StringComparison.OrdinalIgnoreCase);
+        Check("text: the words to style are there", grace >= 0);
+        if (grace < 0) return;
+        // The theme's lyric font may be bold already: Bold turns the word to the other face.
+        var wasBold = inspector.IsBoldAt(grace, 5);
+        inspector.ToggleBold(grace, 5);
+        inspector.StyleSelection(grace, 5, r => r.ColorHex = "#FACC15FF");
+        inspector.ToggleCaps(grace, 5);
+        Check("text: Bold and a colour style just the selected word", lyric.StyleRuns is { Count: > 0 } runs
+            && runs.Any(r => r.ColorHex == "#FACC15FF" && r.Length == 5 && r.FontName is not null && Rendering.FontMap.IsBold(r.FontName) != wasBold)
+            && inspector.IsBoldAt(grace, 5) != wasBold);
+        Check("text: All Caps styles just the selected words (MxU's per-selection All Caps)",
+            lyric.StyleRuns!.Any(r => r.TextTransform == TextTransform.Uppercase && r.Length == 5) && inspector.IsCapsAt(grace, 5));
+        inspector.Text = "Oh " + words;
+        Check("text: typing before the styled word keeps the styling on it", lyric.StyleRuns!.Any(r => r.ColorHex == "#FACC15FF" && r.Column == grace + 3));
+        inspector.Text = words;
+        inspector.BalancedWrap = true;
+        inspector.PageOnClick = true;
+        Check("text: the Mac's text-fit options are there", lyric.TextStyle?.BalancedWrap == true && lyric.TextStyle?.PageOnClick == true);
+        inspector.PageOnClick = false;
+        model.FlushPendingSave();
+        var box = FindNamed<TextBox>(window, "InspectorText");
+        Check("text: the inspector's text box checks spelling", box is not null && SpellCheck.GetIsEnabled(box));
+        if (box is not null)
+        {
+            box.Focus();
+            box.Select(grace, 5);
+        }
+        await Step("54-text-styled-words", () => { }, settle: 600);
+
+        // Find and replace across the song, as one undo step.
+        var find = FindReplaceWindow.Open(window, model);
+        await Delay(500);
+        find.Fill("grace", "mercy", library: false);
+        Check("text: Find lists every match in the song", find.MatchCount >= 2);
+        Save(find, "55-find-replace");
+        var before = FindReplace.Find(model.CurrentPresentation!, new FindQuery("grace")).Count;
+        find.ReplaceAllNow();
+        await Delay(200);
+        Check("text: Replace All changes every one", FindReplace.Find(model.CurrentPresentation!, new FindQuery("grace")).Count == 0
+            && FindReplace.Find(model.CurrentPresentation!, new FindQuery("mercy")).Count >= before);
+        Check("text: Replace All is one undo step", model.UndoMenuText == "Undo Replace");
+        find.Close();
+        model.UndoEditCommand.Execute(null);
+        await Delay(200);
+        Check("text: undo puts the words back", FindReplace.Find(model.CurrentPresentation!, new FindQuery("grace")).Count == before);
+        model.IsEditing = false;
+    }
+
+    // MARK: Chords, Merge Slides, tile badges
+
+    private async Task ChordChecks(Presentation song)
+    {
+        model.Open(model.Library.Get<Presentation>(song.Id)!, null, null);
+        model.IsEditing = false;
+        await Delay(300);
+        // A slide with lyrics, followed by another (the earlier checks moved slides about).
+        model.SelectedSlide = model.Slides.Take(model.Slides.Count - 1).FirstOrDefault(t => MainViewModel.ChordTarget(t.Slide) is { Text.Length: > 8 })
+            ?? model.Slides[1];
+        var editor = ChordEditorWindow.Open(window, model, model.SelectedSlide.Slide.Id);
+        await Delay(600);
+        editor.Lines.AddChordForTest(0, 0, "G");
+        editor.Lines.AddChordForTest(0, 8, "C");
+        var slide = model.CurrentPresentation!.Slides.First(s => s.Id == editor.CurrentSlide!.Id);
+        var lyric = MainViewModel.ChordTarget(slide)!;
+        Check("chords: double-click and typing places chords over the words", lyric.Chords is { Count: 2 } c && c[0].Symbol == "G" && c[1].Column == 8);
+        await Delay(100);
+        Check("chords: a chord edit undoes as \"Chords\"", model.UndoMenuText == "Undo Chords");
+        model.SetMusicKey("G");
+        model.Transpose("A");
+        Check("chords: transposing shows the chords in the new key", model.CurrentPresentation.DisplayKey == "A"
+            && Core.Lyrics.ChordMath.Display("G", "G", "A", ChordNotation.Chords) == "A");
+        model.Capo = 2;
+        var stage = Core.Stage.ConfidenceSceneBuilder.SlideText(slide, model.CurrentPresentation);
+        Check("chords: with capo 2 the stage display shows the shapes played (G for A)", stage.DisplayKey == "G");
+        editor.Reload();
+        await Delay(400);
+        Save(editor, "56-chord-editor");
+        editor.Close();
+        await SnapshotStageChords(slide);
+        model.Capo = 0;
+
+        // Merge Slides: two slides into one, chords along.
+        var deck = model.CurrentPresentation;
+        var count = deck.Slides.Count;
+        var first = slide;
+        var second = deck.Slides[deck.Slides.IndexOf(slide) + 1];
+        var lines = MainViewModel.ChordTarget(first)!.Text.Split('\n').Length;
+        model.SelectedSlide = model.Slides.First(t => t.Slide.Id == first.Id);
+        model.PickTile(model.SelectedSlide, ctrl: false, shift: false);
+        model.PickTile(model.Slides.First(t => t.Slide.Id == second.Id), ctrl: true, shift: false);
+        Check("merge: Merge Slides joins the picked slides into one", model.MergePickedSlides() && model.CurrentPresentation!.Slides.Count == count - 1);
+        var merged = MainViewModel.ChordTarget(model.CurrentPresentation!.Slides.First(s => s.Id == first.Id))!;
+        Check("merge: the second slide's words follow on new lines, chords kept", merged.Text.Split('\n').Length > lines && merged.Chords?.Any(ch => ch.Symbol == "G") == true);
+        await Step("57-merged-slides", () => { }, settle: 500);
+        model.UndoEditCommand.Execute(null);
+        await Delay(200);
+        Check("merge: undo splits them again", model.CurrentPresentation!.Slides.Count == count);
+
+        // Tile badges: a slide with an action wears its badge, and a pause over it names it in the tile.
+        var media = model.MediaItems.FirstOrDefault()?.Item;
+        if (media is not null)
+        {
+            var target = model.CurrentPresentation!.Slides[2];
+            target.Actions = [new SlideAction { Id = Core.Library.LibraryStore.NewId(), Kind = SlideActionKind.FireMedia, MediaId = media.Id }];
+            model.SavePresentation(model.CurrentPresentation);
+            model.RebuildSlides();
+            await Delay(500);
+            var badges = FindAll<TileActionBadges>(window).FirstOrDefault(b => b.Slide?.Id == target.Id);
+            Check("badges: a slide with an action wears its badge", badges is not null);
+            if (badges is not null)
+            {
+                Check("badges: pausing over it names the action inside the tile", badges.ShowFirstTipNow() && badges.ShownTip.Contains(media.Name));
+                await Step("58-tile-badge-named", () => { }, settle: 300);
+            }
+            target.Actions = null;
+            model.SavePresentation(model.CurrentPresentation);
+            model.RebuildSlides();
+
+            // MxU's fix: media dropped in front of a deck's first slide lands there.
+            model.InsertMediaSlides([media], model.CurrentPresentation.Slides[0].Id);
+            Check("drag: media dropped in front of the first slide lands first", model.CurrentPresentation.Slides[0].Background?.MediaId == media.Id);
+        }
+    }
+
+    /// <summary>A picture of the stage display's chords layout showing the slide (capo shapes).</summary>
+    private async Task SnapshotStageChords(Slide slide)
+    {
+        var layout = Core.Stage.ConfidenceLayoutTemplates.Make(Core.Stage.ConfidenceLayoutTemplate.CurrentOverNextChords, "Chords");
+        model.GoLiveCommand.Execute(model.Slides.FirstOrDefault(t => t.Slide.Id == slide.Id));
+        await Delay(800);
+        await Snapshot("56-stage-chords-capo", model.StageScene(layout));
+        model.ClearAllCommand.Execute(null);
+    }
+
+    private static T? FindNamed<T>(DependencyObject root, string name) where T : FrameworkElement =>
+        FindAll<T>(root).FirstOrDefault(e => e.Name == name && e.IsVisible);
+
+    private static IEnumerable<T> FindAll<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is T t) yield return t;
+            foreach (var deeper in FindAll<T>(child)) yield return deeper;
+        }
     }
 
     /// <summary>The library's copy as it is on disk now.</summary>
