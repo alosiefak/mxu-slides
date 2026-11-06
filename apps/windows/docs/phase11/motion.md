@@ -303,8 +303,10 @@ engineers' builds and tests, so the numbers move by up to two times from run to 
   changes everywhere; a lower third copies only the strip that moved.
 
 So: lower thirds, the common case, play at the screen's own rate. A heavy full-screen background
-plays at 30–40 frames a second on this laptop while it's shared, smoother on a quiet one; a
-30 fps Lottie (as most are) loses nothing at that rate.
+played at 15 to 40 frames a second on this laptop across runs, depending on how busy the other
+engineers kept it (the self-test reports the number and how many bands it used). On a quiet PC
+it's about 12 ms a frame; most Lotties are made at 30 fps anyway. That's why the self-test reports
+this speed rather than failing on it.
 
 ## 10. Trying it with real After Effects
 
