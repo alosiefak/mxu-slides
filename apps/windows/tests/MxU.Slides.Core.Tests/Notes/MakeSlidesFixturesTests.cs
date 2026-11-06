@@ -128,4 +128,61 @@ public class MakeSlidesFixturesTests
         Assert.Equal(marked.Select(g => g.Type), NoteSlideMarks.Groups(made.Body).Select(g => g.Type));
         Assert.Equal(["points", "video", null, "points", "picture", null], marked.Select(g => g.Type));
     }
+
+    // The Mac's four packs (StarterPack.allCases there). Windows' own worship looks (Phase 6) put
+    // a number box in their Points design, so the planner rightly gives them a point a slide.
+    public static TheoryData<StarterPack> Packs() =>
+        new(StarterPack.CleanGeometric, StarterPack.EditorialSerif, StarterPack.BoldBlocks, StarterPack.Digital);
+
+    [Theory]
+    [MemberData(nameof(Packs))]
+    public void ThreeWarningsAreOnePointsSlide(StarterPack pack)
+    {
+        var body = Body(Read("slide-markers.json"));
+        static NoteBlock P(string text) => new() { Type = NoteBlockType.Paragraph, Runs = [new NoteRun { Text = text }] };
+        body.Blocks.AddRange([
+            P("Slide 8:"), P("Three Warnings:"),
+            new NoteBlock
+            {
+                Type = NoteBlockType.List, Ordered = false, Items =
+                [
+                    new NoteListItem { Runs = [new NoteRun { Text = "\"Don't forget Me when you experience prosperity\" (vs. 12)" }] },
+                    new NoteListItem { Runs = [new NoteRun { Text = "Don't fall for the surrounding culture's idols (vs. 14)" }] },
+                    new NoteListItem { Runs = [new NoteRun { Text = "Don't test God when hardship comes (vs. 16)" }] },
+                ],
+            },
+        ]);
+        var marked = NoteSlideBuilder.Groups(NoteSlideMarks.AcceptingSuggestions(NoteSlideMarks.AutoMark.PickForMe.Marking(body)));
+        var warnings = marked[^1];
+        Assert.Equal("points", warnings.Type);
+        var theme = pack.MakeTheme();
+        var built = NoteSlideBuilder.Build(new DeterministicSlidePlanner().Plan(marked, theme, new Dictionary<string, SlideRowOverride>()));
+        var slides = built.Slides.Where(s => built.GroupBySlideId.GetValueOrDefault(s.Id) == warnings.Id).ToList();
+        Assert.True(slides.Count == 1, $"{pack}: {string.Join(" / ", slides.Select(s => string.Join("|", s.Objects.Select(o => o.Text))))}");
+        Assert.Equal("Points", slides[0].ThemeSlideName);
+    }
+
+    // The two below read PR #13's StarterPacks change (the Points box shrinks to a floor, and
+    // StarterPack.shrinkingPoints repairs older libraries), which the engine catch-up (wt\up-core) ports.
+    [Fact(Skip = "Needs PR #13's StarterPack.shrinkingPoints, ported in the engine catch-up (wt\\up-core)")]
+    public void TheRepairGivesThePointsBoxItsFloor()
+    {
+    }
+
+    [Theory(Skip = "Needs PR #13's StarterPacks Points shrink floor, ported in the engine catch-up (wt\\up-core)")]
+    [MemberData(nameof(Packs))]
+    public void LongPointsKeepTheirSizeAndSplit(StarterPack pack)
+    {
+        const string rules = "Backyard Ultra - Rules:\nComplete 4.167 miles, every hour, on the hour.\nWarnings given 3, 2, and 1 minute prior to each loop. All competitors must be in the starting corral before the starting whistle.\nYou win by being the last person standing and must complete an additional loop in order to win outright.";
+        var theme = pack.MakeTheme();
+        var built = NoteSlideBuilder.Build(new DeterministicSlidePlanner().Plan([new MarkedGroup("r", rules, "points")], theme, new Dictionary<string, SlideRowOverride>()));
+        Assert.True(built.Slides.Count >= 2);
+        var box = Json.MxuJson.Clone(theme.Slides!.First(s => s.Name == "Points").Objects.First(o => o.Id == $"{pack.ThemeId()}.points.text"));
+        box.TextStyle!.AutoShrink = null;
+        foreach (var slide in built.Slides)
+        {
+            var words = slide.Objects.First(o => o.Text.Contains('\n') || o.Text.Length > 30).Text;
+            Assert.True(NoteSlideBuilder.Fits(words, box, theme), $"{pack}: fits at full size: {words}");
+        }
+    }
 }
