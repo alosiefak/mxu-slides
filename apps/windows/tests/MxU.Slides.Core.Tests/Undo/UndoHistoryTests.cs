@@ -373,7 +373,10 @@ public sealed class UndoHistoryTests : UndoTest
         Assert.Single(Scope.UndoNames);
 
         // A background import saves on another thread: not the window's edit.
-        await Task.Run(() => Library.Save(Deck("imported")), TestContext.Current.CancellationToken);
+        // A thread of its own: a pool task could run on this very (pool) thread once the test awaits.
+        var import = new Thread(() => Library.Save(Deck("imported")));
+        import.Start();
+        await Task.Run(import.Join, TestContext.Current.CancellationToken);
         Assert.Single(Scope.UndoNames);
 
         using (Library.Undo.Unrecorded())
