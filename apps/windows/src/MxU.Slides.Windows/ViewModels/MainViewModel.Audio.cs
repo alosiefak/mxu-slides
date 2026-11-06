@@ -120,7 +120,11 @@ public sealed partial class MainViewModel
         UpdateNowPlaying();
     }
 
-    /// <summary>Copies music files into the library (same file twice is stored once).</summary>
+    /// <summary>
+    /// Copies music files into the library without asking anything (same file twice is stored
+    /// once, and reuses its item: the Mac's rule for an import nobody watches). The Import buttons
+    /// use <see cref="ImportAudioFilesAsync"/>, which asks about duplicates.
+    /// </summary>
     public void ImportAudioFiles(IEnumerable<string> paths)
     {
         var importer = new AudioImporter(Library);

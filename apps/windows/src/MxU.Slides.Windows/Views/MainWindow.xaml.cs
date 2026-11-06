@@ -556,7 +556,7 @@ public partial class MainWindow : Window
             Multiselect = true,
             Filter = "Music|*.mp3;*.m4a;*.aac;*.wav;*.flac;*.wma;*.aiff;*.aif|All files|*.*",
         };
-        if (dialog.ShowDialog(this) == true) model.ImportAudioFiles(dialog.FileNames);
+        if (dialog.ShowDialog(this) == true) _ = model.ImportAudioFilesAsync(dialog.FileNames); // asks about duplicates (MainViewModel.MusicImport.cs)
     }
 
     private void MediaTile_Click(object sender, MouseButtonEventArgs e)

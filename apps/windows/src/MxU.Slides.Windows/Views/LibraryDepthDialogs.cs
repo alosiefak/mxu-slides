@@ -52,6 +52,36 @@ internal static class LibraryDepthDialogs
         return dialog.Ask() is { } answer && answer != "Cancel";
     }
 
+    /// <summary>
+    /// A music file the library already has: use the song there, or add the new one as a numbered
+    /// copy. The music twin of LibraryDialogs.AskMediaImportConflict, with the length to tell them apart.
+    /// </summary>
+    public static ViewModels.MediaImportAnswer AskAudioImportConflict(ViewModels.AudioImportQuestion question)
+    {
+        var incoming = Path.GetFileName(question.IncomingPath);
+        var dialog = new ChoiceWindow(LibraryDialogs.Owner, "Import Music",
+            question.SameFile ? $"“{incoming}” is already in your library" : $"“{question.Existing.Name}” is already in your library",
+            question.SameFile
+                ? $"It's the same file as the song “{question.Existing.Name}”. Use that song, or add another copy as “{question.CopyName}”."
+                : $"A different music file has this name in your library. Use the one you have, or add the new file as “{question.CopyName}”.");
+        var list = new StackPanel();
+        list.Children.Add(new TextBlock { Text = question.Existing.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 400 });
+        list.Children.Add(EditorKit.Muted("In your library" + (question.Existing.DurationSeconds is { } seconds ? $" · {TimeSpan.FromSeconds(Math.Round(seconds)).ToString(@"m\:ss", System.Globalization.CultureInfo.InvariantCulture)}" : "")
+            + (question.Existing.FileName is { Length: > 0 } file ? $" · {file}" : "")));
+        if (!question.SameFile)
+        {
+            list.Children.Add(new TextBlock { Text = incoming, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 400, Margin = new Thickness(0, 8, 0, 0) });
+            list.Children.Add(EditorKit.Muted("New file"));
+        }
+        dialog.AddBody(Card(list));
+        var forRest = question.OthersLeft > 0 ? dialog.AddCheckBox("Do the same for the rest of this import") : null;
+        dialog.AddButton("Add as New Copy");
+        dialog.AddButton("Use Existing", isDefault: true, accent: true);
+        // Closing the window adds nothing new, the same as Use Existing.
+        var answer = dialog.Ask() ?? "Use Existing";
+        return new ViewModels.MediaImportAnswer(answer == "Use Existing", forRest?.IsChecked == true);
+    }
+
     private static Border Card(UIElement child) => new()
     {
         Child = new ScrollViewer { Content = child, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 240 },
