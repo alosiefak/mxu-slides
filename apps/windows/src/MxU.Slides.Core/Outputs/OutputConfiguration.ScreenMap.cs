@@ -84,6 +84,13 @@ public sealed partial class OutputConfiguration
             if (ScreenMapResolver.Resolve(placements, mapRect) is not { } hits) continue;
             placed ??= CopyOf(scene);
             if (room.Layer(layerId) is not { } source || placed.Layer(layerId) is not { } target) continue;
+            // A placed Slide layer wears the look of the screen it mostly lands on, so a lyric
+            // spanning a wall reads the same on every piece.
+            if (source.Kind == LayerKind.Slide && screenMap is { } map
+                && ScreenMapResolver.DominantScreen(placements, map) is { } host
+                && slideThemeRouting.TryGetValue(host, out var look)
+                && VariantSceneProvider?.Invoke(look)?.Layer(layerId) is { } variant)
+                source = variant;
             target.Items.Clear();
             if (hits.Count == 0) continue;
             var canvas = placed.CanvasSize;

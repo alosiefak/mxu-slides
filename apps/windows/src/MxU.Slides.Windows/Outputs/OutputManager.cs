@@ -57,6 +57,13 @@ public sealed class OutputManager
             settings.Screens = ScreenSetup.Capture(Config);
             settings.Save();
         };
+        Config.SetScreenMap(settings.ScreenMap);
+        Config.ScreenMapChanged += () =>
+        {
+            settings.ScreenMap = Config.ScreenMap;
+            settings.Save();
+            main.Dispatcher.BeginInvoke(() => Rebuild(force: false));
+        };
         Config.StateChanged += () => main.Dispatcher.BeginInvoke(() => Rebuild(force: false));
         displayDebounce = new DispatcherTimer(TimeSpan.FromMilliseconds(800), DispatcherPriority.Normal, (_, _) =>
         {

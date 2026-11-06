@@ -221,6 +221,8 @@ public static class OutputPresets
         outputs.SetLayerRouting(routing.Layers);
         outputs.SetSlideThemeRouting(routing.SlideThemes);
         outputs.SetPresetLooks(routing.Looks);
+        // The Screen Map: where the preset places its layers on the room.
+        outputs.SetLayerPlacements(OutputConfiguration.PlacementsOf(preset));
         foreach (var screen in outputs.Screens)
             outputs.SetActiveMaskIds(screen.Id, routing.ActiveMasks.GetValueOrDefault(screen.Id) ?? new HashSet<Guid>());
         return routing;
