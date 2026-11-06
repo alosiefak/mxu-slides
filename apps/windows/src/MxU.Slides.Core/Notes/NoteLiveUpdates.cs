@@ -231,9 +231,13 @@ public static class NoteLiveUpdates
     /// The slides for passages, each in the design (and theme) the design map gives its type,
     /// with blanks, switches and the designs' own actions.
     /// </summary>
+    /// <param name="overrides">What someone chose for a passage in Make Slides (its kind, design or lines a slide), over the plan and the design map.</param>
+    /// <param name="switches">A passage's switch chosen in Make Slides, over its type's.</param>
     public static NoteSlideBuilder.Built NewSlides(
         IReadOnlyList<MarkedGroup> groups, string deckThemeId, SlideDesignMap designMap, Func<string, Theme?> theme,
-        ISlidePlanner? planner = null, IReadOnlyDictionary<string, string>? mediaIds = null)
+        ISlidePlanner? planner = null, IReadOnlyDictionary<string, string>? mediaIds = null,
+        IReadOnlyDictionary<string, SlideRowOverride>? overrides = null,
+        IReadOnlyDictionary<string, NoteSlideBuilder.SwitchOverride>? switches = null)
     {
         planner ??= new DeterministicSlidePlanner(designMap.Options);
         var rows = new List<SlideRow>();
@@ -242,16 +246,20 @@ public static class NoteLiveUpdates
         foreach (var group in groups)
         {
             var rowThemeId = deckThemeId;
-            string? design = null;
-            // Planned once to learn its type, then again in that type's design.
-            if (planner.Plan([group], theme(rowThemeId), new Dictionary<string, SlideRowOverride>()).Rows.FirstOrDefault() is { } first
+            var chosen = overrides?.GetValueOrDefault(group.Id);
+            string? design = chosen?.ThemeSlideName;
+            // Planned once to learn its type, then again in that type's design (unless one was chosen).
+            var typed = new Dictionary<string, SlideRowOverride>();
+            if (chosen?.Kind is { } kind) typed[group.Id] = new SlideRowOverride(kind);
+            if (design is null
+                && planner.Plan([group], theme(rowThemeId), typed).Rows.FirstOrDefault() is { } first
                 && designMap.EntryForType(first.TypeKey) is { } entry && theme(entry.ThemeId) is not null)
             {
                 rowThemeId = entry.ThemeId;
                 design = entry.ThemeSlideName;
             }
-            var overrides = new Dictionary<string, SlideRowOverride> { [group.Id] = new(ThemeSlideName: design) };
-            if (planner.Plan([group], theme(rowThemeId), overrides).Rows.FirstOrDefault() is not { } row) continue;
+            var rowOverrides = new Dictionary<string, SlideRowOverride> { [group.Id] = new(chosen?.Kind, design, chosen?.LinesPerSlide) };
+            if (planner.Plan([group], theme(rowThemeId), rowOverrides).Rows.FirstOrDefault() is not { } row) continue;
             rows.Add(row);
             if (rowThemeId != deckThemeId && rowThemeId.Length > 0) rowThemeIds[group.Id] = rowThemeId;
             if (designMap.Blanks != BlankPlacement.None) blanks[group.Id] = designMap.Blanks;
@@ -259,7 +267,7 @@ public static class NoteLiveUpdates
         if (rows.Count == 0) return new NoteSlideBuilder.Built();
         var built = NoteSlideBuilder.Build(new SlidePlan(rows), blanks, NoteSlides.BlankStyle(designMap, deckThemeId, theme),
             designMap.Options, key => mediaIds?.GetValueOrDefault(key));
-        NoteSlideBuilder.AttachingSwitches(built, rows, designMap, new Dictionary<string, NoteSlideBuilder.SwitchOverride>());
+        NoteSlideBuilder.AttachingSwitches(built, rows, designMap, switches ?? new Dictionary<string, NoteSlideBuilder.SwitchOverride>());
         foreach (var slide in built.Slides)
         {
             if (built.GroupBySlideId.TryGetValue(slide.Id, out var group) && rowThemeIds.TryGetValue(group, out var own)) slide.ThemeId = own;

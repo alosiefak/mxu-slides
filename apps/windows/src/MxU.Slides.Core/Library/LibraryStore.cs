@@ -39,6 +39,9 @@ public sealed class LibraryStore
         [typeof(TrackChannelList)] = "TrackChannels",
         [typeof(AnimationPresetBoard)] = "AnimationPresets",
         [typeof(EffectPresetBoard)] = "EffectPresets",
+        // Notes, and the one document saying how Make Slides makes slides (Notes/).
+        [typeof(NoteDocument)] = "Notes",
+        [typeof(SlideBuildingSettings)] = "SlideBuildingSettings",
     };
 
     private readonly object gate = new();
