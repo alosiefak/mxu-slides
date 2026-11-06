@@ -98,7 +98,7 @@ public sealed partial class SceneView
 
     /// <summary>
     /// Seconds left in a video this view plays (its pass), for an end fade; null when it has no
-    /// player here or its length isn't known yet. A looping video never ends, so it never fades.
+    /// player here, it loops (it never ends) or its length isn't known yet.
     /// </summary>
     private double? PlaybackRemaining(string mediaId)
     {
@@ -106,8 +106,7 @@ public sealed partial class SceneView
         foreach (var (key, id) in media.ActiveVideos)
         {
             if (id != mediaId || !key.StartsWith(PlaybackScope + ":", StringComparison.Ordinal)) continue;
-            if (media.Transport(key) is { Duration: { } duration } transport && duration > TimeSpan.Zero)
-                return Math.Max(0, (duration - transport.Position).TotalSeconds);
+            if (media.PlaybackRemaining(key) is { } left) return left;
         }
         return null;
     }

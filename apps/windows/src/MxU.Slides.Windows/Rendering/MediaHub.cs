@@ -375,6 +375,18 @@ public sealed partial class MediaHub
         return (position, duration, p.Playing);
     }
 
+    /// <summary>
+    /// Seconds left in a player's pass, for a video's end fade: null while it loops (it never
+    /// ends) or before its length is known. Port of MediaEngine.playbackRemaining.
+    /// </summary>
+    public double? PlaybackRemaining(string playbackKey)
+    {
+        if (!players.TryGetValue(playbackKey, out var p) || p.Loops) return null;
+        return Transport(playbackKey) is { Duration: { } duration } transport && duration > TimeSpan.Zero
+            ? Math.Max(0, (duration - transport.Position).TotalSeconds)
+            : null;
+    }
+
     public IEnumerable<(string Key, string MediaId)> ActiveVideos => players.Select(p => (p.Key, p.Value.MediaId));
 
     public void Pause(string playbackKey)
