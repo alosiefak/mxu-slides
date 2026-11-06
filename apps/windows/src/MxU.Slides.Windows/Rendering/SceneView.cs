@@ -1156,7 +1156,8 @@ public sealed partial class SceneView : FrameworkElement
     /// </summary>
     private void DrawLivePicture(DrawingContext dc, string mediaId, SceneMediaScaleMode mode, Rect frame, Action<string> usesKey, bool isFill)
     {
-        if (isFill && !PlaysVideo)
+        // A motion template's picture is the app's own drawing, so bins and thumbnails show it too.
+        if (isFill && !PlaysVideo && !MediaHub.IsMotion(mediaId))
         {
             if (LiveInputPlaceholder.For(mediaId) is { } glyph)
                 LiveInputPlaceholder.Draw(dc, glyph, Place(LiveInputPlaceholder.NaturalSize, frame, mode));
