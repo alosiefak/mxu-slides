@@ -70,6 +70,9 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>What the stage display reads now (the self-test checks a video mark's countdown and name with it).</summary>
+    internal Core.Stage.ConfidenceInfo StageInfoNow() => BuildConfidenceInfo();
+
     /// <summary>The marks of a live video in pass time, for its stage countdown.</summary>
     private IReadOnlyList<VideoMarks.Point> CountdownMarks(string mediaId, double duration)
     {
