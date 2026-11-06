@@ -1156,7 +1156,8 @@ public sealed partial class SceneView : FrameworkElement
     /// </summary>
     private void DrawLivePicture(DrawingContext dc, string mediaId, SceneMediaScaleMode mode, Rect frame, Action<string> usesKey, bool isFill)
     {
-        if (isFill && !PlaysVideo)
+        // A motion template's picture is the app's own drawing, so bins and thumbnails show it too.
+        if (isFill && !PlaysVideo && !MediaHub.IsMotion(mediaId))
         {
             if (LiveInputPlaceholder.For(mediaId) is { } glyph)
                 LiveInputPlaceholder.Draw(dc, glyph, Place(LiveInputPlaceholder.NaturalSize, frame, mode));
@@ -1165,7 +1166,7 @@ public sealed partial class SceneView : FrameworkElement
         usesKey(MediaHub.LiveKey(mediaId));
         if (media!.LiveInputPicture(mediaId) is { } picture)
             dc.DrawImage(picture, Place(new Size(picture.PixelWidth, picture.PixelHeight), frame, mode));
-        else if (!isFill)
+        else if (!isFill && !MediaHub.IsMotion(mediaId))
             DrawPlaceholder(dc, frame, $"Waiting for {media.LiveInputName?.Invoke(mediaId) ?? "the input"}…", failed: false);
     }
 
@@ -1187,6 +1188,8 @@ public sealed partial class SceneView : FrameworkElement
         bool isFill = false, SceneSourceRect? crop = null)
     {
         if (media is null || frame.Width <= 0 || frame.Height <= 0) return;
+        // A full-screen motion template's video, while its animation plays live in its place (MediaHub.Motion.cs).
+        if (media.MotionStandIn(mediaId) is { } standIn) mediaId = standIn;
         dc.PushClip(clip);
         try
         {

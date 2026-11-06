@@ -57,6 +57,7 @@ public sealed partial class MainViewModel : ObservableObject
         StartTimecode();
         StartProduction();
         InitializeLibrarySync();
+        StartMotionTemplates();
         _ = RefreshMidiDevicesAsync();
         _ = RefreshMidiOutputsAsync();
         // Combos marked "run on startup" go once the window has settled, as on the Mac.

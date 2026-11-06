@@ -24,6 +24,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="MxU.Slides.Broadcast.Tests" />
+    <!-- Motion templates' export tests read their MP4s back with the same Media Foundation calls. -->
+    <InternalsVisibleTo Include="MxU.Slides.MotionTemplates.Tests" />
   </ItemGroup>
 
   <ItemGroup>

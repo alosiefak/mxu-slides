@@ -764,6 +764,7 @@
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}}">
                         <TextBlock Text="Click to put up or take down · F4 clears all" Style="{StaticResource Muted}"
                                    VerticalAlignment="Center" Margin="0,0,12,0" FontSize="11" />
+                        <Button Command="{Binding OpenMotionTemplatesCommand}" Loaded="MotionTemplates_Loaded" Content="Motion templates…" Margin="0,0,6,0" ToolTip="Animated templates from After Effects or LottieFiles: they play live with transparency, and their words and colours can be changed" />
                         <Button Command="{Binding OpenLowerThirdGalleryCommand}" Content="Gallery…" Margin="0,0,6,0" ToolTip="Designed, animated lower thirds: pick one, fill it in, add it, go live" />
                         <Button Command="{Binding EditOverlaysCommand}" Content="Edit…" Margin="0,0,6,0" ToolTip="Design overlays: text, shapes, masks and animations" />
                         <Button Command="{Binding DuplicateOverlayCommand}" Content="Duplicate" ToolTip="Make your own copy of the selected overlay" />
@@ -821,6 +822,8 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+                            <Button Command="{Binding EditMotionTemplateCommand}" Content="Edit motion template…" HorizontalAlignment="Left" Margin="90,2,0,0"
+                                    Visibility="{Binding SelectedOverlayIsMotion, Converter={StaticResource Visible}}" ToolTip="Its colours, pictures and how it plays" />
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
