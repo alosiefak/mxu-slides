@@ -2,6 +2,7 @@ using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Notes;
 using MxU.Slides.Core.Scene;
 
 namespace MxU.Slides.Core.Tests.Media;
@@ -68,39 +69,55 @@ public class CueMediaEditingTests
         Assert.Equal((MediaScaleMode?)MediaScaleMode.ScaleAndBlur, cue.ScaleMode);
         CueMediaEditing.SetScale(cue, MediaScaleMode.Fill);
         Assert.Null(cue.ScaleMode);
-        Assert.Equal(MediaScaleMode.Fill, CueMediaEditing.InPhotoSpot(MediaScaleMode.ScaleAndBlur));
-        Assert.Equal(MediaScaleMode.Fit, CueMediaEditing.InPhotoSpot(MediaScaleMode.Fit));
+        Assert.Equal(MediaScaleMode.Fill, MediaScaleMode.ScaleAndBlur.InPhotoSpot());
+        Assert.Equal(MediaScaleMode.Fit, MediaScaleMode.Fit.InPhotoSpot());
+    }
+
+    // Where the two ports meet: the end Make Slides gives a video slide (SlideMediaFacts.ShowMedia,
+    // the Mac's showMedia) is the end the slide's menu then shows, for every choice.
+    [Theory]
+    [InlineData(SlideOptions.VideoEnds.Next)]
+    [InlineData(SlideOptions.VideoEnds.Stop)]
+    [InlineData(SlideOptions.VideoEnds.Loop)]
+    [InlineData(SlideOptions.VideoEnds.FadeToBlack)]
+    [InlineData(SlideOptions.VideoEnds.FadeToClear)]
+    public void TheMenuReadsTheEndMakeSlidesGave(SlideOptions.VideoEnds end)
+    {
+        var slide = new Slide { Id = "s", Name = "" };
+        slide.ShowMedia("m", MediaKind.Video, null, end);
+        Assert.Equal(end, CueMediaEditing.VideoEnd(slide));
+        Assert.Equal(SlideOptions.Title(end), CueMediaEditing.VideoEndName(end));
     }
 
     [Fact]
     public void AVideosEndIsReadAndWrittenAsTheMacsPlannerWritesIt()
     {
         var slide = new Slide { Id = "s", Name = "", Background = Cue(CueMediaLayer.Videos) };
-        Assert.Equal(CueVideoEnd.Stop, CueMediaEditing.VideoEnd(slide));
+        Assert.Equal(SlideOptions.VideoEnds.Stop, CueMediaEditing.VideoEnd(slide));
 
-        CueMediaEditing.SetVideoEnd(slide, CueVideoEnd.Next);
+        CueMediaEditing.SetVideoEnd(slide, SlideOptions.VideoEnds.Next);
         Assert.True(slide.AutoAdvance is { AfterPlayback: true, DelaySeconds: 0 });
-        Assert.Equal(CueVideoEnd.Next, CueMediaEditing.VideoEnd(slide));
+        Assert.Equal(SlideOptions.VideoEnds.Next, CueMediaEditing.VideoEnd(slide));
 
-        CueMediaEditing.SetVideoEnd(slide, CueVideoEnd.FadeToBlack);
+        CueMediaEditing.SetVideoEnd(slide, SlideOptions.VideoEnds.FadeToBlack);
         Assert.Equal((MediaEndFade?)MediaEndFade.Black, slide.Background!.EndFade);
         Assert.Null(slide.AutoAdvance); // the next slide no longer follows the video
-        Assert.Equal(CueVideoEnd.FadeToBlack, CueMediaEditing.VideoEnd(slide));
+        Assert.Equal(SlideOptions.VideoEnds.FadeToBlack, CueMediaEditing.VideoEnd(slide));
 
-        CueMediaEditing.SetVideoEnd(slide, CueVideoEnd.Loop);
+        CueMediaEditing.SetVideoEnd(slide, SlideOptions.VideoEnds.Loop);
         Assert.True(slide.Background.Loops);
         Assert.Null(slide.Background.EndFade);
-        Assert.Equal(CueVideoEnd.Loop, CueMediaEditing.VideoEnd(slide));
+        Assert.Equal(SlideOptions.VideoEnds.Loop, CueMediaEditing.VideoEnd(slide));
 
-        CueMediaEditing.SetVideoEnd(slide, CueVideoEnd.FadeToClear);
+        CueMediaEditing.SetVideoEnd(slide, SlideOptions.VideoEnds.FadeToClear);
         Assert.False(slide.Background.Loops);
-        Assert.Equal(CueVideoEnd.FadeToClear, CueMediaEditing.VideoEnd(slide));
+        Assert.Equal(SlideOptions.VideoEnds.FadeToClear, CueMediaEditing.VideoEnd(slide));
 
         // A timed Auto Advance of the slide's own is kept.
         slide.AutoAdvance = new AutoAdvance { DelaySeconds = 8 };
-        CueMediaEditing.SetVideoEnd(slide, CueVideoEnd.Stop);
+        CueMediaEditing.SetVideoEnd(slide, SlideOptions.VideoEnds.Stop);
         Assert.Equal(8, slide.AutoAdvance?.DelaySeconds);
-        Assert.False(CueMediaEditing.SetVideoEnd(new Slide { Id = "plain", Name = "" }, CueVideoEnd.Loop));
+        Assert.False(CueMediaEditing.SetVideoEnd(new Slide { Id = "plain", Name = "" }, SlideOptions.VideoEnds.Loop));
     }
 
     [Fact]

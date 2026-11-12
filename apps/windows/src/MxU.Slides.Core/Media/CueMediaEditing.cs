@@ -1,23 +1,8 @@
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Scene;
+using VideoEnds = MxU.Slides.Core.Notes.SlideOptions.VideoEnds;
 
 namespace MxU.Slides.Core.Media;
-
-/// <summary>What a picture or video slide's video does when it reaches its end.</summary>
-public enum CueVideoEnd
-{
-    /// <summary>The next slide fires the moment the video ends (an Auto Advance of 0 s after playback).</summary>
-    Next,
-
-    /// <summary>It stops on its last frame.</summary>
-    Stop,
-
-    Loop,
-    FadeToBlack,
-
-    /// <summary>It dissolves into whatever is behind it (best over a background).</summary>
-    FadeToClear,
-}
 
 /// <summary>A layer a slide's media can be sent to: a built-in one, or an output preset's custom layer.</summary>
 public sealed record CueLayerChoice(string? Id, string Name);
@@ -31,9 +16,9 @@ public sealed record CueLayerChoice(string? Id, string Name);
 /// <para>
 /// Ports of the Mac's PresenterCore/SlideLayerFacts.swift (<c>storedRoutingLayerId</c>,
 /// <c>setRoutingLayer</c>, <c>defaultLayer</c>), MediaCueMenu.swift's <c>SpotLayer</c> picker,
-/// PhotoSpots.swift's <c>inPhotoSpot</c>, and SlidePlanner's <c>showMedia</c> (the video end, as
-/// SlideDesignMap's <c>VideoEnd</c> names them). The Mac sets the scale and video end when it makes
-/// slides from notes; Windows also lets you change them on a slide.
+/// and SlidePlanner's <c>showMedia</c> (the video end is Make Slides' own
+/// <see cref="Notes.SlideOptions.VideoEnds"/>, the Mac's <c>SlideOptions.VideoEnd</c>). The Mac sets
+/// the scale and video end when it makes slides from notes; Windows also lets you change them on a slide.
 /// </para>
 /// </summary>
 public static class CueMediaEditing
@@ -118,33 +103,25 @@ public static class CueMediaEditing
     /// <summary>Sets the scale; Fill, the default, is stored as nothing (as the Mac's planner stores it).</summary>
     public static void SetScale(CueMedia cue, MediaScaleMode mode) => cue.ScaleMode = mode == MediaScaleMode.Fill ? null : mode;
 
-    /// <summary>A scale inside a photo spot: Scale and Blur fills it instead (port of <c>MediaScaleMode.inPhotoSpot</c>).</summary>
-    public static MediaScaleMode InPhotoSpot(MediaScaleMode mode) => mode == MediaScaleMode.ScaleAndBlur ? MediaScaleMode.Fill : mode;
-
     public static string ScaleName(MediaScaleMode mode) => ScaleChoices.FirstOrDefault(c => c.Mode == mode).Name ?? mode.ToString();
 
     // MARK: A video's end
 
-    public static readonly IReadOnlyList<(CueVideoEnd End, string Name)> VideoEndChoices =
-    [
-        (CueVideoEnd.Next, "Go to next slide"),
-        (CueVideoEnd.Stop, "Stop"),
-        (CueVideoEnd.Loop, "Loop"),
-        (CueVideoEnd.FadeToBlack, "Fade to black"),
-        (CueVideoEnd.FadeToClear, "Fade to clear"),
-    ];
+    /// <summary>The ends a video slide offers, named as Make Slides names them (the Mac's <c>SlideOptions.VideoEnd</c>).</summary>
+    public static readonly IReadOnlyList<(VideoEnds End, string Name)> VideoEndChoices =
+        [.. Enum.GetValues<VideoEnds>().Select(end => (end, Notes.SlideOptions.Title(end)))];
 
     /// <summary>What the slide's video does at its end, read from its cue and Auto Advance.</summary>
-    public static CueVideoEnd VideoEnd(Slide slide)
+    public static VideoEnds VideoEnd(Slide slide)
     {
-        if (slide.Background is not { } cue) return CueVideoEnd.Stop;
+        if (slide.Background is not { } cue) return VideoEnds.Stop;
         return cue.EndFade switch
         {
-            MediaEndFade.Black => CueVideoEnd.FadeToBlack,
-            MediaEndFade.Clear => CueVideoEnd.FadeToClear,
-            _ when cue.Loops == true => CueVideoEnd.Loop,
-            _ when slide.AutoAdvance is { AfterPlayback: true, DelaySeconds: <= 0 } => CueVideoEnd.Next,
-            _ => CueVideoEnd.Stop,
+            MediaEndFade.Black => VideoEnds.FadeToBlack,
+            MediaEndFade.Clear => VideoEnds.FadeToClear,
+            _ when cue.Loops == true => VideoEnds.Loop,
+            _ when slide.AutoAdvance is { AfterPlayback: true, DelaySeconds: <= 0 } => VideoEnds.Next,
+            _ => VideoEnds.Stop,
         };
     }
 
@@ -153,21 +130,21 @@ public static class CueMediaEditing
     /// Auto Advance 0 s after playback; Loop loops the cue; the fades set its end fade. Choosing
     /// another end takes away the one before (a timed Auto Advance of the slide's own is kept).
     /// </summary>
-    public static bool SetVideoEnd(Slide slide, CueVideoEnd end)
+    public static bool SetVideoEnd(Slide slide, VideoEnds end)
     {
         if (slide.Background is not { } cue) return false;
         cue.EndFade = end switch
         {
-            CueVideoEnd.FadeToBlack => MediaEndFade.Black,
-            CueVideoEnd.FadeToClear => MediaEndFade.Clear,
+            VideoEnds.FadeToBlack => MediaEndFade.Black,
+            VideoEnds.FadeToClear => MediaEndFade.Clear,
             _ => null,
         };
-        cue.Loops = end == CueVideoEnd.Loop;
+        cue.Loops = end == VideoEnds.Loop;
         var followsPlayback = slide.AutoAdvance is { AfterPlayback: true };
-        if (end == CueVideoEnd.Next) slide.AutoAdvance = new AutoAdvance { DelaySeconds = 0, AfterPlayback = true };
+        if (end == VideoEnds.Next) slide.AutoAdvance = new AutoAdvance { DelaySeconds = 0, AfterPlayback = true };
         else if (followsPlayback) slide.AutoAdvance = null;
         return true;
     }
 
-    public static string VideoEndName(CueVideoEnd end) => VideoEndChoices.First(c => c.End == end).Name;
+    public static string VideoEndName(VideoEnds end) => VideoEndChoices.First(c => c.End == end).Name;
 }

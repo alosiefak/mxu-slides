@@ -36,7 +36,7 @@ public static class NoteSlideBuilder
     public static string? DesignName(SlideKind kind, Theme? theme, int pointCount = 0)
     {
         // Photo designs are only for pictures.
-        var slides = theme?.Slides?.Where(s => kind == SlideKind.Picture || PhotoSpots.Of(s).Count == 0).ToList();
+        var slides = theme?.Slides?.Where(s => kind == SlideKind.Picture || s.PhotoSpotsOf().Count == 0).ToList();
         if (slides is null || slides.Count == 0) return null;
         if (kind == SlideKind.Points)
         {

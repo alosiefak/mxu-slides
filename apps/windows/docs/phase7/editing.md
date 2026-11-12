@@ -149,7 +149,7 @@ Windows clipboard; `ViewModels/MainViewModel.Clipboard.cs` runs the commands.
   camera cuts (`WindowsExtras.CopyOwner`), and a pasted object keeps its kinetic build and its lock.
 - **Merge Slides** (right-click two or more picked slides) is MxU's newest Mac command. The first
   slide keeps its settings; the others' words follow on new lines, chords and styled words along
-  (`Core/Editing/SlideMerge.cs`).
+  (`Core/Lyrics/SlideBulkEdit.cs`, the one copy kept when the engine port joined).
 
 Every paste, cut, duplicate and merge is one undo step.
 
@@ -258,7 +258,7 @@ Merged from main (MxU's update #10):
 |---|---|
 | `PresenterCore/…/MenuCommandLogic.swift` (`UndoMenuLogic`) | `MxU.Slides.Core/Undo/UndoMenuLogic.cs` |
 | `PresenterCore/…/Library/MoveUndoJournal.swift` (the rules: 50 steps, 5 s coalescing, dead entries dropped, nothing recorded while restoring; `ListOrder.apply`, `ListRemoval.restore`) | `MxU.Slides.Core/Undo/UndoScope.cs`, `UndoHistory.cs`, `JsonMerge.cs` |
-| `SlideScene/…/SlideBulkEdit.swift` (`freshIDCopy`, `duplicateSlides`, `deleteSlides`, `insertSlides(after:)`, `moveSlide(before:)`, `mergeSlides`) | `MxU.Slides.Core/Editing/EditorClipboard.cs`, `Dropping.cs` (`DropRules.MoveSlides`), `SlideMerge.cs`. wt\up-core ports the rest of `SlideBulkEdit`: integration keeps one `mergeSlides` |
+| `SlideScene/…/SlideBulkEdit.swift` (`freshIDCopy`, `duplicateSlides`, `deleteSlides`, `insertSlides(after:)`, `moveSlide(before:)`, `mergeSlides`) | `MxU.Slides.Core/Editing/EditorClipboard.cs`, `Dropping.cs` (`DropRules.MoveSlides`); `mergeSlides` is `MxU.Slides.Core/Lyrics/SlideBulkEdit.cs` (one copy, from the engine port) |
 | `Sources/SlideEditorModel.swift` (`pasteObjects`, `duplicateSelectedObjects`, `copySlides`, `pasteSlides`, `bringForward`, `sendBackward`, `bringToFront`, `sendToBack`, `groupSelection`, `ungroupSelection`, `panelStackTopFirst`, `movePanelObject`, `applyStyleToSelection`, `toggleSelectionBold/Italic/Underline`, `mergeSlides`) | `Core/Editing/EditorClipboard.cs`, `Layers.cs`; `ViewModels/MainViewModel.Clipboard.cs`, `MainViewModel.Layers.cs`, `ObjectInspectorViewModel.TextTools.cs` |
 | `PresenterCore/…/Library/SlideGridDrop.swift` | `MxU.Slides.Core/Editing/Dropping.cs` (`SlideGridDrop`, `SlideDropZones`) |
 | `PresenterCore/…/Library/TextStyleRuns.swift` (with `textTransform`, schema v161; `SlideObject.replaceText`; `AnimationRanges.replacing`, `reanchor`) | `MxU.Slides.Core/Editing/TextStyleRuns.cs` (`TextStyleRuns`, `ObjectText`) |

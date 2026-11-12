@@ -97,8 +97,8 @@ own defaults. It's a per-computer habit, so it isn't in the shared design map.
   chips) isn't read: Paste takes the clipboard's plain text. The Mac's three tests for that
   (`NoteFileMediaTests`: a browser's copy, a paste's pictures, a Drive chip's video link) aren't
   ported, and neither are its four `NoteTextReplacementTests`, which test the Mac's own text view.
-- Five tests wait for the engine catch-up's starter packs (`up-core`): they are skipped with a note
-  saying so, and pass once that lands.
+- The five tests that waited for the engine catch-up's starter packs run now (nothing is skipped).
+  Photo spots have one home, `Core/Library/PhotoSpots.cs`, as on the Mac; Make Slides calls it.
 - Of the Mac's seven `DesignActionsTests`, the four for what Windows has are ported; the three for
   applying a theme to a whole deck or to some slides wait for `Presentation.applyTheme` in C#.
 
@@ -109,7 +109,7 @@ Ported line by line (add under the Swift file's row):
 | Swift | C# |
 |---|---|
 | `PresenterCore/Library/NoteSlideMarks.swift`, `NoteSlideSuggestions.swift`, `NoteSlideUpdate.swift`, `NoteLiveUpdates.swift`, `NoteFollowAlong.swift`, `NoteMedia.swift`, `NotePassages.swift`, `NoteReading.swift`, `NoteDeckCards.swift`, `NotePanels.swift`, `NoteSlides.swift`, `NoteSlidesMade.swift`, `NoteTextReplacement.swift`, `LocalNotes.swift` | `MxU.Slides.Core/Notes/*` (same names; `NotePassages` and `NoteDeckCards` are in `NotePanels.cs`, `LocalNotes` in `NoteReading.cs`, `NoteTextReplacement` in `NoteSlideMarks.cs`) |
-| `PresenterCore/Library/SlidePlanner.swift`, `SlideDesignMap.swift`, `PhotoSpots.swift`, `SlideBuildingSettingsLogic.swift` | `Core/Notes/SlidePlanner.cs`, `NoteSlideBuilder.cs`, `SlideDesignMap.cs`, `PhotoSpots.cs`, `SlideBuildingSettingsLogic.cs` |
+| `PresenterCore/Library/SlidePlanner.swift`, `SlideDesignMap.swift`, `PhotoSpots.swift`, `SlideBuildingSettingsLogic.swift` | `Core/Notes/SlidePlanner.cs`, `NoteSlideBuilder.cs`, `SlideDesignMap.cs`, `SlideMediaFacts.cs` (photo spots themselves are `Core/Library/PhotoSpots.cs`), `SlideBuildingSettingsLogic.cs` |
 | `Import/NoteFileReader.swift`, `PDFGlyphReader.swift`, `DocxMedia.swift`, `ZipExtract.swift` | `Core/Notes/NoteFileReader.cs`, `NoteDocumentReaders.cs` (PDF via PdfPig) |
 | `PPTXImport/PPTXNoteText.swift` | `MxU.Slides.PptxImport/PptxNoteText.cs` |
 | `PresenterCore/Library/DesignActions.swift`, slide history | `Core/Library/DesignActions.cs`, `SlideHistory.cs` |
@@ -135,6 +135,6 @@ Not ported yet:
 | Web pictures in notes; .doc and .rtfd | No network fetches; no reader for those formats |
 | `Presentation.applyTheme` / `adoptDesignActions` (deck-wide design actions) and their 3 tests | Not needed by Make Slides; the per-slide part is ported |
 | `NoteTextReplacementTests`, the `*SweepTests` over the Mac's Swift source | They test the Mac's own text view and source files |
-| Photo-spot drawing in the new starter designs | Comes with the engine catch-up (`up-core`) |
+
 
 *This is the walkthrough; see also [HOW-IT-WORKS.md](../HOW-IT-WORKS.md) and [PORTING.md](../PORTING.md).*

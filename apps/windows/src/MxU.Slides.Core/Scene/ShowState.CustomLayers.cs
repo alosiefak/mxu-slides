@@ -4,7 +4,8 @@ using MxU.Slides.Core.Model;
 
 namespace MxU.Slides.Core.Scene;
 
-// Custom layers (the Screen Map): the active output preset's own layers, each sitting above the
+// Custom layers (the Screen Map): the output presets' own layers (every preset's, as the Mac's
+// OutputPresetsController hands them over), each sitting above the
 // layer it names. Media fired with a layer id (CueMedia.LayerId) plays on that layer, which the
 // Screen Map can then place on any screen. They behave as foreground media layers: a new slide
 // sweeps foreground media off them, and Clear Media and Clear All clear them. Port of the
@@ -15,14 +16,14 @@ public sealed partial class ShowState
     private readonly Dictionary<string, CueMedia> customMedia = new(StringComparer.Ordinal);
     private IReadOnlyList<CustomLayer> customLayers = [];
 
-    /// <summary>The active preset's custom layers, bottom first.</summary>
+    /// <summary>The presets' custom layers, bottom first.</summary>
     public IReadOnlyList<CustomLayer> CustomLayers => customLayers;
 
     /// <summary>What plays on each custom layer, by its id.</summary>
     public IReadOnlyDictionary<string, CueMedia> CustomLayerMedia => customMedia;
 
     /// <summary>
-    /// The active preset changed its layers. Media on a layer that's gone is dropped (it has
+    /// The presets' layers changed. Media on a layer that's gone is dropped (it has
     /// nowhere to draw), as on the Mac.
     /// </summary>
     public void SetCustomLayers(IReadOnlyList<CustomLayer>? layers)
@@ -36,7 +37,7 @@ public sealed partial class ShowState
         if (!same || dropped.Count > 0) Changed?.Invoke();
     }
 
-    /// <summary>The custom layer a cue names, when the active preset has it.</summary>
+    /// <summary>The custom layer a cue names, when a preset has it.</summary>
     public string? CustomLayerOf(CueMedia cue) =>
         cue.LayerId is { Length: > 0 } id && customLayers.Any(l => l.Id == id) ? id : null;
 

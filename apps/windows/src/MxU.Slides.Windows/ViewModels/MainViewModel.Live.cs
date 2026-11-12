@@ -471,6 +471,7 @@ public sealed partial class MainViewModel
         outputs.LooksChanged += () => RenderOutputs(SceneTransition.Cut);
         if (Settings.ActiveOutputPresetId is { } presetId && Library.Get<OutputPreset>(presetId) is { } preset)
             ApplyPresetToOutputs(outputs, preset);
+        else SyncCustomLayers(); // with no preset active, a slide can still name another preset's layer
     }
 
     /// <summary>Looks as themes, scoped to their folder or design; a look whose theme has gone is left out (that screen shows the slide as designed).</summary>

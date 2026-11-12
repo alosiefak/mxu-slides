@@ -60,7 +60,7 @@ public sealed partial class MainViewModel
             MidiDevices = [.. this.MidiDevices.Where(d => d.WantsOutput).Select(d => new EditorChoice(d.Id, d.Device.Name))],
             SlideCount = id => Library.Get<Presentation>(id)?.Slides.Count,
             ComboIcon = id => Library.Get<ActionCombo>(id)?.IconName,
-            CustomLayers = Core.Media.CueMediaEditing.CustomLayers(Library.All<OutputPreset>()),
+            CustomLayers = this.CustomLayers,
         };
     }
 

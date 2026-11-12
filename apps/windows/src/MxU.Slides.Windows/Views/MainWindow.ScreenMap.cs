@@ -4,8 +4,8 @@ using MxU.Slides.Windows.ViewModels;
 
 namespace MxU.Slides.Windows.Views;
 
-// A media tile's Layer menu (the Screen Map): fire the item onto one of the active preset's
-// custom layers, or clear one. Shown only while the preset has custom layers. Port of the
+// A media tile's Layer menu (the Screen Map): fire the item onto one of the output presets'
+// custom layers, or clear one. Shown only while a preset has custom layers. Port of the
 // Mac's media-item Layer menu (LibraryView / MediaCueMenu).
 public partial class MainWindow
 {

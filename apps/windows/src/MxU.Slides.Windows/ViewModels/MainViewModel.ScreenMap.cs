@@ -12,17 +12,25 @@ namespace MxU.Slides.Windows.ViewModels;
 /// </summary>
 public sealed partial class MainViewModel
 {
-    /// <summary>Makes a preset (or none) the outputs' routing, placements and custom layers.</summary>
+    /// <summary>Makes a preset (or none) the outputs' routing and placements, and refreshes the show's custom layers.</summary>
     private void ApplyPresetToOutputs(OutputManager outputs, OutputPreset? preset)
     {
         OutputPresets.Apply(outputs.Config, preset, ThemeExists);
-        Show.SetCustomLayers(preset?.Layers);
+        SyncCustomLayers();
     }
 
-    /// <summary>The active preset's custom layers, for a media item's Layer menu.</summary>
-    public IReadOnlyList<CustomLayer> CustomLayers => Show.CustomLayers;
+    /// <summary>
+    /// Every output preset's custom layers, once each, by name: what a media tile's Layer menu, a
+    /// slide's Layer menu and a Clear step can name. The Mac's <c>OutputPresetsController.customLayers</c>,
+    /// which lists every preset's layers (not only the active one's), so a slide that names a layer
+    /// plays there whichever preset is up.
+    /// </summary>
+    public IReadOnlyList<CustomLayer> CustomLayers => Core.Media.CueMediaEditing.CustomLayers(Library.All<OutputPreset>());
 
-    /// <summary>Fires a media item onto one of the active preset's custom layers.</summary>
+    /// <summary>Hands the show the custom layers (at launch, when a preset is applied, and when the Screen Map adds or removes one).</summary>
+    public void SyncCustomLayers() => Show.SetCustomLayers(CustomLayers);
+
+    /// <summary>Fires a media item onto a custom layer.</summary>
     public void FireMediaOnLayer(MediaItem item, string customLayerId)
     {
         var cue = MediaCueRouting.Dropped(item);

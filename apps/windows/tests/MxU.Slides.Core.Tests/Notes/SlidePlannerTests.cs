@@ -503,9 +503,8 @@ public class SlidePlannerTests
         Assert.Equal("Write down one thing you’re holding onto that can be shaken.", boxes.First(b => b.Name == "Point").Text);
     }
 
-    // Part of the Mac's aListIsSeveralPointsAndALabelTakesTheKicker. PR #13's StarterPacks change
-    // (the Points box's spacing and shrink floor) is ported by the engine catch-up (wt\up-core).
-    [Fact(Skip = "Needs PR #13's StarterPacks change, ported in the engine catch-up (wt\\up-core)")]
+    // Part of the Mac's aListIsSeveralPointsAndALabelTakesTheKicker (the Points box's spacing, from the starter packs).
+    [Fact]
     public void ThePointsDesignSpacesItsPoints() =>
         Assert.Equal(28, StarterPack.CleanGeometric.MakeTheme().Slides!.First(s => s.Name == "Points").Objects.First(o => o.Name == "Points").TextStyle?.ParagraphSpacing);
 

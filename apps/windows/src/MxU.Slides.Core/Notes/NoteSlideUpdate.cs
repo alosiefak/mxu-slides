@@ -1,4 +1,5 @@
 using MxU.Slides.Core.Json;
+using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Lyrics;
 using MxU.Slides.Core.Model;
 

@@ -115,7 +115,7 @@ public static class EditorMenus
     private static List<FrameworkElement> SlideMediaItems(MainViewModel model, Presentation deck, Slide slide)
     {
         if (slide.Background is not { } cue || cue.IsLiveInput() || model.Library.Get<MediaItem>(cue.MediaId) is not { } item) return [];
-        var custom = model.CustomLayers();
+        var custom = model.CustomLayers;
         var chosen = CueMediaEditing.ChosenLayer(cue, item.MediaKind, custom);
         var layer = new MenuItem { Header = "Layer" };
         // Default, then the built-in layers, then the custom ones, as the Mac's picker groups them.

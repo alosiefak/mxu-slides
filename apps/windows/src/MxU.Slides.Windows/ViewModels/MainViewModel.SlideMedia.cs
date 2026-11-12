@@ -1,5 +1,6 @@
 using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Notes;
 
 namespace MxU.Slides.Windows.ViewModels;
 
@@ -11,9 +12,6 @@ namespace MxU.Slides.Windows.ViewModels;
 /// </summary>
 public sealed partial class MainViewModel
 {
-    /// <summary>The output presets' custom layers (Screen Map), for a slide's Layer menu and Clear steps.</summary>
-    public IReadOnlyList<CustomLayer> CustomLayers() => CueMediaEditing.CustomLayers(Library.All<OutputPreset>());
-
     /// <summary>Sends the slide's media to a layer (null: where it plays by default).</summary>
     public bool SetSlideMediaLayer(Presentation presentation, Slide slide, string? layerId)
     {
@@ -33,7 +31,7 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Sets what the slide's video does at its end (next slide, stop, loop, fade to black or clear).</summary>
-    public bool SetSlideVideoEnd(Presentation presentation, Slide slide, CueVideoEnd end)
+    public bool SetSlideVideoEnd(Presentation presentation, Slide slide, SlideOptions.VideoEnds end)
     {
         if (!CueMediaEditing.SetVideoEnd(slide, end)) return false;
         SlidesRestyled(presentation);

@@ -417,6 +417,7 @@ internal sealed class ScreenMapWindow : Window
         change(preset);
         model.Library.Save(preset);
         if (model.ActiveOutputPresetId == preset.Id) model.SwitchOutputPreset(preset.Id);
+        else model.SyncCustomLayers(); // a layer added to any preset can be played on straight away
         status.Text = $"Saved to {preset.Name}.";
         Draw();
     }

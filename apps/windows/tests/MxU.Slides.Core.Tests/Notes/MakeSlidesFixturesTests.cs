@@ -162,21 +162,34 @@ public class MakeSlidesFixturesTests
         Assert.Equal("Points", slides[0].ThemeSlideName);
     }
 
-    // The two below read PR #13's StarterPacks change (the Points box shrinks to a floor, and
-    // StarterPack.shrinkingPoints repairs older libraries), which the engine catch-up (wt\up-core) ports.
-    [Fact(Skip = "Needs PR #13's StarterPack.shrinkingPoints, ported in the engine catch-up (wt\\up-core)")]
+    [Fact]
     public void TheRepairGivesThePointsBoxItsFloor()
     {
+        var pack = StarterPack.BoldBlocks;
+        var fresh = pack.MakeTheme().Slides!;
+        List<Slide> Changing(IReadOnlyList<Slide> slides, Action<TextStyle> change)
+        {
+            var copy = MxuJson.Clone(slides.ToList());
+            foreach (var box in copy.SelectMany(s => s.Objects).Where(o => o.Id == $"{pack.ThemeId()}.points.text" && o.TextStyle is not null))
+                change(box.TextStyle!);
+            return copy;
+        }
+        var stale = Changing(fresh, style => (style.AutoShrink, style.MinFontSize) = (null, null));
+        Assert.False(MxuJson.StructurallyEqual(stale, fresh));
+        Assert.True(MxuJson.StructurallyEqual(fresh, pack.ShrinkingPoints(stale)));
+        // A box whose owner chose not to shrink is left alone.
+        var chosen = Changing(stale, style => style.AutoShrink = false);
+        Assert.True(MxuJson.StructurallyEqual(chosen, pack.ShrinkingPoints(chosen)));
     }
 
-    [Theory(Skip = "Needs PR #13's StarterPacks Points shrink floor, ported in the engine catch-up (wt\\up-core)")]
+    [Theory]
     [MemberData(nameof(Packs))]
     public void LongPointsKeepTheirSizeAndSplit(StarterPack pack)
     {
         const string rules = "Backyard Ultra - Rules:\nComplete 4.167 miles, every hour, on the hour.\nWarnings given 3, 2, and 1 minute prior to each loop. All competitors must be in the starting corral before the starting whistle.\nYou win by being the last person standing and must complete an additional loop in order to win outright.";
         var theme = pack.MakeTheme();
         var built = NoteSlideBuilder.Build(new DeterministicSlidePlanner().Plan([new MarkedGroup("r", rules, "points")], theme, new Dictionary<string, SlideRowOverride>()));
-        Assert.True(built.Slides.Count >= 2);
+        Assert.True(built.Slides.Count >= 2, $"{pack}: {string.Join(" / ", built.Slides.Select(s => string.Join("|", s.Objects.Select(o => o.Text))))}");
         var box = Json.MxuJson.Clone(theme.Slides!.First(s => s.Name == "Points").Objects.First(o => o.Id == $"{pack.ThemeId()}.points.text"));
         box.TextStyle!.AutoShrink = null;
         foreach (var slide in built.Slides)

@@ -5,6 +5,7 @@ using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Model;
+using MxU.Slides.Core.Notes;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Core.Stage;
 using MxU.Slides.Windows.ViewModels;
@@ -404,9 +405,9 @@ public sealed partial class SelfTest
         model.SetSlideMediaLayer(deck, pictureSlide, "overlays");
         Check("Scale and Blur and the Overlays layer are saved in the shared fields",
             model.Library.Get<Presentation>(deck.Id)?.Slides.FirstOrDefault(s => s.Id == "e7-picture")?.Background is { ScaleMode: MediaScaleMode.ScaleAndBlur, LayerId: "overlays", Layer: null });
-        model.SetSlideVideoEnd(deck, videoSlide, CueVideoEnd.FadeToBlack);
+        model.SetSlideVideoEnd(deck, videoSlide, SlideOptions.VideoEnds.FadeToBlack);
         Check("a video slide fades to black at its end", videoSlide.Background is { EndFade: MediaEndFade.Black, Loops: false } && videoSlide.AutoAdvance is null);
-        model.SetSlideVideoEnd(deck, videoSlide, CueVideoEnd.Next);
+        model.SetSlideVideoEnd(deck, videoSlide, SlideOptions.VideoEnds.Next);
         Check("…or goes to the next slide", videoSlide.AutoAdvance is { AfterPlayback: true } && videoSlide.Background?.EndFade is null);
     }
 

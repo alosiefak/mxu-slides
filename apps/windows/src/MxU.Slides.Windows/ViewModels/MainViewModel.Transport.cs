@@ -187,25 +187,8 @@ public sealed partial class MainViewModel
 
     private string? transportNextMarkHex;
 
-    /// <summary>
-    /// A media item's marks in the pass (the Mac's VideoMarks.points): moved by the in point, only
-    /// those inside the pass, in time order. Kept here until Core's VideoMarks (the engine
-    /// catch-up, wt/up-core) lands; integration swaps this for VideoMarks.Points, the same rule.
-    /// </summary>
-    public static IReadOnlyList<VideoMark> MarksInPass(IReadOnlyList<VideoMark>? marks, double? inPoint, double length)
-    {
-        var offset = inPoint ?? 0;
-        return
-        [
-            .. (marks ?? [])
-                .Select(m => new VideoMark { Id = m.Id, Name = m.Name, At = m.At - offset, ColorHex = m.ColorHex, Actions = m.Actions })
-                .Where(m => m.At >= 0 && m.At <= length)
-                .OrderBy(m => m.At).ThenBy(m => m.Id, StringComparer.Ordinal),
-        ];
-    }
-
     /// <summary>The next-mark caption: the mark's name (cut to 16 letters, as on the Mac) and the time until it.</summary>
-    public static string NextMarkCaption(VideoMark next, double position) =>
+    public static string NextMarkCaption(VideoMarks.Point next, double position) =>
         $"· Next: {(next.Name.Length <= 16 ? next.Name : next.Name[..16] + "…")} {TransportClock(next.At - position)}";
 
     /// <summary>The marks on the bar (republished only when they change) and the next one's caption.</summary>
@@ -213,7 +196,8 @@ public sealed partial class MainViewModel
     {
         var item = mediaId is null ? null : Library.Get<MediaItem>(mediaId);
         var length = state?.Duration ?? 0;
-        var points = length > 0 && item?.Marks is { Count: > 0 } ? MarksInPass(item.Marks, item.InPoint, length) : [];
+        // The marks inside the pass, as pass times (Core's VideoMarks.Points, the rule that fires them too).
+        var points = length > 0 ? VideoMarks.Points(item?.Marks, item?.InPoint, length) : [];
         IReadOnlyList<TransportMark> marks = [.. points.Select(p => new TransportMark(p.At / length, p.Name, p.ColorHex))];
         if (!marks.SequenceEqual(TransportMarks)) TransportMarks = marks;
         var position = state?.PositionAt(now) ?? 0;

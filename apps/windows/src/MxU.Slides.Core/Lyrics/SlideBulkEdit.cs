@@ -5,8 +5,8 @@ namespace MxU.Slides.Core.Lyrics;
 
 /// <summary>
 /// Edits across several slides of a deck. So far: Merge Slides, the Core half of MxU's
-/// "Merge Slides joins selected slides into one, chords along" (the menu belongs to the slide
-/// editor). Port of SlideBulkEdit.mergeSlides in the Mac's SlideScene/SlideBulkEdit.swift.
+/// "Merge Slides joins selected slides into one, chords along" (the slide grid's Merge Slides
+/// menu calls it: MainViewModel.MergePickedSlides). Port of SlideBulkEdit.mergeSlides in the Mac's SlideScene/SlideBulkEdit.swift.
 /// </summary>
 public static class SlideBulkEdit
 {

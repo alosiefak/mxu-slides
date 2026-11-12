@@ -527,7 +527,7 @@ public sealed record DeterministicSlidePlanner(
         if (picture && group.Media.Count > 0 && PhotoDesign(design, together, group.Media.Count, theme) is { } pick)
         {
             row.ThemeSlideName = pick.Name;
-            var spots = PhotoSpots.Of(pick);
+            var spots = pick.PhotoSpotsOf();
             row.PhotosPerSlide = together ? spots.Count : 1;
             row.ScaleChosen = PictureScaleChosen;
             if (!PictureScaleChosen && row.Scale?.InPhotoSpot() == MediaScaleMode.Fill)
@@ -584,14 +584,14 @@ public sealed record DeterministicSlidePlanner(
     /// <summary>The design a picture slide takes: the chosen one with photo spots, or, for pictures together, the one with the most spots it can fill.</summary>
     internal static Slide? PhotoDesign(string? chosen, bool together, int count, Theme? theme)
     {
-        var picked = Template(chosen, theme) is { } t && PhotoSpots.Of(t).Count > 0 ? t : null;
+        var picked = Template(chosen, theme) is { } t && t.PhotoSpotsOf().Count > 0 ? t : null;
         if (!together) return picked;
-        if (picked is not null && PhotoSpots.Of(picked).Count >= 2) return picked;
-        var designs = (theme?.Slides ?? []).Where(s => PhotoSpots.Of(s).Count >= 2).ToList();
+        if (picked is not null && picked.PhotoSpotsOf().Count >= 2) return picked;
+        var designs = (theme?.Slides ?? []).Where(s => s.PhotoSpotsOf().Count >= 2).ToList();
         if (designs.Count == 0) return picked;
-        var most = designs.Max(s => PhotoSpots.Of(s).Count);
+        var most = designs.Max(s => s.PhotoSpotsOf().Count);
         var want = Math.Min(count, most);
-        var fits = designs.Where(s => PhotoSpots.Of(s).Count == want).ToList();
+        var fits = designs.Where(s => s.PhotoSpotsOf().Count == want).ToList();
         return fits.FirstOrDefault(s => s.Folder == picked?.Folder) ?? fits.FirstOrDefault() ?? picked;
     }
 
