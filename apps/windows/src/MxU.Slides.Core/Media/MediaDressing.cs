@@ -39,7 +39,8 @@ public static class MediaDressing
                 var item = layer.Items[i];
                 if (item.Render.Content is not ItemContent.Media media || lookup(media.Id) is not { IsPlain: false } dress) continue;
                 dressed ??= scene.Copy();
-                dressed[layer.Kind].Items[i] = Dressed(item, media, dress, scene.CanvasSize);
+                // By the layer's id: a custom layer (MxU's Screen Map) has no built-in kind.
+                dressed.Layer(layer.Id)!.Items[i] = Dressed(item, media, dress, scene.CanvasSize);
             }
         }
         return dressed ?? scene;
