@@ -70,6 +70,42 @@ public sealed partial class MainViewModel
         }
     }
 
+    // MARK: Editing (the Video Actions window)
+
+    /// <summary>
+    /// Saves a video's marks (none is stored as absent, as on the Mac). The live video picks
+    /// them up on its next reading, because marks are read from the library each time.
+    /// False when the item is gone or the save failed.
+    /// </summary>
+    public bool SaveVideoMarks(string mediaId, IReadOnlyList<VideoMark> marks)
+    {
+        if (Library.Get<MediaItem>(mediaId) is not { } item) return false;
+        var before = item.Marks;
+        item.Marks = marks.Count == 0 ? null : [.. marks];
+        try
+        {
+            Library.Save(item);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            item.Marks = before;
+            Infrastructure.Log.Error("Couldn't save the video's actions", ex);
+            Problem = $"Couldn't save the video's actions: {ex.Message}";
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Where a video is right now, in its file's own seconds (a mark's time), when it is live.
+    /// The player reports the pass (0 = the in point), so the in point is added back.
+    /// </summary>
+    internal double? VideoPlayhead(string mediaId)
+    {
+        if (LiveTransport(mediaId) is not { Duration: > 0 } state) return null;
+        return (Library.Get<MediaItem>(mediaId)?.InPoint ?? 0) + state.PositionAt(DateTimeOffset.Now);
+    }
+
     /// <summary>What the stage display reads now (the self-test checks a video mark's countdown and name with it).</summary>
     internal Core.Stage.ConfidenceInfo StageInfoNow() => BuildConfidenceInfo();
 

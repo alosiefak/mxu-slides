@@ -116,6 +116,42 @@ public class VideoMarksTests
         Assert.Equal(0, V.Moving(Marks, "a", -3, 60).Single(m => m.Id == "a").At);
     }
 
+    // Windows' Video Actions window edits through these (the Mac does them inline in its editor).
+    [Fact]
+    public void RenamingRemovingAndActionsLeaveTheGivenMarksAlone()
+    {
+        var renamed = V.Renaming(Marks, "b", "  Band Walk-On ");
+        Assert.Equal("Band Walk-On", renamed.Single(m => m.Id == "b").Name);
+        Assert.NotEqual("Band Walk-On", Marks.Single(m => m.Id == "b").Name);
+        Assert.Equal(Marks.Single(m => m.Id == "b").Name, V.Renaming(Marks, "b", "   ").Single(m => m.Id == "b").Name);
+
+        var action = new SlideAction { Id = "act", Kind = SlideActionKind.ClearAll };
+        var acting = V.WithActions(Marks, "a", [action]);
+        Assert.Equal(["act"], acting.Single(m => m.Id == "a").Actions.Select(a => a.Id));
+        Assert.Empty(Marks.Single(m => m.Id == "a").Actions);
+        Assert.NotSame(action, acting.Single(m => m.Id == "a").Actions[0]);
+
+        Assert.Equal(["c", "a", "d"], V.Removing(Marks, "b").Select(m => m.Id));
+        Assert.Empty(V.Removing(null, "b"));
+    }
+
+    [Fact]
+    public void ClockReadsAndWritesAMarksTime()
+    {
+        Assert.Equal("0:07.5", V.Clock(7.5));
+        Assert.Equal("12:03.0", V.Clock(723));
+        Assert.Equal("1:02:03.0", V.Clock(3723.04));
+        Assert.Equal("0:02.9", V.Clock(2.999));
+        Assert.Equal("0:00.0", V.Clock(-1));
+        Assert.Equal(7.5, V.ParseClock("7.5"));
+        Assert.Equal(62.5, V.ParseClock(" 1:02.5 "));
+        Assert.Equal(3723, V.ParseClock("1:02:03"));
+        Assert.Null(V.ParseClock("soon"));
+        Assert.Null(V.ParseClock("-4"));
+        Assert.Null(V.ParseClock("1:2:3:4"));
+        Assert.Null(V.ParseClock(""));
+    }
+
     [Fact]
     public void MarksAtTheSameMomentAllFireInTheListsOrder()
     {

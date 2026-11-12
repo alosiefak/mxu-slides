@@ -115,6 +115,59 @@ public static class VideoMarks
             return moved;
         }));
 
+    // The three edits below are what the Mac's media editor does inline (MediaEditorView.swift's
+    // writeMarks closures). Each returns a new list and leaves the given marks alone, so the
+    // window can keep showing the old ones if the save fails.
+
+    /// <summary>Renames a mark. A blank name is refused (the old one stays), as on the Mac.</summary>
+    public static List<VideoMark> Renaming(IEnumerable<VideoMark>? marks, string id, string name)
+    {
+        var trimmed = name.Trim();
+        return (marks ?? []).Select(m =>
+        {
+            if (m.Id != id || trimmed.Length == 0) return m;
+            var renamed = Json.MxuJson.Clone(m);
+            renamed.Name = trimmed;
+            return renamed;
+        }).ToList();
+    }
+
+    /// <summary>Gives a mark the actions it runs when playback crosses it.</summary>
+    public static List<VideoMark> WithActions(IEnumerable<VideoMark>? marks, string id, IEnumerable<SlideAction> actions) =>
+        (marks ?? []).Select(m =>
+        {
+            if (m.Id != id) return m;
+            var changed = Json.MxuJson.Clone(m);
+            changed.Actions = [.. actions.Select(Json.MxuJson.Clone)];
+            return changed;
+        }).ToList();
+
+    public static List<VideoMark> Removing(IEnumerable<VideoMark>? marks, string id) =>
+        (marks ?? []).Where(m => m.Id != id).ToList();
+
+    /// <summary>A mark's time as the operator reads it: "0:07.5", "12:03.0", "1:02:03.0" (tenths, never rounded up past the mark).</summary>
+    public static string Clock(double seconds)
+    {
+        var tenths = (long)Math.Floor(Math.Max(seconds, 0) * 10 + 1e-6);
+        var (hours, minutes, rest) = (tenths / 36000, tenths / 600 % 60, tenths % 600);
+        var tail = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{rest / 10:00}.{rest % 10}");
+        return hours > 0 ? $"{hours}:{minutes:00}:{tail}" : $"{minutes}:{tail}";
+    }
+
+    /// <summary>Seconds from a typed time: "ss", "m:ss" or "h:mm:ss", with decimals ("1:02.5"). Null when it can't be read.</summary>
+    public static double? ParseClock(string typed)
+    {
+        var parts = typed.Trim().Split(':');
+        if (parts.Length is < 1 or > 3) return null;
+        double total = 0;
+        foreach (var part in parts)
+        {
+            if (!double.TryParse(part, System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out var value)) return null;
+            total = total * 60 + value;
+        }
+        return total;
+    }
+
     // Inside the file, to the millisecond.
     private static double ClampedTime(double at, double fileLength)
     {

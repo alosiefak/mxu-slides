@@ -36,6 +36,7 @@ public partial class MainWindow
         if (at is not FrameworkElement element) return;
         PrepareMotionMenu(element);
         PrepareLayerMenu(element);
+        PrepareVideoActionsMenu(element);
     }
 
     /// <summary>

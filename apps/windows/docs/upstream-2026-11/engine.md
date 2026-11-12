@@ -14,7 +14,9 @@ A video can now carry **marks**: named points on its timeline (`MediaItem.marks`
 - **Countdowns.** `VideoCountdown` (`Core/Stage/ConfidenceInfo.cs`) now carries the marks. A Video Countdown text box can count to the end (as before), to the **next mark**, or to a **named mark**, and can **count up** from the mark before. Counting up never turns amber.
 - A new text source, **Video Action Name**, shows the coming mark's name ("Band Walk-On").
 
-Editing marks (the media editor's timeline) isn't ported yet: marks made on the Mac play here.
+- **Making marks.** Right-click a video in the Media bin › **Video Actions…** (`Views/VideoActionsWindow.cs`). Type a time (or press **Playhead** while the video is live), then **+ Add video action**: a *Mark Only*, or a mark that runs an action and is named after it. Each mark's row lets you type a new time to move it, rename it, edit its **Actions…** and remove it. Every change is saved at once into `MediaItem.marks`, the field the Mac writes, so the Mac sees the same marks. The rules are in Core: `Adding` and `Moving` keep time order and stay inside the file, `Renaming` refuses a blank name, and `Clock` / `ParseClock` write and read a time like `1:02.5`.
+
+The Mac edits marks on a timeline under the video's preview. Windows has no media editor yet, so its window is a list; the timeline with draggable pins, and a mark's colour, aren't ported. Choosing a countdown's target (the end, the next mark, a named mark, counting up) is in the Mac's text inspector, which belongs to the slide editor's port: Windows shows such a text box correctly, but can't make one yet.
 
 ## 2. Picture and video slides
 
@@ -38,7 +40,7 @@ The Screen Map draws the room as one big picture with each screen where it reall
 - **Placements.** An output preset can place any layer on the map (`OutputPreset.placements`): "the slide across both side screens", "the logo in the corner of the LED wall". `ScreenMapResolver.Resolve` turns each placement into frames in one screen's own units; a frame can run past the screen's edge, because the screen shows only its part.
 - **Drawing.** For a screen on the map, `OutputConfiguration.Placed` gives each placed layer a `PlacedLayer`: the room's (unscaled) picture of that layer and the frames it lands in. `SceneView.Layers.cs` draws the layer once into an unseen container and paints a brush of it into each frame, fitted or filling. A placed layer shows wherever it's placed, whatever the preset's routing; a screen it misses doesn't show it; a screen off the map keeps the routing as before. A placed Slide layer wears the look of the screen it mostly lands on, so a lyric across a wall reads the same on every piece.
 - **Custom layers.** A preset can add layers of its own (`OutputPreset.layers`), each above a layer it names. Scenes now hold layers by id (`RenderLayer.Id`; `Kind` is null for a custom layer). Media fired onto a custom layer (a cue's `layerId`, or a media tile's **Play on Layer** menu) plays there; a new slide sweeps foreground media off it, and Clear Media clears it (`ShowState.CustomLayers.cs`).
-- **The window.** Screens › **Screen Map…** (`Views/ScreenMapWindow.cs`): drag screens to where they sit (they snap to 10 pixels), place the preset's layers on every screen or across them, add and remove custom layers, and **New LED Wall…**, which adds a screen of the wall's own pixel size seeded 1:1 into its processor's frame (HD, or 4K for a bigger wall) and seats it on the map. The selected screen's picture shows with rulers and its share of each placed layer, and **Test card** puts the alignment grid on it. The rules live in `Core/Outputs/ScreenMapEditing.cs`.
+- **The window.** Screens › **Screen Map…** (`Views/ScreenMapWindow.cs`): drag screens to where they sit (they snap to 10 pixels), place the preset's layers on every screen or across them (each **fitted** whole inside its frames, or **filling** them), add and remove custom layers, and **New LED Wall…**, which adds a screen of the wall's own pixel size seeded 1:1 into its processor's frame (HD, or 4K for a bigger wall) and seats it on the map. The selected screen's picture shows with rulers and its share of each placed layer, and **Test card** puts the alignment grid on it. The rules live in `Core/Outputs/ScreenMapEditing.cs`.
 - **LED walls are no longer a layout.** As on the Mac, a placement in a processor's frame is where an output lands, not a shape: `OutputLayoutKind.LedWall` is gone, a placement doesn't change the layout, tiles are named "Slice N", and `SeedPlacement` puts a joining output under the ones already sharing a frame.
 
 ## 5. Streams and recordings
@@ -97,7 +99,7 @@ A church's upload is often the weakest link of a live stream. MxU's releases tau
 
 The Mac's tests came along: `VideoMarksTests`, the new `LinkedTextTests`, `PhotoSpotsTests` and `PhotoSpotSceneTests` (the parts not about Make Slides), `MediaLooksTests`, the new `SceneTransitionEngineTests`, `ScreenMapTests`, `LayerPlacementRoutingTests`, the new `OutputLayoutTests`, `ThemeOverrideTests.baseStyleReadsThePlaceholderBeforeTheTheme`, `SlideBulkEditTests.testMergeSlides…`, `LyricPhrasingTests`, `ScriptureReferenceTests`, `MediaCueRoutingTests`, and the stream tests (section 5). Windows adds `CustomLayerTests`, `ScreenMapEditingTests`, `ImageCacheTests` and the starter-repair tests.
 
-The self-test's **UpstreamCore** section checks photo spots and Scale and Blur (`upstream-photo-spots`, `upstream-scale-and-blur`), a dissolve mixing stacks (`upstream-dissolve-stacks`), the Screen Map across two screens (`upstream-screen-map-left`, `-right`, `upstream-screen-map-window`), video marks firing and the end fade (`upstream-video-marks`, `upstream-end-fade-before`, `upstream-end-fade-black`), and the streams (`upstream-streams-*`).
+The self-test's **UpstreamCore** section checks photo spots and Scale and Blur (`upstream-photo-spots`, `upstream-scale-and-blur`), a dissolve mixing stacks (`upstream-dissolve-stacks`), the Screen Map across two screens (`upstream-screen-map-left`, `-right`, `upstream-screen-map-window`), video marks made in the Video Actions window (`upstream-video-actions-window`), firing, and the end fade (`upstream-video-marks`, `upstream-end-fade-before`, `upstream-end-fade-black`), and the streams (`upstream-streams-*`).
 
 ## For PORTING.md
 
@@ -125,6 +127,7 @@ Update the existing `SlideScene/…/ThemeOverride.swift` row: `BaseStyle` is now
 |---|---|
 | `Sources/ScreenMapEditor.swift`, the Screen Map page of `ScreenConfigurationView.swift`, `OutputPicture.swift` | `Views/ScreenMapWindow.cs` over `Core/Outputs/ScreenMapEditing.cs` |
 | `Sources/ThumbnailStore.swift` (NSCache cost limits) | `Rendering/ImageCache.cs` in `MediaHub` |
+| `Sources/VideoActionsTimeline.swift` (`VideoActionsCard`'s list, `VideoActionAddMenu`), `MediaEditorView.swift` (`addMark`, `moveMark`, `removeMark`, rename, a mark's actions) | `Views/VideoActionsWindow.cs`, `Views/MainWindow.VideoMarks.cs`, `MainViewModel.SaveVideoMarks`, over `VideoMarks.Renaming` / `WithActions` / `Removing` / `Clock` / `ParseClock` |
 
 **Windows-only**
 
@@ -134,9 +137,9 @@ Update the existing `SlideScene/…/ThemeOverride.swift` row: `BaseStyle` is now
 
 **Not ported yet**
 
-- *Video marks:* editing marks (the media editor's Video Actions timeline, `MediaEditorView.swift`); marks on the transport strip's scrub bar. Marks made on the Mac play and fire here.
-- *Custom layers:* the transport strip's layer picker doesn't list them (their videos show with Foreground Videos); a slide action that clears a custom layer by id; the Local API's clear by custom-layer id; transitions on a custom layer follow Foreground Videos' setting.
-- *Screen Map:* the shared-outputs page ("Share it / Take it over"), `networkCarryFeed`, `restoreDisplayClaim`, the full output picture (Windows shows the screen's frame, rulers and placed layers, not its live picture), thumbnail chips with their hover, and a placed layer's own fit/fill choice in the window (the starting points place it fitted).
+- *Video marks:* the Mac's Video Actions *timeline* (`VideoActionsTimeline.swift` in `MediaEditorView.swift`: pins you drag under a preview, nudge by a frame, a mark's colour, undo); Windows edits marks as a list (`Views/VideoActionsWindow.cs`). Marks on the transport strip's scrub bar (`ScrubBar.swift`). The text inspector's countdown target and count-up controls (`SlideObjectInspector.swift`; the slide editor's port).
+- *Custom layers:* the transport strip's layer picker doesn't list them (their videos show with Foreground Videos); the Clear Layer action's picker doesn't offer them (a Mac-made step that names one does run here: `IShowActions.ClearCustomLayer`); the Local API's clear by custom-layer id; the slide grid's layer chips (`SlideLayerFacts.swift`); transitions on a custom layer follow Foreground Videos' setting.
+- *Screen Map:* the shared-outputs page ("Share it / Take it over"), `networkCarryFeed`, `restoreDisplayClaim`, the full output picture (Windows shows the screen's frame, rulers and placed layers, not its live picture), thumbnail chips with their hover, and dragging or resizing one placement by hand (the window places a layer with its starting points, **Each screen** or **Across**, and a **Fit / Fill** button).
 - *Dissolves:* Windows fades the two stacks as containers; the Mac mixes them in a shader, so with two opaque stacks the middle is slightly darker here.
 - *Media engine:* the live-input dropout note and the still-image tally; the sRGB encode pass of `OutputMirror` (Metal-only).
 - *All Caps per selection* (`TextStyleRun.textTransform` in the scene and text layout): the slide editor's port.

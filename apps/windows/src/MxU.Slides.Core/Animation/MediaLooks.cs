@@ -55,6 +55,22 @@ public static class MediaLooks
         return new SceneSourceRect(b.X + (b.Width - width) / 2, b.Y + (b.Height - height) / 2, width, height);
     }
 
+    /// <summary>
+    /// The blurred copy's frame, grown by the blur on every side that something clips (a spot's
+    /// matte clips all four; the canvas clips a side that reaches it). Windows only: WPF's blur
+    /// fades a picture out towards its own edges, which showed as a dark rim inside the frame.
+    /// The Mac's shader repeats the edge pixels instead, so it needs only the zoom. Grown, the
+    /// faded rim falls outside what's seen.
+    /// </summary>
+    internal static SceneRect Spread(SceneRect frame, double blur, SceneSize? canvas)
+    {
+        var left = canvas is null || frame.X <= 0 ? blur : 0;
+        var top = canvas is null || frame.Y <= 0 ? blur : 0;
+        var right = canvas is not { } c || frame.X + frame.Width >= c.Width ? blur : 0;
+        var bottom = canvas is not { } s || frame.Y + frame.Height >= s.Height ? blur : 0;
+        return new SceneRect(frame.X - left, frame.Y - top, frame.Width + left + right, frame.Height + top + bottom);
+    }
+
     private static bool NeedsExpanding(AnimatedItem item) =>
         item.Render.EndFade is not null
         || item.Render.Content is ItemContent.Media { ScaleMode: SceneMediaScaleMode.ScaleAndBlur }
@@ -73,6 +89,7 @@ public static class MediaLooks
                 Render = render with
                 {
                     Id = render.Id + "#scalebg",
+                    Frame = Spread(render.Frame, blur, canvas),
                     Content = new ItemContent.Media(media.Id, SceneMediaScaleMode.Fill, Zoomed(media.SourceRect)),
                     BlurRadius = render.BlurRadius + blur,
                     MaskedBy = null,
@@ -92,6 +109,7 @@ public static class MediaLooks
                 Render = render with
                 {
                     Id = render.Id + "#scalebg",
+                    Frame = Spread(render.Frame, blur, null),
                     MaskedBy = group,
                     BlurRadius = render.BlurRadius + blur,
                     Content = new ItemContent.Shape(outline with { Fill = new SceneFill.Media(fill.Id, SceneMediaScaleMode.Fill, Zoomed(fill.SourceRect)) }),

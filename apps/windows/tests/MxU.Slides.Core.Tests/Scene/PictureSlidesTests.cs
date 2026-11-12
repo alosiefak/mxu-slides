@@ -97,7 +97,11 @@ public class PictureSlidesTests
         Assert.Equal(["p#scalebg", "p"], output.Select(i => i.Id));
         Assert.Equal(new ItemContent.Media("m", SceneMediaScaleMode.Fill, MediaLooks.Zoomed(null)), output[0].Content);
         Assert.Equal(48, output[0].BlurRadius, 1e-9);
-        Assert.Equal(item.Frame, output[0].Frame);
+        // Windows only (the Mac keeps item.Frame): grown by the blur past the canvas, so WPF's faded rim isn't seen.
+        Assert.Equal(new SceneRect(-48, -48, Canvas.Width + 96, Canvas.Height + 96), output[0].Frame);
+        Assert.Equal(item.Frame, output[1].Frame);
+        // A side that nothing clips stays where it is: the blur mustn't spill over the slide.
+        Assert.Equal(new SceneRect(100, -48, 400, 348), MediaLooks.Spread(new SceneRect(100, 0, 400, 300), 48, Canvas));
         var zoom = MediaLooks.Zoomed(new SceneSourceRect(0.5, 0, 0.5, 1));
         Assert.Equal(0.5 / MediaLooks.BackdropZoom, zoom.Width, 1e-9);
         Assert.Equal(0.75, zoom.X + zoom.Width / 2, 1e-9);
@@ -156,6 +160,8 @@ public class PictureSlidesTests
         Assert.Equal(new SceneFill.Media("m", SceneMediaScaleMode.Fill, MediaLooks.Zoomed(null)), blurred.Fill);
         Assert.Null(blurred.Stroke);
         Assert.Equal(48, output[1].BlurRadius, 1e-9);
+        Assert.Equal(new SceneRect(52, 52, 496, 396), output[1].Frame); // grown under the matte (Windows only)
+        Assert.Equal(item.Frame, output[0].Frame);
         Assert.Equal(new SceneFill.Media("m", SceneMediaScaleMode.Fit), picture.Fill);
         Assert.NotNull(picture.Stroke); // the picture keeps the border
     }

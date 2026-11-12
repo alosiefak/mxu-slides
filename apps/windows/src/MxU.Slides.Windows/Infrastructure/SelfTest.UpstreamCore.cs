@@ -163,16 +163,21 @@ public sealed partial class SelfTest
             Check("the active preset's custom layer reaches the show", model.Show.CustomLayers.Any(l => l.Id == lower));
 
             model.Open(model.Library.Get<Presentation>(StarterContent.SampleSongId) ?? model.Library.All<Presentation>().First(), null, null);
-            model.GoLiveCommand.Execute(model.Slides[0]);
-            await Delay(300);
+            // Verse 1 (the song's first slide is blank), and time for its words to arrive.
+            model.GoLiveCommand.Execute(model.Slides[model.Slides.Count > 1 ? 1 : 0]);
+            await Delay(1200);
             var onLeft = config.PreviewProvider(SwiftUuid.Format(left.Id))();
             var onRight = config.PreviewProvider(SwiftUuid.Format(right.Id))();
             Check("a slide placed across two screens lands half on each",
                 onLeft[LayerKind.Slide].Placed?.Frames.Single().Rect == new SceneRect(0, 0, 3840, 1080)
                 && onRight[LayerKind.Slide].Placed?.Frames.Single().Rect == new SceneRect(-1920, 0, 3840, 1080));
-            report.AppendLine($"      screen map: the slide layer holds {onLeft[LayerKind.Slide].Items.Count} items on the left, {onRight[LayerKind.Slide].Items.Count} on the right; live: {TextOf(model.Show.Scene()).Replace('\n', ' ')}");
-            await Picture("upstream-screen-map-left", AnimatedScene.From(onLeft));
-            await Picture("upstream-screen-map-right", AnimatedScene.From(onRight));
+            var leftPixels = await Picture("upstream-screen-map-left", AnimatedScene.From(onLeft));
+            var rightPixels = await Picture("upstream-screen-map-right", AnimatedScene.From(onRight));
+            // The words are centred on the room's picture, so each screen shows its half of them:
+            // lit pixels on the left screen's right side, and on the right screen's left side.
+            int leftInk = LitColumns(leftPixels, 1280, 720, 640, 1280), rightInk = LitColumns(rightPixels, 1280, 720, 0, 640);
+            Check($"each screen draws its half of the placed slide's words (lit columns: {leftInk} left, {rightInk} right)",
+                onLeft[LayerKind.Slide].Items.Count > 0 && leftInk > 20 && rightInk > 20);
 
             // A picture fired onto the custom layer composites above the slide.
             if (model.Library.All<MediaItem>().FirstOrDefault(m => m.MediaKind == MediaKind.Image) is { } still)
@@ -181,8 +186,9 @@ public sealed partial class SelfTest
                 var ids = model.Show.AnimatedScene().Layers.Select(l => l.Id).ToList();
                 Check("media fired onto a custom layer draws just above the layer it names",
                     ids.IndexOf(lower) == ids.IndexOf("slide") + 1 && model.Show.CustomLayerMedia.ContainsKey(lower));
-                model.ClearLayer(lower);
-                Check("a custom layer clears by its id", !model.Show.CustomLayerMedia.ContainsKey(lower));
+                // A Mac-made Clear Layer step names the custom layer by its id.
+                model.Actions.Execute([new SlideAction { Id = "SELFTEST-CLEAR-CUSTOM", Kind = SlideActionKind.ClearLayer, Layer = lower }]);
+                Check("a Clear Layer action clears a custom layer by its id", !model.Show.CustomLayerMedia.ContainsKey(lower));
             }
 
             mapWindow = ScreenMapWindow.Open(Application.Current.MainWindow, outputs, model);
@@ -220,12 +226,39 @@ public sealed partial class SelfTest
         var copy = Core.Json.MxuJson.Clone(video);
         copy.Loops = false;
         copy.Classification = MediaClassification.Foreground;
-        copy.Marks =
-        [
-            new VideoMark { Id = "SELFTEST-MARK-1", Name = "Lights", At = 1.0, Actions = timer is null ? [] : [new SlideAction { Id = "SELFTEST-MARK-ACTION", Kind = SlideActionKind.TimerStart, TimerId = timer.Id }] },
-            new VideoMark { Id = "SELFTEST-MARK-2", Name = "Band Walk-On", At = 2.5, Actions = [] },
-        ];
+        copy.Marks = null;
         model.Library.Save(copy);
+        // The marks are made the way a person makes them: in the Video Actions window.
+        var editor = new Views.VideoActionsWindow(Application.Current.MainWindow, model, copy);
+        try
+        {
+            editor.Show();
+            editor.SetNewTime("0:02.5");
+            var walkOn = editor.AddMark();
+            editor.SetNewTime("9");
+            var lights = editor.AddMark();
+            Check("Video Actions adds marks in time order, named Mark 1, Mark 2",
+                editor.Marks.Select(m => m.Name).SequenceEqual(["Mark 1", "Mark 2"]) && editor.Marks.Select(m => m.Id).SequenceEqual([walkOn, lights]));
+            Check("typing an earlier time moves a mark ahead of the other", lights is not null && editor.Move(lights, "1") && editor.Marks[0].Id == lights && editor.Marks[0].At == 1.0);
+            Check("a mark can be renamed, but not to nothing", lights is not null && walkOn is not null
+                && editor.Rename(lights, "Lights") && editor.Rename(walkOn, " Band Walk-On ") && editor.Rename(walkOn, "  ")
+                && editor.Marks.Select(m => m.Name).SequenceEqual(["Lights", "Band Walk-On"]));
+            if (timer is not null && lights is not null)
+                Check("a mark is given an action", editor.SetActions(lights, [new SlideAction { Id = "SELFTEST-MARK-ACTION", Kind = SlideActionKind.TimerStart, TimerId = timer.Id }])
+                    && editor.Marks[0].Actions.Count == 1);
+            editor.SetNewTime("3");
+            var extra = editor.AddMark();
+            Check("a mark can be removed", extra is not null && editor.Marks.Count == 3 && editor.Remove(extra) && editor.Marks.Count == 2);
+            Check("the marks are saved in the shared document, as the Mac writes them",
+                model.Library.Get<MediaItem>(copy.Id)?.Marks is { Count: 2 } stored && stored[1].At == 2.5 && stored[1].Name == "Band Walk-On");
+            await Delay(300);
+            Save(editor, "upstream-video-actions-window");
+        }
+        finally
+        {
+            editor.Close();
+        }
+        copy = model.Library.Get<MediaItem>(copy.Id) ?? copy;
         var fired = new List<string>();
         void Note(string mediaId, string name) { if (mediaId == copy.Id) fired.Add(name); }
         model.VideoMarkFired += Note;
@@ -298,6 +331,21 @@ public sealed partial class SelfTest
         var scene = new AnimatedScene(SceneSize.Hd);
         scene.AddItem(new RenderItem { Id = "v", Frame = new SceneRect(SceneSize.Hd), Content = new ItemContent.Media(mediaId, SceneMediaScaleMode.Fill), EndFade = fade }, LayerKind.Videos);
         return scene;
+    }
+
+    /// <summary>How many columns from <paramref name="fromX"/> up to <paramref name="toX"/> hold a clearly lit pixel (words, say).</summary>
+    private static int LitColumns(byte[] bgra, int width, int height, int fromX, int toX)
+    {
+        var lit = 0;
+        for (var x = fromX; x < toX; x++)
+            for (var y = 0; y < height; y += 2)
+            {
+                var i = (y * width + x) * 4;
+                if (bgra[i] + bgra[i + 1] + bgra[i + 2] <= 360) continue;
+                lit++;
+                break;
+            }
+        return lit;
     }
 
     /// <summary>The average of a picture's red, green and blue.</summary>

@@ -256,7 +256,9 @@ public sealed class ActionRouter
             {
                 if (LayerKinds.Parse(action.Layer) is not { } layer)
                 {
-                    Miss(action, "layer");
+                    // Not a built-in layer: a Mac-made step can name one of the preset's custom
+                    // layers (the Screen Map) by its id. As on the Mac, a layer nobody knows is a miss.
+                    if (action.Layer is not { Length: > 0 } custom || !show.ClearCustomLayer(custom)) Miss(action, "layer");
                     return;
                 }
                 if (protectedLayers.Contains(layer))

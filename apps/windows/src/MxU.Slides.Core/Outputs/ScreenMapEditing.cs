@@ -39,13 +39,27 @@ public static class ScreenMapEditing
         preset.Placements = kept.Count == 0 ? null : kept;
     }
 
+    /// <summary>Whether a placed layer fills its frames (cropping what spills over) rather than fitting whole inside them.</summary>
+    public static bool Fills(OutputPreset? preset, string layerId) =>
+        (preset?.Placements ?? []).Any(p => p.LayerId == layerId && p.Scale == MediaScaleMode.Fill);
+
+    /// <summary>
+    /// A placed layer's Fit or Fill choice, for every frame it has. Fit is stored as absent, as
+    /// the Mac writes it (a placement's <c>scale</c> is only there when it isn't the default).
+    /// </summary>
+    public static void SetFill(OutputPreset preset, string layerId, bool fill)
+    {
+        foreach (var placement in (preset.Placements ?? []).Where(p => p.LayerId == layerId))
+            placement.Scale = fill ? MediaScaleMode.Fill : null;
+    }
+
     /// <summary>A short line for a layer's placements: "Not placed", "On 2 screens", "Across the room".</summary>
     public static string Summary(OutputPreset? preset, string layerId)
     {
         var count = (preset?.Placements ?? []).Count(p => p.LayerId == layerId);
         return count switch
         {
-            0 => "Not placed (shows where the preset routes it)",
+            0 => "Not placed: the preset's routing decides",
             1 => "Placed once on the map",
             _ => $"Placed {count} times on the map",
         };

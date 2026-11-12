@@ -70,11 +70,19 @@ internal sealed class ScreenMapWindow : Window
         presetRow.Children.Add(new TextBlock { Text = "Preset", Width = 70, VerticalAlignment = VerticalAlignment.Center });
         presets.SelectionChanged += (_, _) => DrawLayers();
         presetRow.Children.Add(presets);
-        var left = new StackPanel();
+        // The list of layers takes whatever height is left, and scrolls: with a fixed height the
+        // "+ Custom layer" button under it fell off the bottom of the window.
+        var addLayer = EditorKit.Button("+ Custom layer", AddLayer, "A layer of the preset's own, above Slide; fire media onto it from a media item's Layer menu");
+        addLayer.HorizontalAlignment = HorizontalAlignment.Left;
+        addLayer.Margin = new Thickness(0, 6, 0, 0);
+        var left = new DockPanel();
+        DockPanel.SetDock(presetRow, Dock.Top);
+        DockPanel.SetDock(status, Dock.Bottom);
+        DockPanel.SetDock(addLayer, Dock.Bottom);
         left.Children.Add(presetRow);
-        left.Children.Add(new ScrollViewer { Content = layers, Height = 270, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        left.Children.Add(EditorKit.Button("+ Custom layer", AddLayer, "A layer of the preset's own, above Slide; fire media onto it from a media item's Layer menu"));
         left.Children.Add(status);
+        left.Children.Add(addLayer);
+        left.Children.Add(new ScrollViewer { Content = layers, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
 
         var right = new StackPanel { Margin = new Thickness(16, 0, 0, 0) };
         right.Children.Add(new TextBlock { Text = "The output picture", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
@@ -354,10 +362,20 @@ internal sealed class ScreenMapWindow : Window
             DockPanel.SetDock(actions, Dock.Right);
             actions.Children.Add(Small("Each screen", () => Place(id, ScreenMapEditing.Start.OnePerScreen), hasMap));
             actions.Children.Add(Small("Across", () => Place(id, ScreenMapEditing.Start.AcrossScreens), hasMap));
+            // Fit shows the whole layer inside each frame; Fill covers the frame and crops the spill.
+            var placed = preset.Placements?.Any(p => p.LayerId == id) == true;
+            var fills = ScreenMapEditing.Fills(preset, id);
+            var fit = Small(fills ? "Fill" : "Fit", () => Edit(p => ScreenMapEditing.SetFill(p, id, !fills)), placed);
+            fit.ToolTip = fills
+                ? "The layer covers each frame, cropped where it spills over. Click to fit it whole inside instead."
+                : "The layer shows whole inside each frame. Click to make it cover the frame (cropped) instead.";
+            fit.MinWidth = 44;
+            actions.Children.Add(fit);
             actions.Children.Add(Small("Clear", () => Place(id, ScreenMapEditing.Start.NotPlaced), true));
             if (custom) actions.Children.Add(Small("Remove", () => Edit(p => ScreenMapEditing.RemoveCustomLayer(p, id)), true));
             row.Children.Add(actions);
-            row.Children.Add(new TextBlock { Text = ScreenMapEditing.Summary(preset, id), Foreground = RulerInk, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+            var summary = ScreenMapEditing.Summary(preset, id);
+            row.Children.Add(new TextBlock { Text = summary, ToolTip = summary, Foreground = RulerInk, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
             row.MouseEnter += (_, _) => { highlightedLayer = id; Redraw(); };
             layers.Children.Add(row);
         }

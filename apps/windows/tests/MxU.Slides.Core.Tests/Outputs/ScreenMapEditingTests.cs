@@ -26,6 +26,24 @@ public class ScreenMapEditingTests
     }
 
     [Fact]
+    public void FitOrFillIsOneChoiceForAllOfALayersFrames()
+    {
+        Guid a = Guid.NewGuid(), b = Guid.NewGuid();
+        var map = ScreenMap.SideBySide([(a, 1920, 1080), (b, 1920, 1080)]);
+        var preset = Preset();
+        ScreenMapEditing.Place(preset, "slide", ScreenMapEditing.Start.OnePerScreen, map);
+        ScreenMapEditing.Place(preset, "videos", ScreenMapEditing.Start.AcrossScreens, map);
+        Assert.False(ScreenMapEditing.Fills(preset, "slide"));
+        ScreenMapEditing.SetFill(preset, "slide", true);
+        Assert.True(ScreenMapEditing.Fills(preset, "slide"));
+        Assert.All(preset.Placements!.Where(p => p.LayerId == "slide"), p => Assert.Equal(MediaScaleMode.Fill, p.Scale));
+        Assert.False(ScreenMapEditing.Fills(preset, "videos")); // the other layer keeps its own choice
+        ScreenMapEditing.SetFill(preset, "slide", false);
+        Assert.All(preset.Placements!, p => Assert.Null(p.Scale)); // Fit is stored as absent, as the Mac writes it
+        Assert.False(ScreenMapEditing.Fills(null, "slide"));
+    }
+
+    [Fact]
     public void CustomLayersAddAboveSlideAndRemovingOneTakesItsPlacements()
     {
         var preset = Preset();
