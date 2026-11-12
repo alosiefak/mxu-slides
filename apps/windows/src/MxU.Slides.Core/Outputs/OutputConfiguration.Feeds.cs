@@ -150,12 +150,13 @@ public sealed partial class OutputConfiguration
     }
 
     /// <summary>The animated program as this output should draw it: as <see cref="Program(OutputFeed, RenderScene)"/>, hiding unrouted layers.</summary>
-    public AnimatedScene Program(OutputFeed feed, AnimatedScene scene)
+    /// <param name="looks">The looks' animated scenes by key, so a placed Slide layer can wear the look of the screen it mostly lands on.</param>
+    public AnimatedScene Program(OutputFeed feed, AnimatedScene scene, Func<string, AnimatedScene?>? looks = null)
     {
         var room = scene;
         if (feed.ScreenId is { } id && feed.CanvasSize is { } size && !IsSpanned(id))
             scene = scene.Scaled(size, ScaleMode(id));
-        scene = Placed(feed, room, scene) ?? scene;
+        scene = Placed(feed, room, scene, looks) ?? scene;
         if (!layerRouting.TryGetValue(feed.RoutingKey, out var enabled)) return scene;
         var routed = scene.Copy();
         foreach (var layer in routed.Layers)

@@ -53,13 +53,13 @@ public static class ScreenMapEditing
             placement.Scale = fill ? MediaScaleMode.Fill : null;
     }
 
-    /// <summary>A short line for a layer's placements: "Not placed", "On 2 screens", "Across the room".</summary>
+    /// <summary>A short line for a layer's placements: "Not placed", "Placed once on the map", "Placed 2 times on the map".</summary>
     public static string Summary(OutputPreset? preset, string layerId)
     {
         var count = (preset?.Placements ?? []).Count(p => p.LayerId == layerId);
         return count switch
         {
-            0 => "Not placed: the preset's routing decides",
+            0 => "Not placed",
             1 => "Placed once on the map",
             _ => $"Placed {count} times on the map",
         };

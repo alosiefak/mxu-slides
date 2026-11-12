@@ -166,13 +166,14 @@ public sealed partial class SelfTest
             // Verse 1 (the song's first slide is blank), and time for its words to arrive.
             model.GoLiveCommand.Execute(model.Slides[model.Slides.Count > 1 ? 1 : 0]);
             await Delay(1200);
-            var onLeft = config.PreviewProvider(SwiftUuid.Format(left.Id))();
-            var onRight = config.PreviewProvider(SwiftUuid.Format(right.Id))();
+            // What each screen's window is given to draw (OutputManager and ScreenFeeds call this same Program).
+            var onLeft = config.Program(config.Feed(SwiftUuid.Format(left.Id)), model.Show.AnimatedScene());
+            var onRight = config.Program(config.Feed(SwiftUuid.Format(right.Id)), model.Show.AnimatedScene());
             Check("a slide placed across two screens lands half on each",
                 onLeft[LayerKind.Slide].Placed?.Frames.Single().Rect == new SceneRect(0, 0, 3840, 1080)
                 && onRight[LayerKind.Slide].Placed?.Frames.Single().Rect == new SceneRect(-1920, 0, 3840, 1080));
-            var leftPixels = await Picture("upstream-screen-map-left", AnimatedScene.From(onLeft));
-            var rightPixels = await Picture("upstream-screen-map-right", AnimatedScene.From(onRight));
+            var leftPixels = await Picture("upstream-screen-map-left", onLeft);
+            var rightPixels = await Picture("upstream-screen-map-right", onRight);
             // The words are centred on the room's picture, so each screen shows its half of them:
             // lit pixels on the left screen's right side, and on the right screen's left side.
             int leftInk = LitColumns(leftPixels, 1280, 720, 640, 1280), rightInk = LitColumns(rightPixels, 1280, 720, 0, 640);

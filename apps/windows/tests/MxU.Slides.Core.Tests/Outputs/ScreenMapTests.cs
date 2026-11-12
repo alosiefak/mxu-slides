@@ -217,4 +217,25 @@ public class ScreenMapTests
         Assert.Equal(new SceneRect(960, 0, 1920, 1080), placed[LayerKind.LoopingVideos].Placed!.Frames[0].Rect);
         Assert.Null(scene[LayerKind.LoopingVideos].Placed); // the program itself is untouched
     }
+
+    // The app's windows draw the animated program, so the dominant screen's look must reach it too.
+    [Fact]
+    public void TheAnimatedPlacedSlideLayerTakesTheDominantScreensLookToo()
+    {
+        var themedScene = Program();
+        themedScene.AddItem(OutputFixtures.Solid("themed", default, SceneColor.White), LayerKind.Slide);
+        var themed = AnimatedScene.From(themedScene);
+        var outputs = new OutputConfiguration();
+        var (left, right) = WallOf(outputs);
+        outputs.SetSlideThemeRouting(new Dictionary<string, string> { [SwiftUuid.Format(right)] = "wall-look" });
+        outputs.SetLayerPlacements(new Dictionary<string, IReadOnlyList<MapPlacement>> { ["slide"] = [new MapPlacement(new SceneRect(1440, 0, 1920, 1080))] });
+        AnimatedScene? Looks(string key) => key == "wall-look" ? themed : null;
+        var plain = AnimatedScene.From(Program());
+        var onLeft = outputs.Program(outputs.Feed(SwiftUuid.Format(left)), plain, Looks)[LayerKind.Slide];
+        Assert.Equal(["lyric", "themed"], onLeft.Items.Select(i => i.Id)); // the left piece draws the right piece's look
+        // The right screen already shows that look: its picture is its own layer, and it keeps it.
+        var onRight = outputs.Program(outputs.Feed(SwiftUuid.Format(right)), themed, Looks)[LayerKind.Slide];
+        Assert.Equal(["lyric", "themed"], onRight.Items.Select(i => i.Id));
+        Assert.Equal(["lyric"], outputs.Program(outputs.Feed(SwiftUuid.Format(left)), plain)[LayerKind.Slide].Items.Select(i => i.Id)); // no looks given: as before
+    }
 }

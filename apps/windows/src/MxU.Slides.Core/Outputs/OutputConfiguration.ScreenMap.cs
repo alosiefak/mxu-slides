@@ -47,7 +47,7 @@ public sealed partial class OutputConfiguration
     /// Returns null when nothing is placed here. Port of the placement step in
     /// OutputManager.provider(for:).
     /// </summary>
-    internal AnimatedScene? Placed(OutputFeed feed, AnimatedScene room, AnimatedScene scene)
+    internal AnimatedScene? Placed(OutputFeed feed, AnimatedScene room, AnimatedScene scene, Func<string, AnimatedScene?>? looks = null)
     {
         if (layerPlacements.IsEmpty || feed.ScreenId is not { } screenId || screenMap?.RectFor(screenId) is not { } mapRect) return null;
         AnimatedScene? placed = null;
@@ -63,9 +63,19 @@ public sealed partial class OutputConfiguration
                 target.IsHidden = true;
                 continue;
             }
+            // A placed Slide layer wears the look of the screen it mostly lands on, so a lyric
+            // spanning a wall reads the same on every piece (each screen would otherwise draw
+            // its own look's half).
+            if (source.Kind == LayerKind.Slide && looks is not null && screenMap is { } map
+                && ScreenMapResolver.DominantScreen(placements, map) is { } host
+                && slideThemeRouting.TryGetValue(host, out var look)
+                && looks(look)?.Layer(layerId) is { } variant)
+                source = variant;
             var canvas = placed.CanvasSize;
+            // Copied first: the picture may be this very layer (a screen already showing that look).
+            var picture = source.Items.ToList();
             target.Items.Clear();
-            target.Items.AddRange(source.Items);
+            target.Items.AddRange(picture);
             target.Mix = null;
             target.Placed = new PlacedLayer(room.CanvasSize, [.. hits.Select(hit => new PlacedLayer.Frame(
                 new SceneRect(hit.Frame.X * canvas.Width, hit.Frame.Y * canvas.Height, hit.Frame.Width * canvas.Width, hit.Frame.Height * canvas.Height),

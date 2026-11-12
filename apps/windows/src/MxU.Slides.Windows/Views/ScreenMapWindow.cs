@@ -375,7 +375,8 @@ internal sealed class ScreenMapWindow : Window
             if (custom) actions.Children.Add(Small("Remove", () => Edit(p => ScreenMapEditing.RemoveCustomLayer(p, id)), true));
             row.Children.Add(actions);
             var summary = ScreenMapEditing.Summary(preset, id);
-            row.Children.Add(new TextBlock { Text = summary, ToolTip = summary, Foreground = RulerInk, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
+            var tip = placed ? "Shows wherever it's placed on the map, whatever the preset routes." : "Not placed on the map: it shows on the screens the preset routes it to.";
+            row.Children.Add(new TextBlock { Text = summary, ToolTip = tip, Foreground = RulerInk, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
             row.MouseEnter += (_, _) => { highlightedLayer = id; Redraw(); };
             layers.Children.Add(row);
         }
