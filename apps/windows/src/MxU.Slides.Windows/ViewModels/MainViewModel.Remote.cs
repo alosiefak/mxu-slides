@@ -77,7 +77,7 @@ public sealed partial class MainViewModel : IRemoteBridge
         {
             var items = new List<ApiServiceSnapshot.Item>();
             // Hidden rows aren't part of the run of show, so the remote doesn't offer them.
-            foreach (var item in service.Items.Where(i => !i.IsHidden()))
+            foreach (var item in RunOfShow(service))
             {
                 ApiServiceSnapshot.PresentationRef? presentation = null;
                 ApiServiceSnapshot.MediaRef? media = null;

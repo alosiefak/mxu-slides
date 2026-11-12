@@ -31,7 +31,7 @@ public sealed partial class MainViewModel
     {
         if (itemId is null || SelectedService is not { } service || !service.Items.Any(i => i.Id == itemId)) return;
         var now = DateTimeOffset.Now;
-        ArmLocalTimingEnd(ServiceRunOrder.Visible(service.Items), itemId, now);
+        ArmLocalTimingEnd(RunOfShow(service), itemId, now);
         if (ServiceTiming.NoteItemFired(itemId, now)) RefreshServiceTracking(force: true);
     }
 
@@ -77,7 +77,7 @@ public sealed partial class MainViewModel
     {
         var now = DateTimeOffset.Now;
         var service = SelectedService;
-        var rows = service is null ? [] : ServiceRunOrder.Visible(service.Items);
+        var rows = service is null ? [] : RunOfShow(service);
         var timers = ServiceTiming.Snapshots(service, rows, now, TransportCountdown(), TimelineTracking());
         if (force || !ServiceTrackingTimers.Tracks(publishedTracking, timers, now))
         {

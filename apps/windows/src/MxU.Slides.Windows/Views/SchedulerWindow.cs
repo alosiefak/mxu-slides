@@ -64,8 +64,14 @@ public sealed class SchedulerWindow : Window
         return window;
     }
 
+    // Dragging triggers and folders to reorder them (Phase 8: Views/Operator/BoardDragging.cs).
+    private readonly BoardDragging drags;
+
     private SchedulerWindow(Window owner, MainViewModel model)
     {
+        drags = new BoardDragging("scheduler", () => !model.IsVolunteer, move => Save(() => model.Automation.UpdateSchedulerBoard(b => b.Apply(move))));
+        // Dropped below the last row: the end of the board.
+        drags.Target(list, new BoardDropTarget.End(), DropEdge.Bottom);
         this.model = model;
         openWindow = this;
         EditorKit.Dress(this, owner, "Scheduler", 1060, 680);
@@ -335,6 +341,8 @@ public sealed class SchedulerWindow : Window
         });
         row.Children.Add(EditorKit.Faint(ScheduleEditing.ActiveTriggerCount(folder, Trigger).ToString(CultureInfo.InvariantCulture)));
         var item = new ListBoxItem { Content = row, Tag = new Row(id, true), Padding = new Thickness(4, 3, 6, 3) };
+        drags.Source(item, new BoardDrag.Folder(id));
+        drags.Target(item, new BoardDropTarget.OntoFolder(id));
         var enable = new MenuItem { Header = $"Enabled: {(enabled ? "On" : "Off")}", Style = (Style)EditorKit.Styles["CascadingMenuItem"] };
         enable.Items.Add(EditorKit.Command("On", () => Save(() => model.Automation.UpdateSchedulerBoard(b => b.SetFolderEnabled(id, true)))));
         enable.Items.Add(EditorKit.Command("Off", () => Save(() => model.Automation.UpdateSchedulerBoard(b => b.SetFolderEnabled(id, false)))));
@@ -394,6 +402,8 @@ public sealed class SchedulerWindow : Window
         left.Children.Add(summary);
         row.Children.Add(left);
         var item = new ListBoxItem { Content = row, Tag = new Row(id, false), Padding = new Thickness(6, 5, 6, 5) };
+        drags.Source(item, new BoardDrag.Item(id));
+        drags.Target(item, new BoardDropTarget.BeforeRow(id));
         item.ContextMenu = TriggerMenu(trigger);
         Track(item.ContextMenu);
         list.Items.Add(item);

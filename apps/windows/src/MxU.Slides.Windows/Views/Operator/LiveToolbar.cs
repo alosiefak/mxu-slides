@@ -13,9 +13,9 @@ namespace MxU.Slides.Windows.Views;
 /// <summary>
 /// The chips above the live preview: which screen or stage layout the preview shows, a button to
 /// pop the preview out into its own window, the output preset ("look") switcher, and the media and
-/// slide layers' room default transitions. Port of the Mac's LivePanel.swift (screenPicker and
-/// Open in Window), OutputPresetChip.swift and the header's transition chips (TransitionChip in
-/// PerformanceHUD.swift).
+/// slide layers' room default transitions, each with a small slider for its length beside it (Phase 8).
+/// Port of the Mac's LivePanel.swift (screenPicker and Open in Window), OutputPresetChip.swift and
+/// the header's transition chips (TransitionChip in PerformanceHUD.swift).
 /// </summary>
 public sealed class LiveToolbar : UserControl
 {
@@ -23,6 +23,8 @@ public sealed class LiveToolbar : UserControl
     private readonly Button preset;
     private readonly Button media;
     private readonly Button slides;
+    private readonly (Slider Slider, TextBlock Label) mediaLength;
+    private readonly (Slider Slider, TextBlock Label) slidesLength;
     private MainViewModel? model;
     private bool watchingWindow;
 
@@ -56,7 +58,17 @@ public sealed class LiveToolbar : UserControl
         DockPanel.SetDock(preset, Dock.Right);
         top.Children.Add(preset);
         top.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { target, popOut } });
-        var bottom = new StackPanel { Orientation = Orientation.Horizontal, Children = { media, slides } };
+        mediaLength = LengthSlider(media: true);
+        slidesLength = LengthSlider(media: false);
+        slides.Margin = new Thickness(0, 0, 4, 0);
+        var bottom = new WrapPanel
+        {
+            Children =
+            {
+                new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 8, 0), Children = { media, mediaLength.Slider, mediaLength.Label } },
+                new StackPanel { Orientation = Orientation.Horizontal, Children = { slides, slidesLength.Slider, slidesLength.Label } },
+            },
+        };
         Content = new StackPanel { Children = { top, bottom } };
         DataContextChanged += (_, _) => Attach(OperatorKit.Model(this));
         // Settings › Transitions changes the same room defaults: read them again when the window comes back to the front.
@@ -110,12 +122,68 @@ public sealed class LiveToolbar : UserControl
             // Any kind the Windows app plays, since Phase 6 (Views/Transitions).
             var choice = model.RoomTransitionChoice(isMedia);
             var text = WindowsTransitions.ChipCaption(choice);
-            OperatorKit.SetChipText(chip, text);
+            // The length is beside the chip, on its slider, so the chip names the kind (and its direction).
+            var length = " " + TransitionEdit.Label(choice.DurationSeconds);
+            OperatorKit.SetChipText(chip, WindowsTransitions.HasDuration(choice.Kind) && text.EndsWith(length, StringComparison.Ordinal) ? text[..^length.Length] : text);
             chip.ToolTip = $"{(isMedia ? "Backgrounds and videos" : "Slides")}: {text}: this layer's default; items with their own always win";
             if (isMedia) MediaText = text;
             else SlidesText = text;
+            var (slider, label) = isMedia ? mediaLength : slidesLength;
+            var shows = WindowsTransitions.HasDuration(choice.Kind);
+            slider.Visibility = label.Visibility = shows ? Visibility.Visible : Visibility.Collapsed;
+            showingLength = true;
+            slider.Value = Math.Clamp(choice.DurationSeconds, slider.Minimum, slider.Maximum);
+            showingLength = false;
+            label.Text = TransitionEdit.Label(choice.DurationSeconds);
+            slider.IsEnabled = !model.IsVolunteer;
         }
     }
+
+    // MARK: The inline length sliders (the Mac's TransitionChip slider)
+
+    private bool showingLength;
+
+    /// <summary>
+    /// A small slider beside a chip for its length (0.1 to 3 s, in tenths), saved when it's let go,
+    /// as the Mac's mini slider does. Longer lengths are typed in the chip's popover.
+    /// </summary>
+    private (Slider Slider, TextBlock Label) LengthSlider(bool media)
+    {
+        var slider = new Slider
+        {
+            Minimum = TransitionEdit.DurationStep, Maximum = TransitionEdit.SliderMaximum, Width = 64, VerticalAlignment = VerticalAlignment.Center,
+            SmallChange = TransitionEdit.DurationStep, LargeChange = 0.5, IsSnapToTickEnabled = true, TickFrequency = TransitionEdit.DurationStep,
+            Margin = new Thickness(0, 0, 4, 0), Opacity = 0.75, ToolTip = media ? "How long backgrounds and videos take to change" : "How long slides take to change",
+        };
+        var label = new TextBlock { Width = 34, FontSize = 10.5, VerticalAlignment = VerticalAlignment.Center, Foreground = EditorKit.Res<Brush>("MutedText") };
+        slider.ValueChanged += (_, _) =>
+        {
+            label.Text = TransitionEdit.Label(slider.Value);
+            // A click on the track (not a drag) changes it straight away; a drag saves when let go.
+            if (!showingLength && !dragging) SaveLength(media, slider.Value);
+        };
+        slider.AddHandler(Thumb.DragStartedEvent, new DragStartedEventHandler((_, _) => dragging = true));
+        slider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) =>
+        {
+            dragging = false;
+            SaveLength(media, slider.Value);
+        }));
+        return (slider, label);
+    }
+
+    private bool dragging;
+
+    private void SaveLength(bool media, double seconds)
+    {
+        if (model is null || !model.Permit(Core.Control.OperatorAction.ChangeTransitions)) return;
+        var choice = model.RoomTransitionChoice(media);
+        var rounded = Math.Round(seconds / TransitionEdit.DurationStep) * TransitionEdit.DurationStep;
+        if (Math.Abs(choice.DurationSeconds - rounded) < 0.001) return;
+        model.SetRoomTransition(media, choice with { DurationSeconds = rounded });
+    }
+
+    /// <summary>The length slider beside a chip (the self-test moves it).</summary>
+    internal Slider LengthSliderFor(bool media) => media ? mediaLength.Slider : slidesLength.Slider;
 
     private static ContextMenu TargetMenu(MainViewModel model)
     {

@@ -130,7 +130,7 @@ public sealed partial class MainViewModel : IAutoAdvanceHost
     private void FireNextServiceItem(string afterItemId)
     {
         if (SelectedService is not { } service) return;
-        var fireable = ServiceRunOrder.Fireable(service.Items);
+        var fireable = RunOfShow(service).Where(i => i.ItemKind is ServiceItemKind.Presentation or ServiceItemKind.Media).ToList();
         for (var next = ServiceRunOrder.NextFireable(fireable, afterItemId); next is not null; next = ServiceRunOrder.NextFireable(fireable, next.Id))
         {
             if (ServiceItems.FirstOrDefault(r => r.Item.Id == next.Id) is { } row && SelectedServiceItem != row) SelectedServiceItem = row;

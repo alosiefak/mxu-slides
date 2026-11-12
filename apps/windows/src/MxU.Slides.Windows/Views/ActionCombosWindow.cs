@@ -61,8 +61,14 @@ public sealed class ActionCombosWindow : Window
         return window;
     }
 
+    // Dragging rows and folders to reorder them (Phase 8: Views/Operator/BoardDragging.cs).
+    private readonly BoardDragging drags;
+
     private ActionCombosWindow(Window owner, MainViewModel model)
     {
+        drags = new BoardDragging("combos", () => !model.IsVolunteer, move => Save(() => model.Automation.UpdateComboBoard(b => b.Apply(move))));
+        // Dropped below the last row: the end of the board.
+        drags.Target(list, new BoardDropTarget.End(), DropEdge.Bottom);
         this.model = model;
         openWindow = this;
         EditorKit.Dress(this, owner, "Action Combos", 1020, 660);
@@ -231,6 +237,8 @@ public sealed class ActionCombosWindow : Window
         });
         row.Children.Add(EditorKit.Faint(folder.ItemIds.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         var item = new ListBoxItem { Content = row, Tag = new Row(id, true), Padding = new Thickness(4, 3, 8, 3) };
+        drags.Source(item, new BoardDrag.Folder(id));
+        drags.Target(item, new BoardDropTarget.OntoFolder(id));
         item.ContextMenu = new ContextMenu
         {
             Items =
@@ -260,6 +268,8 @@ public sealed class ActionCombosWindow : Window
         text.Children.Add(EditorKit.Faint(ActionCombos.StepCaption(combo) + (combo.RunOnStartup == true ? " · runs at start-up" : "")));
         row.Children.Add(text);
         var item = new ListBoxItem { Content = row, Tag = new Row(id, false), Padding = new Thickness(6, 4, 6, 4) };
+        drags.Source(item, new BoardDrag.Item(id));
+        drags.Target(item, new BoardDropTarget.BeforeRow(id));
         item.ContextMenu = new ContextMenu
         {
             Items =

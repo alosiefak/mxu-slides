@@ -110,9 +110,20 @@ public sealed partial class ServiceItemViewModel : ObservableObject
     {
         ServiceItemKind.Media => "",
         ServiceItemKind.Audio or ServiceItemKind.Playlist => "",
-        ServiceItemKind.Header => "",
+        // A header shows a chevron: click it to fold the rows under it away, or back (Phase 8).
+        ServiceItemKind.Header => IsCollapsed ? "" : "",
         _ => "",
     };
+
+    /// <summary>A header whose rows are folded away in the list (the chevron points right).</summary>
+    [ObservableProperty]
+    public partial bool IsCollapsed { get; set; }
+
+    partial void OnIsCollapsedChanged(bool value) => OnPropertyChanged(nameof(Glyph));
+
+    /// <summary>A row under a collapsed header: the list hides it, and Next still walks it.</summary>
+    [ObservableProperty]
+    public partial bool IsCollapsedAway { get; set; }
 
     /// <summary>The version this computer runs changed this row (a "Changed" badge; Use Main's undoes it).</summary>
     public bool IsChanged { get; init; }

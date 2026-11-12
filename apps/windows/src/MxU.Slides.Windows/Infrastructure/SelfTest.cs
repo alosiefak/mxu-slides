@@ -278,6 +278,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await Section("MotionTemplates", MotionTemplatesCheck);
             await Section("Editing", EditingCheck);
             await Section("LibraryDepth", LibraryDepthCheck);
+            await Section("OperatorDepth", OperatorDepthCheck);
         }
         catch (Exception ex)
         {

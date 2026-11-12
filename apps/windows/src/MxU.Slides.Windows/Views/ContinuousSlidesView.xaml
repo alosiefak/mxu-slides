@@ -1,0 +1,150 @@
+<UserControl x:Class="MxU.Slides.Windows.Views.ContinuousSlidesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MxU.Slides.Windows.ViewModels"
+             xmlns:r="clr-namespace:MxU.Slides.Windows.Rendering"
+             xmlns:v="clr-namespace:MxU.Slides.Windows.Views"
+             Background="{StaticResource BasePlane}">
+    <!-- The continuous view (Phase 8): the whole service as one scroll, a card per row, each
+         song's slides in their sections. Only the cards on screen are made (the panel virtualizes),
+         so a long service scrolls smoothly. See ViewModels/MainViewModel.Continuous.cs. -->
+    <UserControl.Resources>
+        <v:BoolToVisibility x:Key="Visible" />
+        <v:NotNullToVisibility x:Key="VisibleWhenSet" />
+        <v:SixteenByNine x:Key="SixteenByNine" />
+        <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+        <!-- One slide, as in the grid: thumbnail, number and group label. Red outline = live. -->
+        <DataTemplate x:Key="Tile" DataType="{x:Type vm:SlideTileViewModel}">
+            <Border x:Name="Frame" Margin="0,0,10,10" CornerRadius="6" BorderThickness="3" BorderBrush="Transparent" Background="#141414"
+                    Width="{Binding DataContext.Settings.ThumbnailSize, RelativeSource={RelativeSource AncestorType=v:ContinuousSlidesView}}"
+                    Cursor="Hand" ToolTip="{Binding NotesTooltip}" MouseLeftButtonUp="Tile_Click">
+                <StackPanel>
+                    <Grid>
+                        <r:SceneView StaticScene="{Binding Scene}" Letterbox="#000000"
+                                     Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource SixteenByNine}}" />
+                    </Grid>
+                    <Grid Background="{Binding GroupBrush}" Height="22">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Number}" Margin="6,0" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="White" FontSize="11" />
+                        <TextBlock Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" Foreground="White" FontSize="11" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsLive}" Value="True">
+                    <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Live}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- One section of a song: its name (in its colour) over its slides. -->
+        <DataTemplate x:Key="Section" DataType="{x:Type vm:ContinuousSectionViewModel}">
+            <StackPanel Margin="0,0,6,4">
+                <!-- The name's row is there even without a name, so side-by-side sections line up. -->
+                <Grid Height="16" Margin="0,0,0,6">
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding HasName, Converter={StaticResource Visible}}">
+                        <Border Width="9" Height="9" CornerRadius="4.5" Background="{Binding Brush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding Tiles}" ItemTemplate="{StaticResource Tile}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- One row's card. -->
+        <DataTemplate x:Key="Card" DataType="{x:Type vm:ContinuousCardViewModel}">
+            <Grid Margin="0,0,0,12">
+                <!-- A header row: its name over a rule. -->
+                <DockPanel Visibility="{Binding IsDivider, Converter={StaticResource Visible}}" Margin="2,6,2,0">
+                    <TextBlock DockPanel.Dock="Left" Text="{Binding Title}" Foreground="{Binding Accent}" FontSize="11" FontWeight="SemiBold" Margin="0,0,8,0"
+                               Visibility="{Binding ShowsDividerName, Converter={StaticResource Visible}}" Typography.Capitals="AllSmallCaps" />
+                    <Border Height="1" Background="{Binding Accent}" Opacity="0.45" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <!-- A song, a video or music: a header strip over the card's body. -->
+                <Border x:Name="CardFrame" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource Border}" Background="{StaticResource Card}"
+                        Visibility="{Binding IsDivider, Converter={StaticResource Visible}, ConverterParameter=invert}">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Padding="12,7" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Background="Transparent"
+                                MouseLeftButtonUp="CardHeader_Click" Cursor="Hand" ToolTip="Click to take this row live (double-click a row in the service does the same)">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Position}" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" />
+                                <Border DockPanel.Dock="Right" Background="{StaticResource Live}" CornerRadius="3" Padding="5,1" Margin="0,0,8,0" VerticalAlignment="Center"
+                                        Visibility="{Binding IsLive, Converter={StaticResource Visible}}">
+                                    <TextBlock Text="LIVE" FontSize="9" FontWeight="Bold" Foreground="White" />
+                                </Border>
+                                <TextBlock DockPanel.Dock="Left" FontFamily="{StaticResource Icons}" Text="{Binding Glyph}" Foreground="{StaticResource MutedText}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12" />
+                                <Border DockPanel.Dock="Left" Background="{StaticResource Raised}" CornerRadius="8" Padding="7,0" Margin="0,0,8,0" VerticalAlignment="Center"
+                                        Visibility="{Binding ArrangementName, Converter={StaticResource VisibleWhenSet}}" ToolTip="The arrangement this row plays">
+                                    <TextBlock Text="{Binding ArrangementName}" FontSize="10" Foreground="{StaticResource MutedText}" />
+                                </Border>
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            </DockPanel>
+                        </Border>
+                        <Grid Margin="12,10,2,2">
+                            <!-- Sections sit side by side and wrap, so a song of one-slide sections stays compact;
+                                 a long section wraps its own slides. -->
+                            <ItemsControl ItemsSource="{Binding Sections}" ItemTemplate="{StaticResource Section}"
+                                          Visibility="{Binding IsSlides, Converter={StaticResource Visible}}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                            <Border Width="{Binding DataContext.Settings.ThumbnailSize, RelativeSource={RelativeSource AncestorType=v:ContinuousSlidesView}}"
+                                    HorizontalAlignment="Left" CornerRadius="6" Background="#141414" Margin="0,0,0,8" Cursor="Hand" MouseLeftButtonUp="CardHeader_Click"
+                                    Visibility="{Binding IsMedia, Converter={StaticResource Visible}}" ToolTip="Click to show it">
+                                <r:SceneView StaticScene="{Binding MediaPreview}" PlaysVideo="False"
+                                             Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource SixteenByNine}}" />
+                            </Border>
+                            <TextBlock Text="Plays when it's taken live (or when Next reaches it)." Style="{StaticResource Muted}" Margin="0,0,0,8"
+                                       Visibility="{Binding IsMusic, Converter={StaticResource Visible}}" />
+                            <TextBlock Text="{Binding PlaceholderText}" Style="{StaticResource Muted}" Margin="0,0,0,8"
+                                       Visibility="{Binding IsPlaceholder, Converter={StaticResource Visible}}" />
+                        </Grid>
+                    </DockPanel>
+                </Border>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsLive}" Value="True">
+                    <Setter TargetName="CardFrame" Property="BorderBrush" Value="#7FEF4444" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <ItemsControl x:Name="Cards" ItemsSource="{Binding ContinuousCards}" ItemTemplate="{StaticResource Card}"
+                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.VirtualizationMode="Recycling"
+                      ScrollViewer.CanContentScroll="True">
+            <ItemsControl.Template>
+                <ControlTemplate TargetType="ItemsControl">
+                    <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="True" Padding="14,12,4,0">
+                        <ItemsPresenter />
+                    </ScrollViewer>
+                </ControlTemplate>
+            </ItemsControl.Template>
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <VirtualizingStackPanel />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+        </ItemsControl>
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" x:Name="Empty">
+            <TextBlock Text="Nothing to show yet" FontSize="16" HorizontalAlignment="Center" />
+            <TextBlock Text="Pick a service, or a song from the library." Style="{StaticResource Muted}" HorizontalAlignment="Center" Margin="0,4,0,0" />
+        </StackPanel>
+    </Grid>
+</UserControl>

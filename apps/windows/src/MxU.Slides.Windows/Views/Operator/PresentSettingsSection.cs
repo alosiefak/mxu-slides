@@ -31,6 +31,8 @@ public sealed class PresentSettingsSection : UserControl
         };
         panel.Children.Add(skipBlanks);
         panel.Children.Add(Caption("NEXT shows the next slide with words."));
+        // Phase 8: Volunteer Mode and Keyboard Shortcuts (Views/Volunteer/OperatorSettingsSection.cs).
+        panel.Children.Add(new Volunteer.OperatorSettingsSection());
         Content = panel;
 
         Loaded += (_, _) =>

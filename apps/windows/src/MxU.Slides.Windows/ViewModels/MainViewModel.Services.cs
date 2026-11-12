@@ -87,7 +87,8 @@ public sealed partial class MainViewModel
         {
             var changed = VersionChangedItemIds(service);
             var number = 0;
-            foreach (var item in service.Items)
+            // In the order of the plan time this PC runs (MainViewModel.ServiceList.cs): the service's own order when there's none.
+            foreach (var item in ListedRows(service))
             {
                 var hidden = item.IsHidden();
                 // Hidden rows aren't numbered: the numbers are the run of show's.
@@ -102,6 +103,7 @@ public sealed partial class MainViewModel
                 (hidden ? HiddenServiceItems : ServiceItems).Add(row);
             }
         }
+        ApplyCollapse();
         SelectedServiceItem = ServiceItems.FirstOrDefault(r => r.Item.Id == selectedId);
         suppressServiceItemOpen = false;
         OnPropertyChanged(nameof(HiddenGroupTitle));
