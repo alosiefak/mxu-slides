@@ -30,10 +30,12 @@ pwsh apps\windows\scripts\install.ps1    # copies it to %LOCALAPPDATA%\Programs 
 
 Re-run both after pulling changes to update. Your library is stored separately and is never touched by installing.
 
+Installing also tells Windows, for your user only, that MxU Slides opens `.mxuslides` presentations and `.mxubackup` backups, so you can double-click them in Explorer. `install.ps1 -DryRun` shows what it would change without changing anything. `pwsh apps\windows\scripts\uninstall.ps1` removes the program, its shortcuts and those file types.
+
 ## Test it
 
 ```powershell
-pwsh apps\windows\scripts\unit-tests.ps1                # 2,800 unit tests: lyrics, animation, timers, sound, the API, both importers
+pwsh apps\windows\scripts\unit-tests.ps1                # more than 3,400 unit tests: lyrics, animation, undo, sync, notes, the API, the importers…
 pwsh apps\windows\scripts\self-test.ps1                 # drives the real app through a service, saves pictures, checks the output
 pwsh apps\windows\scripts\self-test.ps1 -Only Scripture # the basics plus one area's checks, in a few minutes
 pwsh apps\windows\scripts\display-demo.ps1              # shows the output on your second screen (projector, TV) and photographs it
@@ -41,7 +43,7 @@ pwsh apps\windows\scripts\display-demo.ps1              # shows the output on yo
 
 `unit-tests.ps1` is `dotnet test --solution apps\windows\MxUSlides.slnx --max-parallel-test-modules 3`. It runs three test projects at a time instead of all of them. Some tests measure real time (sound, recording, timers), and with every project running at once they compete for the processor and fail at random. It's also faster. For the same reason, only one self-test or full unit run goes at a time on a PC: a second one says it's waiting, and starts when the first has finished (`scripts/test-lock.ps1`).
 
-The self-test uses a throwaway library. Its report and a picture of every step are written to `%TEMP%\MxU Slides self-test`. Run it on any new computer before a Sunday.
+The self-test uses a throwaway library, and refuses to run on a real one. Its report and a picture of every step are written to `%TEMP%\MxU Slides self-test`. Look at the pictures, not just the PASS lines. Run it on any new computer before a Sunday (or use **Help › Diagnostics… › Check this PC…**, which runs the same test from inside the app on a throwaway library).
 
 The display demo also uses a throwaway library. With a projector or TV connected as an extended screen (Windows key + P, Extend), it puts the audience output there and steps through a song, a background and an alert. It saves what the screen showed to `%TEMP%\MxU Slides display demo`. It only takes a picture while MxU Slides covers that screen, so nothing else of yours is captured.
 
@@ -54,10 +56,18 @@ GitHub Actions (`.github/workflows/windows.yml`) runs all of this on every push,
 | Put a slide on screen | Click it (Show mode) |
 | Next / previous slide | → Space Enter / ← (carries on into the next service item). A slide with builds takes a press per build first, as on the Mac; **Alt+→** skips them |
 | Clear | F1 everything · F2 slide · F3 media · F4 overlays · F6 message |
+| Change a key, or see them all | **Screens & Settings › Keyboard Shortcuts…**; press **?** for a cheat sheet |
+| Undo and redo | Ctrl+Z and Ctrl+Y. Each editor window undoes its own edits |
+| Copy, paste and move slides | **Edit** mode: Ctrl+click or Shift+click to pick slides, then Ctrl+C, Ctrl+X, Ctrl+V, or drag them. Right-click for **Merge Slides** |
+| Find and replace words | Ctrl+H: in the open presentation or every song |
 | Add a song | **New Song**, paste or type lyrics with section names (Verse 1, Chorus…) |
 | Import | **Import** (Ctrl+I): PowerPoint `.pptx`, ProPresenter 7 (`.pro`, `.probundle`, `.proPlaylist`, `.protheme`), SongSelect `.txt`, ChordPro (`.cho`, `.chopro`, `.pro`) or plain text. Imports go into a "PowerPoint Import" or "ProPresenter Import" folder |
 | Move from ProPresenter | **Screens & Settings › Import ProPresenter library…**: presentations, media, themes, props, messages, stage layouts and playlists. Run it again to pick up changes; your edits here are kept |
-| Change a song's order | **Edit lyrics** › *Play order*, e.g. `V1, C, V2, C, B, C x2` |
+| Change a song's order | **Edit lyrics** › *Play order*, e.g. `V1, C, V2, C, B, C x2`. Or use the arrangement chip above the slides to make named arrangements and drag their blocks |
+| Chords | Right-click a slide › **Chords…**. The key chip beside the title transposes, and sets a capo for the stage display |
+| Make slides from sermon notes | **Notes** in the library: paste or import Word, PDF, RTF, ODT, PowerPoint or text, then **Make Slides…** |
+| See the whole service at once | The **Grid / Continuous** switch under the slides |
+| Hand the show to a volunteer | **Screens & Settings › Present › Volunteer Mode**, then the **Volunteer** button: a locked layout that can run the service but not edit. A PIN is optional |
 | Jump to a section of the live song | Group keys like ProPresenter: **A S D F** = Verse 1–4, **C** = Chorus (**X** Chorus 2), **B** Bridge, **P** Pre-Chorus, **T** Tag, **I** Intro, **E** Ending, **O** Outro. Press again for the next repeat |
 | Jump to slide *n* | Type the number, press Enter (Esc cancels) |
 | Edit a slide's words | **Edit** mode (Ctrl+E), click the slide, type below the canvas |
@@ -76,10 +86,21 @@ GitHub Actions (`.github/workflows/windows.yml`) runs all of this on every push,
 | Timecode | **Screens & Settings › Timecode in**: LTC from a sound input or MTC from MIDI |
 | A different look on each screen | **Screens & Settings › More screens…**, pick a screen, then **Look**: e.g. the stream shows the lyric as a lower third while the projector shows it full screen |
 | Design overlays | Bottom bin › **Overlays › Edit…**: make lower thirds and plates, their fields, masks and animations |
+| Animated templates from After Effects | **Overlays › Motion templates…**: import a Lottie file (`.json`, `.lottie`), type its words, choose its colours, and put it up as a lower third or a background |
+| Edit a theme | Right-click a presentation › **Edit Theme…**; **Theme Designs…** shows every design as a picture |
+| Trim or crop a video or picture | Media bin › right-click › **Edit…**. **Video Actions…** adds named marks that run actions as the video passes them |
+| Design a stage layout | **Stage** panel › the pencil beside a screen's layout |
+| Place layers across screens | **Screens & Settings › More screens…** › **Screen Map…** |
 | Black out part of a screen | **Screens & Settings › More screens…** › **Masks…**: draw over a pillar or a speaker stack |
 | Action combos and slide actions | **Combos › Edit combos…**; right-click a slide › **Actions** |
 | Things that happen by themselves | **Combos › Scheduler…**: on chosen days at a time, once on a date, or when a timer reaches a value |
 | Edit a song's timeline | **Timeline › ⋯ › Edit timeline…**: drag cues, trim and fade the music, add stems |
+| Find things in the library | Folders, sorting, and a search across songs, media, music and tags. Ctrl+click several items to act on them together |
+| Export | Right-click › **Export…**: PDF (slides, lyric sheet or chord chart), pictures, plain text or ChordPro |
+| Back up and restore | Settings: **Back Up Now…**, and a backup every night. Double-click a `.mxubackup` to restore from it |
+| Share the library with a Mac | **Settings › Library sync › Choose a shared folder…** (a OneDrive, Dropbox, iCloud or network folder). Read [docs/phase10/sync.md](docs/phase10/sync.md) first: it hasn't been tried with a real Mac yet |
+| A backup computer | **Settings › Backup › Make This the Backup…** on a second computer: it follows the booth and takes over if the booth stops |
+| When something goes wrong | **Help › Diagnostics…** and **Report a problem** (makes a zip in Downloads; nothing is sent anywhere) |
 | MIDI devices | **Screens & Settings › MIDI › MIDI devices**: name the devices the show talks to |
 | Record or stream | **Stream & Record** in the toolbar: pick a preset and press **Start recording** or **Go live**. Add YouTube, Facebook or any RTMP server with its stream key. A preset can record or stream one screen (the stage, a lower-thirds screen), stream a video ("replay"), and take its sound from the Music tab or a sound input. Recordings appear in the **Media** tab; **Also copy to** keeps a copy in a folder such as Videos\MxU Slides |
 
@@ -91,11 +112,12 @@ GitHub Actions (`.github/workflows/windows.yml`) runs all of this on every push,
 - Each save is atomic and keeps the previous version as `.bak`.
 - A damaged file is restored from its `.bak` and the bad copy is set aside in `Quarantine`.
 - Deleting moves things to `Trash`; nothing is ever permanently removed.
-- The library is backed up once a day into `Backups` (last 14 days are kept).
+- The library is backed up every night into `Backups` (the newest 7 are kept). A night the PC was off is made up the next time it runs.
 - If one slide item fails to draw, it's skipped and logged rather than blanking the screen.
 - If the app closes unexpectedly, it reopens your service and offers to put the last slide back up.
 - Sleep and the screensaver are blocked while an output is showing.
 - If a projector is unplugged mid-service, its output is hidden. When the projector comes back, the output returns to it.
+- If the app stops answering for 5 seconds, a background thread writes what every thread was doing to the log.
 - Logs are in `%LOCALAPPDATA%\MxU Slides\Logs`.
 
 ## What's here, and what's next
@@ -158,7 +180,35 @@ Phase 6 (motion and production) goes beyond the Mac, and everything it makes sti
 - Planning Center Services plans imported as services, a browser remote for any phone, and a stage view for any screen with a browser;
 - ATEM, OBS, vMix and DMX lighting (Art-Net, sACN) steps on slides, combos, schedules and timelines.
 
-Next: Phase 7, slide editor parity. After that, the rest of "Not ported yet" in [docs/PORTING.md](docs/PORTING.md).
+Phase 7 (editing) adds:
+
+- undo and redo for every library edit, with a scope per window;
+- cut, copy, paste and duplicate for slides and objects, Merge Slides, and drag and drop between the bins, the slides, the canvas, the service and the timeline;
+- a layers list with hide, lock, align, distribute and group; styling for selected words; Find and Replace; a chord editor, transposing and a capo;
+- editors for themes, media (trim, speed, crop, effects), stage layouts and Auto Advance, and an animation timeline in the overlay and theme editors.
+
+Phase 8 (depth) adds:
+
+- library folders, sorting, ranked search, favourites and tags, and actions on many items at once;
+- export to PDF, pictures, plain text and ChordPro;
+- backups in one file, restores that ask first, and nightly backups;
+- files that open from Explorer, a welcome guide, and a Diagnostics window with health checks, hang detection and "Check this PC";
+- song arrangements, the continuous view, volunteer mode, keyboard shortcuts you can change, and a service list with collapsing headers, bulk edits and plan times.
+
+Phase 9 (broadcast and devices) was skipped on purpose.
+
+Phase 10 adds library sync with the Mac: both apps share one library through a folder, merged with Automerge (a small Rust-built `automerge.dll`, already built and committed).
+
+Phase 11 adds motion templates: Lottie animations played live with their transparency and their words and colours filled in, MP4 export, and a bridge that asks After Effects to render a composition.
+
+From MxU's autumn 2026 Mac updates:
+
+- Make Slides from notes;
+- the backup computer;
+- video marks ("Video Actions"), photo spots, Scale and Blur for tall pictures, video end fades, dissolves that fade a whole layer as one picture, the Screen Map and custom layers;
+- streams that reconnect after a stalled upload and can lower their bitrate on a slow network.
+
+Not yet tried with the real thing: library sync and the backup computer with a real Mac, the After Effects bridge with a real After Effects, and Planning Center with a real token. They're tested with stand-ins. [docs/PORTING.md](docs/PORTING.md) has the full list of what isn't done or isn't verified.
 
 See [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) to learn the code, and [docs/PORTING.md](docs/PORTING.md) for which Swift file each C# file comes from.
 

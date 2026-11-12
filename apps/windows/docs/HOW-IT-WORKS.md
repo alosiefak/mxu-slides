@@ -29,6 +29,9 @@ The code is split into projects:
 - **`src/MxU.Slides.Audio`** plays music and captures the app's own sound (section 21).
 - **`src/MxU.Slides.VideoIO`** sends to and receives from NDI and DeckLink, and reads cameras (sections 20 and 22).
 - **`src/MxU.Slides.Broadcast`** records the program to MP4 and streams it over RTMP/RTMPS or HLS (section 25).
+- **`src/MxU.Slides.Production`** talks to switchers, OBS, vMix and lights (section 46).
+- **`src/MxU.Slides.Sync`** shares the library with a Mac through a folder, using Automerge (section 52). The Rust code behind its `automerge.dll` is in `native/automerge-ffi`.
+- **`src/MxU.Slides.MotionTemplates`** draws Lottie animations and talks to After Effects (section 53).
 
 Each has its own test project under `tests/`. The Core/app split is the most important design decision. The Mac app has the same shape: its `PresenterCore` and `SlideScene` packages are the "core", and its SwiftUI/Metal code is the "app".
 
@@ -752,7 +755,7 @@ The full walkthrough is [phase5/operator.md](phase5/operator.md).
 
 ## 40. Moving presentations between the Mac and Windows, and missing media (Phase 5)
 
-- **`.mxuslides` files.** A `.mxuslides` file is one presentation with its themes, media and fonts, zipped (`Core/Library/SlidesPresentationFile.cs`). It's the way documents move between the two apps today: the Mac's library itself is Automerge, which Windows can't read yet (that's Phase 10). The layout matches the Mac's byte for byte: a test builds a file exactly as the Mac writes one and imports it. Import asks Keep Both, Replace or Skip.
+- **`.mxuslides` files.** A `.mxuslides` file is one presentation with its themes, media and fonts, zipped (`Core/Library/SlidesPresentationFile.cs`). It's the simple way to pass one presentation between the two apps. (Sharing a whole library with a Mac came later: section 52.) The layout matches the Mac's byte for byte: a test builds a file exactly as the Mac writes one and imports it. Import asks Keep Both, Replace or Skip.
 - **Missing media.** A media file that isn't on this PC shows a "FILE MISSING" badge, on its tile, on slides that use it and on service rows:
   - **Locate** finds it in a folder by its contents, and suggests files with the same name.
   - **Replace Everywhere** swaps it in every place it's used.
@@ -850,11 +853,158 @@ The full walkthrough is [phase6/production.md](phase6/production.md).
 
 The full walkthrough is [phase6/backgrounds.md](phase6/backgrounds.md).
 
+## 48. Undo, the clipboard and drag and drop (Phase 7)
+
+Phase 7 makes editing safe to try. Everything can be undone, slides and objects can be cut, copied and pasted, and things can be dragged to where they belong.
+
+- **Undo lives in the library.** Every edit ends as a call to `LibraryStore.Save` or `Delete` (or `Extras.Save` for a Windows extra). So that is where undo listens (`Core/Library/LibraryStore.Undo.cs`, rules in `Core/Undo/`). While an **undo scope** is current, the library notes a document's JSON just before and just after each save. Undo puts the "before" back. An editor gets undo just by saving as usual.
+- **One scope per window.** The main window has one (`MainViewModel.UndoScope`). The overlay editor, the combos window, the scheduler and the music manager each make their own with one line, `UndoWindows.AttachEditor(...)` (`Infrastructure/UndoWindows.cs`). So Ctrl+Z in the overlay editor never undoes something done in the main window. A window with no scope of its own (a rename box) uses its owner's. Closing a window forgets its steps. The theme, media and stage layout editors (section 49) haven't been given a scope of their own yet, and the timeline editor still keeps its own history (section 32).
+- **Steps.** Everything saved while one click or key press is handled is one step, so a rename that also renames three service rows undoes in one go. Quick edits of the same kind to the same thing join up if they're within 5 seconds: a burst of typing is one "Typing", a drag is one "Move". A step's name comes from comparing the two JSON versions (`UndoDescription.cs`): "Undo Delete Slide", "Undo Rename". Each scope keeps 50 steps. The 50 and the 5 seconds are the Mac undo journal's numbers.
+- **Undo never loses a later edit.** Two windows can edit the same presentation. If undo simply wrote back its old copy, the other window's newer edit would vanish. So an undo is a **three-way merge** (`JsonMerge.cs`) of the step's before, the step's after, and the document now. A part nobody has touched since goes back. A part the step didn't change stays as it is now. Lists of things with ids (slides, objects, service rows) merge item by item.
+- **On screen.** After an undo the library raises `Library.Undo.Restored`. The main window rebuilds the grid and canvas, and a live slide is drawn again with the undone version (`ViewModels/MainViewModel.Undo.cs`).
+- **Not recorded:** saves on a background thread (an import), saves from the Local API and the browser remote, and anything that isn't a library document (`settings.json`, the timer board).
+
+The rest of the editing core:
+
+- **Cut, copy, paste, duplicate** (`Core/Editing/EditorClipboard.cs`, `Infrastructure/AppClipboard.cs`, `ViewModels/MainViewModel.Clipboard.cs`). Slides and objects go on the Windows clipboard as their JSON in formats of our own, with plain text beside them so Word gets the words. Pasted things get fresh ids, keep their media, and keep their Windows extras (a Push transition comes along). Ctrl+click and Shift+click pick several slides in Edit mode. **Merge Slides** joins the picked slides into the first (`Core/Lyrics/SlideBulkEdit.cs`).
+- **Drag and drop** (`Core/Editing/Dropping.cs`, `Views/EditorDragDrop.cs`, `ViewModels/MainViewModel.Dropping.cs`). Slides drag to a new place. The bins are drag sources: media onto a slide tile becomes its background or a new slide, onto the canvas a picture box, onto the service list a row, onto a timeline lane a cue. Files drop in from Explorer. A blue line shows where a drop will land (`Views/DropFeedback.cs`). In Show mode a drag only starts after a long pull, so a shaky click still fires the slide.
+- **Layers** (`Views/LayersPanel.cs`, `Core/Editing/Layers.cs`): the slide's objects as a list, to pick, rename, hide, lock and restack, with align, distribute, group and ungroup. Hide is a shared field. Lock has none, so it's a Windows extra (`Core/Editing/ObjectLocks.cs`).
+- **Text tools.** Select words in the inspector's text box and style just those (`Views/TextFormatBar.cs`). They're saved as the shared format's style runs. When you type, `ObjectText.SetText` works out the one stretch that changed and moves the style runs and chords after it (`Core/Editing/TextStyleRuns.cs`, a port of the Mac's). **Find and Replace** (Ctrl+H, `Core/Editing/FindReplace.cs`) works on one presentation or every song, and Replace All is one undo step.
+- **Chords.** The chord editor (`Views/ChordEditorWindow.cs`, rules in `Core/Editing/ChordEditing.cs`) shows each line with its chords above it. The key chip (`Views/SongKeyChip.cs`) transposes. A **capo** is a Windows extra: the stage display shows the shapes the guitarist plays, and everyone else keeps the sounding key (`Core/Stage/ConfidenceSceneBuilder.Capo.cs`).
+
+Open `Core/Undo/UndoScope.cs` and `JsonMerge.cs` first, with their tests in `tests/MxU.Slides.Core.Tests/Undo/`. The full walkthrough is [phase7/editing.md](phase7/editing.md).
+
+## 49. The editors: themes, media, stage layouts and effects (Phase 7)
+
+Before Phase 7, several things could be shown on Windows but only made on a Mac. Now they have editors. All of them work the same way, so learn the pattern once:
+
+- **An editor changes the library's own copy.** There's no private copy and no Save button. The editor changes the document the library holds, redraws at once, and saves about half a second after the changes stop (`Flush()` in each view model). Closing the window saves.
+- **The canvas is the slide editor's.** `SlideCanvasEditor` edits a `Slide`. A theme design is a slide. An overlay and a stage layout aren't, so their editors hand the canvas a *mirror*: a slide whose object list is the real list.
+- **The rules are in Core, with tests.** The windows only draw and ask "are you sure?".
+- **Nothing new goes into a shared document** (section 41). What the shared format can't say is a Windows extra.
+
+The editors:
+
+- **Theme editor** (`ViewModels/ThemeEditorViewModel.cs`, `Views/ThemeEditorWindow.xaml`; right-click a presentation › **Edit Theme…**). A theme's designs, their placeholders, background and animation, with a sample slide. Making, copying and renaming are in `Core/Library/ThemeLibrary.cs`. A copy gets fresh ids so a Windows extra can't leak from one theme to the other. Design names are kept unique, because slides find their design by name.
+- **Apply Theme** (`Core/Library/ThemeApplication.cs`, `DesignActions.cs`, `Views/ThemePickerWindow.cs`) follows the Mac's rules: a slide keeps its kind of design (Lyrics stays Lyrics). Before a deck's new theme reaches slides that chose their own theme, the app asks. **Theme Designs…** (`Views/ThemeDesignsWindow.cs`) shows each design as a picture, and a design can be dragged onto a slide.
+- **Media editor** (`ViewModels/MediaEditorViewModel.cs`, `Views/MediaEditorWindow.cs`; right-click media › **Edit…**). Trim with a scrub bar, speed, loop, effects: all shared fields, so a Mac uses them. The trim rules are a port of the Mac's (`Core/Media/MediaTrimEdit.cs`). Volume, fit, zoom and crop have no shared field, so they're a Windows extra (`Core/Library/MediaLookExtras.cs`). `Core/Media/MediaDressing.cs` applies the effects and the look to the scene just before it's drawn. The preview plays through its own `MediaHub`, so scrubbing never touches the outputs.
+- **Auto Advance** (`Views/AutoAdvanceWindow.cs`, `Core/Automation/AutoAdvanceEditing.cs`): one sheet for a slide (or its group, or every slide), a deck's Slide Show, and a media item. Section 36 explains how the timers run.
+- **Effects** (`Views/EffectsPanel.cs`, `Core/Animation/EffectEditing.cs`): one panel, used in every inspector and in the media editor. A PC that can't draw pixel shaders is told so in words.
+- **Stage layout editor** (`ViewModels/StageLayoutEditorViewModel.cs`, `Views/StageLayoutEditorWindow.xaml`, `Core/Stage/StageLayoutEditing.cs`; the pencil in the Stage panel). Add boxes for the current slide, next slide, chords, notes, clock, timers and more, choose what each shows, and snap them inside a safe margin. A notes box is the existing "current slide" link with the object name "Notes", so no new kind was needed.
+- **The overlay editor's extras.** The Animation tab is now one control shared by the overlay and theme editors (`Views/AnimationTab.xaml`, `ViewModels/AnimationTabViewModel.cs`). It adds **Change** (morph) steps posed on the canvas, a custom start for an In, camera push settings, and an **animation timeline** you can drag (`Views/AnimationTimelineView.cs`, rules in `Core/Animation/AnimationTimelineEditing.cs`).
+- **Picture and video slides.** A slide whose media is its background has three menus: **Layer**, a picture's **Scale**, and **When the video ends** (`Core/Media/CueMediaEditing.cs`, `ViewModels/MainViewModel.SlideMedia.cs`).
+
+The full walkthrough is [phase7/editors.md](phase7/editors.md).
+
+## 50. The library in depth (Phase 8)
+
+Phase 8 makes the library something a church can live in for years. As before, nothing new is written into a shared document: a Windows-only fact goes in Windows extras or `settings.json`.
+
+- **Folders, sorting and search** (`Core/Library/LibraryBrowse.cs`, `FolderPaths.cs`, `LibrarySearch.cs`). A folder exists while something is filed in it, or while it's new and empty (those are remembered in `settings.json`). Each list remembers its own sort: Name, Date Modified, Date Added or Recently Used. "Recently used" is kept in `usage.json` beside the library (`LibraryDates.cs`). Search covers songs, presentations, media, music and tags, and ranks the hits: an exact CCLI number first, then titles, then words in the lyrics.
+- **Favourites and tags** (`LibraryMarks.cs`). Media and music have shared fields for these, so a Mac sees them. Songs and presentations don't, so theirs are a Windows extra (`library-marks`).
+- **Many at once** (`LibraryBatch.cs`). Ctrl+click and Shift+click pick several rows, and a right-click acts on all of them: add to the service, move, duplicate, apply a theme, export, delete. Deleting songs that are in a service says which services first.
+- **Export** (`Core/Export/`). PDF (a sheet of slides, a page per slide, a lyric sheet or a chord chart), a picture per slide, plain text, or ChordPro. The PDF writer is our own (`PdfDocument.cs`, `TrueTypeFont.cs`): it embeds only the letters used, and adds a text layer so a PDF reader can search.
+- **Backups** (`Core/Library/LibraryBackup.cs`, `BackupFiles.cs`). A backup is one `.mxubackup` zip of every document, the Windows extras, the fonts and, if you choose, the media. Restoring first compares the backup with the library, so you choose what comes back. It takes a safety copy before changing anything. A nightly backup is due once after each 3 AM (the Mac's `ScheduledBackup` rule), and the newest 7 are kept. A backup made on a Mac is refused with a clear message.
+- **Media files as files** (`Core/Library/BlobEdits.cs`, `Rendering/MediaHub.ReloadInPlace.cs`). Media is stored by the hash of its bytes. Edit a stored picture in a photo editor and, ten seconds after it stops changing, the app renames it to its new hash and every item follows. A video on screen plays a replaced file at once, from the same point.
+- **Opening files from Explorer** (`Infrastructure/FileHandoff.cs`, `Core/Library/OpenRequests.cs`, `scripts/file-types.ps1`). Installing registers `.mxuslides` and `.mxubackup` for this Windows user only. If the app is already running, the second copy sends the file names to the first over a named pipe and quits.
+- **The welcome guide and Help** (`Views/OnboardingWindow.cs`, `Core/Library/OnboardingFlow.cs`, `Views/HelpMenu.cs`).
+- **Diagnostics** (`Core/Diagnostics/`, `Views/DiagnosticsWindow.cs`). Facts about this PC, health checks (low disk space, on battery, missing media, no recent backup), and the logs. **Check this PC…** runs the self-test in a separate copy of the app on a throwaway library (`Infrastructure/PcCheckRunner.cs`). The self-test now refuses to run on a real library. **Hang detection** (`Infrastructure/HangWatch.cs`) pings the UI thread four times a second from a background thread, and writes every thread's stack to the log if there's no answer for 5 seconds. **Report a problem** zips the logs and facts with secrets removed. Nothing is sent anywhere.
+
+The full walkthrough is [phase8/library.md](phase8/library.md).
+
+## 51. Running a service well: arrangements, the continuous view, volunteer mode and shortcuts (Phase 8)
+
+- **Song arrangements** (`Core/Lyrics/ArrangementEditing.cs`, `Views/Arrangements/`). An arrangement is a named order of a song's sections. The chorus may play three times, but its slides exist once. The chip in the slide grid's header picks, makes, renames and deletes arrangements. The pills under the title are the blocks: drag one to move it. You can pick another arrangement while the song is live: the slide stays up, and `MainViewModel.ReanchorLive` finds the same slide in the new order so Next carries on from there. Arrangements use the shared `arrangements` field, so a Mac reads every change.
+- **The continuous view** (`Core/Scene/ContinuousRows.cs`, `Views/ContinuousSlidesView.xaml`, `ViewModels/MainViewModel.Continuous.cs`). A switch under the slides picks Grid or Continuous: the whole service as one scroll of cards. The list is **virtualized**: only the cards on screen are made into controls, so a service of 300 slides scrolls smoothly. Thumbnails arrive card by card at background priority.
+- **Volunteer (run-only) mode** (`Core/Control/VolunteerMode.cs`, `Views/Volunteer/`). A locked layout for running a service: the service, its slides, Next, Previous, the clears, and the panels you allow. Rather than disabling a hundred controls one by one, `VolunteerLayout.cs` swaps the window's content for a separate view. If a control isn't in that view, a volunteer can't reach it. The commands that change things also ask one table first (`RunOnly.Allows`). An optional PIN is stored only as a salted PBKDF2 hash. The Local API and the browser remote aren't limited by it.
+- **Keyboard shortcuts** (`Core/Control/KeyboardControl.cs`, `Views/Keys/`, `Views/MainWindow.Keys.cs`). **Screens & Settings › Keyboard Shortcuts…** lists every command, and you can change its keys. A `KeyCommandMap` stores only what you changed. `Resolve` finds what a key runs, and `ConflictedKeys` finds clashes. While a text box has the keyboard, only keys that type nothing fire, so typing a title never clears the screen. Looks, timers, overlays and combos can be given keys too. Press **?** for a cheat sheet. The old hard-coded key `switch` is gone: `MainWindow.Keys.cs` is the only key handler.
+- **Service list extras** (`Core/Library/RunOrderSelection.cs`, `ServicePicking.cs`, `Views/ServiceListExtras.cs`, `Views/ServicePicker.cs`). Collapse a header, pick several rows for a bulk menu, and a picker that lists today's and later services first. A Planning Center service with several times (9:00 and 11:00) can run just one of them on this PC. `MainViewModel.RunOfShow` is the one place the app asks "which rows, in what order".
+- **Board and panel extras.** Alerts, timers, combos and schedule triggers drag to a new place (`Core/Automation/BoardDrops.cs`, `Views/Operator/BoardDragging.cs`). The live preview keeps the shape of the screen it shows (`PreviewShape.cs`). The transport strip draws a video's marks on its scrub bar and names the next one (`Views/Operator/ScrubMarks.cs`; section 56 explains marks).
+
+Everything a PC chooses for itself (its shortcuts, its volunteer PIN, collapsed headers) is in `settings.json` (`Infrastructure/AppSettings.Operator.cs`), never in a shared document. The full walkthrough is [phase8/operator.md](phase8/operator.md).
+
+Phase 9 (broadcast and devices) was skipped on purpose, so the numbers go from 8 to 10.
+
+## 52. Sharing one library with the Mac (Phase 10)
+
+Until Phase 10 a Mac and a PC could only pass each other single presentations (section 40). Now they can share one library through a folder both can reach: OneDrive, Dropbox, iCloud for Windows or a network share. Turn it on in **Settings › Library sync**.
+
+- **The Mac's format.** On the Mac each library document is one **Automerge** file. Automerge keeps a document as a history of changes, so two copies that were each edited can be merged, and every computer ends up with the same result.
+- **Automerge on Windows.** Automerge's core is written in Rust. `native/automerge-ffi` is a small Rust library of our own that wraps the same version the Mac uses (0.7.2) with a C interface. `tools/build-automerge.ps1` builds it into `src/MxU.Slides.Sync/Native/automerge.dll`. The DLL is committed, so building the app needs no Rust. `Automerge/AmDocument.cs` is the C# side.
+- **Reading and writing the Mac's way** (`MxU.Slides.Sync/Format/`). The Mac's reader is strict, so `MacDecoder.cs` copies its rules exactly and `MacEncoder.cs` writes exactly the types the Mac writes. `DocumentDiff.cs` turns a Windows edit into the *smallest* Automerge edit: a change to slide 3 touches only slide 3, so a Mac's change to slide 5 at the same moment survives the merge. Every write is checked against the schema, made, then read back with the Mac's rules. If it doesn't say exactly what Windows meant, it's thrown away. That's the rule "never write a document the Mac couldn't open".
+- **The engine** (`MxU.Slides.Sync/Engine/`). The JSON library (`LibraryStore`) is still what the app works from. Beside it, sync keeps a **replica** of each document (this PC's own Automerge copy) and a **ledger** (`SyncLedger.cs`) of what each side looked like last time. Comparing the ledger with what's there now says which side changed. A pass runs on its own `WorkQueue`, never the UI thread.
+- **Safety.** The first sync backs up both sides. Before saving a Mac change into the library, sync checks the file is still the one it read (`LibraryStore.SaveIfUnchanged`), so it can't overwrite an edit made a moment before. If many documents vanish at once, sync stops and asks. A document from a newer Mac that this version can't read is left alone in the folder.
+- **Media** is copied both ways by `BlobMirror.cs`. **Windows extras** stay on the PC and never go into the Mac's documents.
+
+This has been tested against a stand-in that writes documents the way the Mac's code does (`tests/MxU.Slides.Sync.Tests/Fakes/MacSimulator.cs`), and against the Mac's own test fixtures. **It has not been tried with a real Mac.** The walkthrough says exactly how to try it safely: [phase10/sync.md](phase10/sync.md).
+
+## 53. Motion templates: Lottie and After Effects (Phase 11)
+
+Churches design lower thirds and title cards in After Effects. A **Lottie** file is such an animation saved as JSON: shapes, text and keyframes, not pixels. So the app can draw any frame at any size, keep it see-through, and change the words first. Open **Overlays › Motion templates…**. The Mac has none of this, so it's all Windows-only code.
+
+- **Reading the file** (`Core/MotionTemplates/LottieDocument.cs`, `LottieFiles.cs`). A `.json` or a `.lottie` package becomes one self-contained animation, with its pictures inside it.
+- **Fields** (`MotionFields.cs`). Lottie has no list of things you can edit, so the fields are worked out from the file: every text layer, every distinct colour, every picture. `Apply` makes a changed copy. The template itself is never touched.
+- **Which frame, when** (`MotionTimeline.cs`). Designers mark the parts **In**, **Hold** and **Out**. `FrameAt` is a pure function, like the animation engine in section 14: given how long the template has been up (and how long since it was taken down), it says which frame to draw. Taking it down jumps straight to the Out.
+- **Drawing** (`src/MxU.Slides.MotionTemplates/`, a project of its own because it brings Skia's native library). `LottieRenderer.cs` draws a frame with **Skottie**, the Lottie player in Google's Skia (the `SkiaSharp.Skottie` package). `MotionPlayers.cs` draws every playing template on one thread of its own. A lower third holding still costs nothing, because Skottie reports that nothing changed. A heavy full-screen template is drawn in four bands on four threads (`BandedRenderer.cs`).
+- **On the screens** (`Rendering/MediaHub.Motion.cs`). A playing template is drawn like a live camera (section 22): one bitmap, updated in place, that every view shows.
+- **What a Mac sees.** A lower third is an ordinary overlay holding one PNG of the design at rest. A full-screen template is an ordinary looping MP4. The template, the values and the playback are Windows extras, with a fingerprint so a Mac's edit wins (section 41).
+- **MP4 export** (`Export/LottieVideoMaker.cs`) uses the motion backgrounds' H.264 writer (section 47).
+- **The After Effects bridge** (`AfterEffects/`). For compositions that don't export to Lottie, the app asks After Effects itself to render one, with new words and colours put in first, and imports the video. It works on a copy, so your `.aep` is never changed. After Effects isn't installed on the test PCs, so the tests use a stand-in program (`tests/MxU.Slides.FakeAfterEffects`). **It has not been run with real After Effects.**
+
+Three starter templates are written in code (`Core/MotionTemplates/StarterMotionTemplates.cs`): Name Strap, Scripture Bar and Title Card. The full walkthrough is [phase11/motion.md](phase11/motion.md).
+
+## 54. Make Slides from notes (MxU's autumn 2026 updates)
+
+MxU released three Mac updates in October and November 2026. Sections 54 to 56 are their Windows ports.
+
+A pastor sends sermon notes as a Word file, a PDF or pasted text. Click **Notes** in the library, bring the notes in, and **Make Slides…** builds the title, verses, points and quotes as slides in the church's theme. When the notes change later, the slides they made are offered the change.
+
+- **A note is a shared document** (`NoteDocument`), so a note made here opens on a Mac. Its body is a list of blocks, and each block holds runs of text. A slide mark is four fields on a run.
+- **The rules are in `Core/Notes/`**, ported from the Mac file for file with its tests:
+  - `NoteSlideSuggestions.cs` is *Pick for me*: it guesses which lines are a title, a Bible reference, a list of points or a quote.
+  - `SlidePlanner.cs` turns marked passages into a plan: how many slides, which design, where the lines break. It measures text with the same letter widths the Mac uses, so both apps split a long verse at the same words. It sits behind an interface, `ISlidePlanner`.
+  - `NoteSlideBuilder.cs` builds each slide from the theme's design. Picture slides use the design's photo spots (section 56).
+  - `NoteLiveUpdates.cs` and `NoteSlideUpdate.cs` work out the **Update**, **Add** and **Remove** badges when the notes change.
+  - `NoteFollowAlong.cs` lights the passage of the live slide.
+- **Reading files** (`NoteFileReader.cs`, `NoteDocumentReaders.cs`). Word and ODT are zips of XML, read directly. PDF text comes from the PdfPig package. RTF and PowerPoint reuse the import readers from section 16. Reading happens off the UI thread.
+- **The windows** are in `Views/Notes/` (`NotesWindow`, `MakeSlidesWindow`, `NoteChangesWindow`), with their commands in `ViewModels/MainViewModel.Notes.cs`.
+
+Different from the Mac: the notes window marks and edits whole lines, not part of a paragraph, and Paste takes plain text only. The full walkthrough is [upstream-2026-11/notes.md](upstream-2026-11/notes.md).
+
+## 55. The backup computer (MxU's autumn 2026 updates)
+
+A second computer on the same network can follow the booth computer fire for fire. If the booth freezes, the backup takes over where the booth was. Set it up in **Settings › Backup**.
+
+- **The booth tells.** Every fire (a slide, a clear, media, an alert, a timer, music) is published on a new Local API topic, `fires` (`LocalApi/Follow/ApiFireFeed.cs`). A fire set off by another fire (a slide's actions) names that fire as its *cause*. The backup replays only fires with no cause, because the effects follow by themselves. In the app, one line at each place that fires calls `Fired(...)` (`ViewModels/MainViewModel.Follow.cs`).
+- **The backup follows** (`Follow/FollowController.cs`, `LocalApi/Follow/LocalApiClient.cs`). It keeps a WebSocket to the booth and pings every second. The answer carries the booth's *beat*: a counter its UI thread moves four times a second. No answers means the booth is gone. Answers with a beat that stands still mean its app froze.
+- **Who is in charge** is a number (`Core/Follow/FollowLogic.cs`, ported from the Mac with its tests). Each takeover or hand-back counts one up, and the higher number wins. So a booth that wakes from a freeze and hears a higher number steps down.
+- **Pairing** uses a four-digit code. The backup then holds an Operate key for the booth's API, kept encrypted for this Windows user (DPAPI).
+- **Finding each other** (`LocalApi/Follow/DnsSd.cs`) uses Windows' own DNS-SD, the same protocol as a Mac's Bonjour.
+- **Copying items** (`Core/Follow/FollowCopy.cs`). Between two Windows PCs the booth's library items and media are copied to the backup. Between a Mac and a PC they aren't: copy the library across once by hand.
+
+This has been tested between two copies of the Windows app on one PC, and against the Mac's own tests for the messages. **It has not been run with a real Mac.** The full walkthrough is [upstream-2026-11/backup.md](upstream-2026-11/backup.md).
+
+## 56. Engine catch-up: video marks, photo spots, Scale and Blur, end fades, dissolves and the Screen Map (MxU's autumn 2026 updates)
+
+The shared schema was already up to date, so Windows could *read* Mac documents that use these features. This port makes Windows *do* them. Nothing new is written into a shared document: every field used here is one the Mac's schema already has.
+
+- **Video marks** (`Core/Media/VideoMarks.cs`, `ViewModels/MainViewModel.VideoMarks.cs`, `Views/VideoActionsWindow.cs`). A video can carry named points, each with a list of actions. Right-click a video › **Video Actions…** to make them. While a video plays, the app reads its position four times a second and `Crossed` decides which marks it passed. The rule is "only what the time explains": if the position moved further than the time allows, that was a seek, and nothing fires. A stage countdown can count to the next mark or a named one.
+- **Photo spots** (`Core/Library/PhotoSpots.cs`). A theme design can mark shapes as photo spots. A picture slide lays its photos over the spots in reading order, each with its spot's corners, border and shadow. Every starter theme gained eight photo designs. An older library is repaired gently: the designs are added and nothing you changed is touched (`StarterPacks.Repair.cs`).
+- **Scale and Blur** (`Core/Animation/MediaLooks.cs`). A tall phone photo on a wide screen shows whole, over a blurred, zoomed copy of itself, so there are no black bars. `MediaLooks.Expanding` turns the one item into two ordinary items just before each frame is drawn, so the renderer needed no other change.
+- **End fades.** A video slide can fade over its last second, to black or to clear. `SceneView` asks the player how long is left (`MediaHub.PlaybackRemaining`). The choice is saved in the slide's shared fields, and read through `SlideOptions.VideoEnds` in `Core/Notes/`.
+- **Dissolves** (`Core/Animation/SceneTransitionEngine.cs`, `Rendering/SceneView.Layers.cs`). Before, a dissolve faded every item on its own, so what a fading backdrop covered showed through. Now a layer of words dissolves as one picture: the whole old stack and the whole new stack are each drawn into a container, and the containers fade. Each layer also runs on its own length.
+- **The Screen Map** (`Core/Outputs/ScreenMap.cs`, `ScreenMapEditing.cs`, `Views/ScreenMapWindow.cs`; Screens › **Screen Map…**). It draws the room as one big picture, with each screen where it really sits. An output preset can *place* a layer on the map: "the slide across both side screens". `ScreenMapResolver.Resolve` turns a placement into frames in each screen's own units. The map belongs to this PC, so it's saved in `settings.json`.
+- **Custom layers** (`Core/Scene/ShowState.CustomLayers.cs`). A preset can add layers of its own, each above a layer it names. Scenes now hold layers by id. `MainViewModel.CustomLayers` is one list of every preset's layers. A slide's Layer menu, a media tile's **Play on Layer** menu and a Clear Layer step can name one. The transport strip's layer picker and the Clear row don't list them yet.
+- **Streams** (`Broadcast/Streaming/UploadWatch.cs`). A stalled upload reconnects by itself. A stream can be **Adaptive**: it lowers its bitrate to what really leaves the PC, and climbs back after 15 good seconds.
+- **Smaller things.** Decoded pictures are kept up to a memory budget and the least recently used go first (`Rendering/ImageCache.cs`).
+
+The full walkthrough is [upstream-2026-11/engine.md](upstream-2026-11/engine.md).
+
 ## Things to try, to learn by doing
 
 1. **Add a section name.** Make "Spontaneous" a recognised label. In `Lyrics/Reflow.cs`, add it to the list of names just above `LabelPattern`, then add a test in `ReflowTests.cs` and run `dotnet test`.
 2. **Change the default transition time.** Find `TransitionSeconds` in `Infrastructure/AppSettings.cs`.
-3. **Add a keyboard shortcut.** Make B clear the slide, ProPresenter-style. Look at `OnPreviewKeyDown` in `Views/MainWindow.xaml.cs`.
+3. **Change a keyboard shortcut.** Open **Screens & Settings › Keyboard Shortcuts…** and give Clear Slide the key B, ProPresenter-style. Then read how it works: the commands and their default keys are in `Core/Control/KeyboardControl.cs`, and `Views/MainWindow.Keys.cs` runs them (section 51).
 4. **Make a stage layout.** Copy `CurrentAndNext` in `Stage/ConfidenceLayoutTemplate.cs`, move the boxes, and add it to `WorkspaceStarters`. It appears in the Stage menu on a new library.
 5. **Script the show.** Turn on the Local API, then write a PowerShell loop that calls `POST /v1/show/advance` with `{"steps":1,"settled":true}` every 5 seconds: an instant announcement loop.
 6. **Slow an animation down.** In `Library/StarterPacks.cs`, find `TextIn` and double its duration. Delete `starter-revision.txt` in your *test* library so the themes are rebuilt, then fire a lyric slide.
@@ -864,3 +1014,7 @@ The full walkthrough is [phase6/backgrounds.md](phase6/backgrounds.md).
 10. **See a Windows extra at work.** In your *test* library, give a slide a Push transition. Open its presentation's JSON: the slide says Dissolve. Then look in `Windows extras/slide transitions/` for the file named after the slide's id: that's where the Push is (section 41).
 11. **Teach the Bible a nickname.** Make `Revs` mean Revelation. Find the book names in `Core/Scripture/BibleBooks.cs`, add it, and add a case to `PassageReferenceTests.cs`.
 12. **Run the show from your phone.** Turn on the Local API, open the address Settings shows on your phone (same Wi-Fi), pair with the code, and press Next (section 45).
+13. **Watch undo merge.** Read `JsonMergeTests.cs` beside `Core/Undo/JsonMerge.cs`. Then, in your *test* library, rename a slide in the main window, retype an overlay in the overlay editor, and press Ctrl+Z in each window: each undoes only its own edit (section 48).
+14. **Read a one-line rule.** `ScheduledBackup.Due` in `Core/Library/BackupFiles.cs` is the whole "once after each 3 AM, catching up a missed night" rule (section 50).
+15. **See what a Mac gets from a motion template.** Add a lower third from **Overlays › Motion templates…**, then open its overlay's JSON in your *test* library: one media object pointing at a PNG. The rest is in `Windows extras/motion template uses/` (section 53).
+16. **Follow a video mark.** Open `VideoMarksTests.cs` and find a test where a seek fires nothing. Then read `VideoMarks.Crossed` (section 56).

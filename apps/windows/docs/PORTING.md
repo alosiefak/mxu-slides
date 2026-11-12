@@ -41,9 +41,9 @@ Paths are relative to `apps/mac/Packages` for Swift and `apps/windows/src` for C
 | `PresenterCore/…/Library/StarterPacks/StarterPacks.swift` | `MxU.Slides.Core/Library/StarterPacks.cs` (themes, designs, overlays and their animation steps) |
 | `PresenterCore/…/Library/StarterPacks/WelcomeDeck.swift` | `MxU.Slides.Core/Library/StarterContent.cs` (wording adapted for Windows) |
 | `PresenterCore/…/Library/GroupPaletteLogic.swift` (defaults) | `StarterContent.GroupPalette` |
-| `PresenterCore/…/KeyboardControl.swift` (default keys) | `MainWindow.xaml.cs` → `OnPreviewKeyDown` |
+| `PresenterCore/…/KeyboardControl.swift` (`KeyChord`, `KeyCommand`, `KeyCommandMap`, `GeneratedKey`) | `MxU.Slides.Core/Control/KeyboardControl.cs` (⌘ → Ctrl, ⌥ → Alt; Windows' own commands and defaults; `ReservedReason`, `FiresWhileTyping`). `Views/MainWindow.Keys.cs` is the only key handler |
 | `SlideScene/…/AnimationSequence.swift`, `AnimationTimelineLayout.swift`, `PlaceholderAnimations.swift`, `Paging.swift` | `MxU.Slides.Core/Animation/` (same names) |
-| `RenderEngine/…/AnimationEvaluator.swift`, `AnimationTimeline.swift`, `BlockScrollRoll.swift`, `VideoPushEvaluator.swift`, `SceneTransitionEngine.swift` | `MxU.Slides.Core/Animation/` (same names; `AnimatedItem.cs` carries the Mac `RenderItem` fields the C# one lacks). `SceneTransitionEngine.cs` has an extra kind, `SceneTransitionKind.Picture`, and `AnimatedLayer.Mix` (Phase 6 transitions): a port of a change to `composite` must keep the `Picture` case and the interrupted-mix flattening at the top of `Composite` |
+| `RenderEngine/…/AnimationEvaluator.swift`, `AnimationTimeline.swift`, `BlockScrollRoll.swift`, `VideoPushEvaluator.swift`, `SceneTransitionEngine.swift` | `MxU.Slides.Core/Animation/` (same names; `AnimatedItem.cs` carries the Mac `RenderItem` fields the C# one lacks). `SceneTransitionEngine.cs` has an extra kind, `SceneTransitionKind.Picture`, and `AnimatedLayer.Mix` (Phase 6 transitions): a port of a change to `composite` must keep the `Picture` case and the interrupted-mix flattening at the top of `Composite`. Since MxU's autumn 2026 updates, layers are keyed by id, each runs on its own length, and a dissolve on a layer that isn't media sets `CrossfadeProgress` (the `Picture` case clears it) |
 | `SlideScene/…/EditorGeometry.swift` | `MxU.Slides.Core/Scene/EditorGeometry.cs` |
 | `SlideScene/…/HotKeyJump.swift` | `MxU.Slides.Core/Scene/HotKeyJump.cs` |
 | `PresenterCore/…/MIDIControl.swift` | `MxU.Slides.Core/Control/MidiControl.cs` |
@@ -126,7 +126,7 @@ Paths are relative to `apps/mac/Packages` for Swift and `apps/windows/src` for C
 | the missing/status badges in `Sources/LibraryView.swift` and `PresentGridView.swift` | `Views/MediaBadge.cs`, `ViewModels/ItemViewModels.Library.cs` |
 
 The Mac tests for these files are ported too, in `apps/windows/tests/` (one test project per source project). When you port a change, port its test.
-| `SlideScene/…/ThemeOverride.swift` | `MxU.Slides.Core/Animation/PlaceholderAnimations.cs` → `OverrideObjects` (font traits from the name; see below) |
+| `SlideScene/…/ThemeOverride.swift` | `MxU.Slides.Core/Animation/PlaceholderAnimations.cs` → `OverrideObjects` (font traits from the name; see below). `BaseStyle` is public and reads the placeholder's font, colour and case before the theme's |
 | `PresenterCore/…/ThemeSlideScope.swift` | `MxU.Slides.Core/Scene/ThemeSlideScope.cs` |
 | `SlideScene/…/TransitionEdit.swift` | `MxU.Slides.Core/Animation/TransitionEdit.cs` |
 | `Sources/RenderContext.swift` (`sceneTransition(from:)`, `roomDefault(for:)`, the variant engines), `Sources/ServiceControls.swift` (`nextLiveTransitions`, hand-offs, `switchPreset`, `apply()`'s variants and page turn) | `MxU.Slides.Core/Animation/LiveTransitions.cs`, `MxU.Slides.Windows/ViewModels/MainViewModel.Live.cs`, `Rendering/SceneView.cs` (`PresentLayered`). `LiveTransitions.cs` also takes the Phase 6 Windows-only kinds (`Own`, `FromWindows`) and has their stand-ins (`Fallback`, `InSoftware`); the rules themselves are still the Mac's |
@@ -173,6 +173,117 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
 | `Sources/AppModel.swift` (`saveAnimationPreset`, `overwriteAnimationPreset`, `deleteAnimationPreset` and the effect ones) | `MxU.Slides.Core/Library/PresetBoards.cs` |
 | `RenderEngine/…/TextRasterizer.swift` (balanced wrap) | `MxU.Slides.Windows/Rendering/TextLayout.cs` |
 
+### Phase 7: editing and the editors (HOW-IT-WORKS sections 48 and 49)
+
+| Swift | C# |
+|---|---|
+| `PresenterCore/…/MenuCommandLogic.swift` (`UndoMenuLogic`) | `MxU.Slides.Core/Undo/UndoMenuLogic.cs` |
+| `PresenterCore/…/Library/MoveUndoJournal.swift` (the rules: 50 steps, 5 s coalescing, dead entries dropped, nothing recorded while restoring; `ListOrder.apply`, `ListRemoval.restore`) | `MxU.Slides.Core/Undo/UndoScope.cs`, `UndoHistory.cs`, `JsonMerge.cs` |
+| `SlideScene/…/SlideBulkEdit.swift` (`freshIDCopy`, `duplicateSlides`, `deleteSlides`, `insertSlides(after:)`, `moveSlide(before:)`) | `MxU.Slides.Core/Editing/EditorClipboard.cs`, `Dropping.cs` (`DropRules.MoveSlides`) |
+| `SlideScene/…/SlideBulkEdit.swift` (`mergeSlides`) | `MxU.Slides.Core/Lyrics/SlideBulkEdit.cs` (`MergeSlides`; the one copy) |
+| `Sources/SlideEditorModel.swift` (`pasteObjects`, `duplicateSelectedObjects`, `copySlides`, `pasteSlides`, `bringForward`, `sendBackward`, `bringToFront`, `sendToBack`, `groupSelection`, `ungroupSelection`, `panelStackTopFirst`, `movePanelObject`, `applyStyleToSelection`, `toggleSelectionBold/Italic/Underline`, `mergeSlides`) | `Core/Editing/EditorClipboard.cs`, `Layers.cs`; `ViewModels/MainViewModel.Clipboard.cs`, `MainViewModel.Layers.cs`, `ObjectInspectorViewModel.TextTools.cs` |
+| `PresenterCore/…/Library/SlideGridDrop.swift` | `MxU.Slides.Core/Editing/Dropping.cs` (`SlideGridDrop`, `SlideDropZones`) |
+| `PresenterCore/…/Library/TextStyleRuns.swift` (with `textTransform`; `SlideObject.replaceText`; `AnimationRanges.replacing`, `reanchor`) | `MxU.Slides.Core/Editing/TextStyleRuns.cs` (`TextStyleRuns`, `ObjectText`) |
+| `PresenterCore/…/Library/ChordEditing.swift` | `MxU.Slides.Core/Editing/ChordEditing.cs` |
+| `Sources/PresentGridView.swift` (`SongKeyChip`; the drop in front of the first slide; `TileHelp`/`TileTipLabel` for the action badges) | `Views/SongKeyChip.cs`, `ViewModels/MainViewModel.Dropping.cs` (`InsertMediaSlides`), `Views/TileActionBadges.cs` |
+| `Sources/SlideEditorView.swift` (the objects panel; Merge N Slides) | `Views/LayersPanel.cs`; `Views/MainWindow.Editing.cs` (`AddSlideEditItems`) |
+| `Sources/SlideObjectInspector.swift` (typography: Balanced Wrap, Auto-Shrink, Page on Click, Keep Lines Whole, Min Size; the Selection strip with All Caps; the Photo spot toggle and Scale and Blur) | `ViewModels/ObjectInspectorViewModel.TextTools.cs`, `Views/TextFormatBar.cs`, the inspector XAML; `ObjectInspectorViewModel.PhotoSpot`, `ScaleMode` |
+| `SlideScene/MediaTrimEdit.swift` | `MxU.Slides.Core/Media/MediaTrimEdit.cs` |
+| `PresenterCore/Library/DesignActions.swift` (with `Presentation.applyTheme` and `adoptDesignActions`) | `MxU.Slides.Core/Library/DesignActions.cs` |
+| `PresenterCore/Library/ConfidenceLayoutEditing.swift` (`editorMirror`, `adopt(editorMirror:)`, `isTallCanvas`) | `MxU.Slides.Core/Stage/StageLayoutEditing.cs` |
+| `Sources/AutoAdvanceControls.swift` | `MxU.Slides.Core/Automation/AutoAdvanceEditing.cs`, `Views/AutoAdvanceWindow.cs` |
+| `Sources/SlideEditorModel+Animations.swift` (timeline and morph: `placeTimelineStep`, `resizeTimelineStep`, `moveTimelineSteps`, `trimTimelineStepStart`, `moveTimelineStep`, `toggleStepLink`, `duplicateAnimationStep`, `deleteTimelineColumn`, `moveTimelineColumn`, `morphBaseline`, `addMorph`, `setInCustomStart`) | `MxU.Slides.Core/Animation/AnimationTimelineEditing.cs` |
+| `Sources/AnimationTimelinePanel.swift` | `Views/AnimationTimelineView.cs` |
+| `Sources/MediaEditorView.swift` (the inspector, `EffectKind.addable`, the effects section), `SlideObjectInspector.swift` (effects section, `EffectPresetsMenu`) | `ViewModels/MediaEditorViewModel.cs`, `Views/MediaEditorWindow.cs`, `MxU.Slides.Core/Animation/EffectEditing.cs`; `Views/EffectsPanel.cs`, `ViewModels/EffectsEditorViewModel.cs` |
+| `RenderScene.applyingMediaEffects` | the effects half of `MxU.Slides.Core/Media/MediaDressing.cs` |
+| the theme host of the slide editor, `ThemeSlides.defaultSlides`, `SlideBulkEdit.freshIDCopy`/`uniqueThemeSlideName`, AppModel's theme create and duplicate; `NewSlide.preview` | `MxU.Slides.Core/Library/ThemeLibrary.cs`, `ThemeApplication.cs`, `ViewModels/ThemeEditorViewModel.cs`, `Views/ThemeEditorWindow.xaml`; `Core/Animation/DesignPreview.cs` |
+| `Sources/Modules/ConfidenceModule.swift` ("Edit Layout in Library") | the pencil in `Views/Operator/StagePanel.cs` |
+| `NewSlide.swift` (`ThemeDesignDrag`), AppModel's `themeDesign(_:)`, `LibraryThemeDesigns.swift`, PresentGridView's theme design drop | `MxU.Slides.Core/Library/ThemeDesignDrag.cs`, `Views/ThemeDesignsWindow.cs`, `Views/ThemeDesignDrop.cs`, `MainViewModel.DropThemeDesign` |
+| `SlideLayerFacts.swift` (`storedRoutingLayerId`, `setRoutingLayer`, `defaultLayer`), MediaCueMenu's `SpotLayer` picker, `PhotoSpots.swift` (`inPhotoSpot`), SlidePlanner's `showMedia` video end, `OutputPresetsController.customLayers` | `MxU.Slides.Core/Media/CueMediaEditing.cs` (with `CustomLayers`; the video end choices are `SlideOptions.VideoEnds`), `ViewModels/MainViewModel.SlideMedia.cs` |
+| `Sources/ActionEditors.swift` (`router.layerStack`, `slideActionLabel(layers:)`) | `ActionEditing.LayerStack`, `SlideActions.LabelNames.Layers` |
+| the stage inspector's Counts To / Action / Action Name / Direction / Video From rows | `ViewModels/StageLinkViewModel.cs` |
+
+### Phase 8: the library and the operator (sections 50 and 51)
+
+| Swift | C# |
+|---|---|
+| `PresenterCore/…/Library/LibraryViewOptions.swift` | `MxU.Slides.Core/Library/LibraryBrowse.cs` (`LibrarySort`, `LibrarySorts`) |
+| `PresenterCore/…/ListMultiSelect.swift` | `MxU.Slides.Core/Library/RunOrderSelection.cs` (`ListMultiSelect`; one copy, used by the library and the service list) |
+| `PresenterCore/…/Library/IndexSnapshot.swift` (`LibraryBrowseLogic`), `FolderTreeLogic.swift`, `TeamDrives.swift` (`folderTree`, the folder half of `folderMoveMenu`) | `MxU.Slides.Core/Library/LibraryBrowse.cs` (`LibraryFolders`, `MoveTargets`), `FolderPaths.cs`, `FolderTree.cs` (`FolderNode`; one copy) |
+| `PresenterCore/…/Import/PresentationExport.swift` | `MxU.Slides.Core/Export/PresentationExport.cs` (with `PdfDocument`, `TrueTypeFont`, `LyricSheet`, `SlidesPdf`, `TextExport`) |
+| `PresenterCore/…/Library/BackupBundle.swift` | `MxU.Slides.Core/Library/LibraryBackup.cs` |
+| `PresenterCore/…/Library/ScheduledBackup.swift` | `MxU.Slides.Core/Library/BackupFiles.cs` (`ScheduledBackup`) |
+| `PresenterCore/…/Diagnostics/DiagnosticsBundle.swift` | `MxU.Slides.Core/Diagnostics/DiagnosticsBundle.cs` |
+| `PresenterCore/…/Diagnostics/PerfLineLimiter.swift` | `MxU.Slides.Core/Diagnostics/HangDetector.cs` (`PerfLineLimiter`) |
+| `PresenterCore/…/Onboarding/OnboardingFlow.swift` | `MxU.Slides.Core/Library/OnboardingFlow.cs` |
+| `PresenterCore/…/MediaImport/MediaRelink.swift` (`refingerprinted`) | `MxU.Slides.Core/Library/MediaRelink.cs` (`Refingerprinted`) |
+| `PresenterCore/…/MediaImport/MediaImportDedupe.swift` (`unattendedUsesExisting`) | `MxU.Slides.Core/Library/MediaImportDedupe.cs`; `ImportMediaFilesAsync(unattended: true)` |
+| `PresenterCore/…/MediaImport/BlobStore.swift` (edited files), `Sources/LibraryFileEdits.swift` | `MxU.Slides.Core/Library/BlobEdits.cs`, `ViewModels/MainViewModel.BlobEdits.cs` (a map of times instead of extended attributes) |
+| `Sources/LibraryView.swift` (folder *Move to Folder*, search hits with *Show in Library* and the item's own menu, delete removes unused files) | `Views/LibraryMenus.cs`, `Views/LibraryPanel.xaml.cs`, `MainViewModel.LibraryBrowse.cs` (`ShowInLibrary`) |
+| `Sources/KeyboardShortcuts.swift` (`KeyInController.handle`, `execute`, `dispatch`, the go-to buffer), `KeyboardSettingsPane.swift` (`KeyboardMapPane`, `KeyChordChip`, `GroupHotKeyChip`) | `Views/MainWindow.Keys.cs`, `Views/Keys/*` (`KeyTokens`, `ShortcutsWindow`, `KeyChip`), `ViewModels/MainViewModel.Shortcuts.cs` |
+| `PresenterCore/…/VolunteerModeLogic.swift`, the run-only gates (`RunOnlySweepTests.swift`) | `MxU.Slides.Core/Control/VolunteerMode.cs` (`VolunteerMode`, `RunOnly`, `VolunteerPanels`) |
+| `PresenterCore/…/Library/RunOrderSelection.swift` (not `swept`: no marquee), `AppModel.setServiceItemTransition` | `MxU.Slides.Core/Library/RunOrderSelection.cs` (`RunOrderSelection`, `ServiceBulkEdit`) |
+| `PresenterCore/…/Library/ServiceMenuLogic.swift`, `Sources/AppShell.swift` (`groupLocalServices`, the picker's paging and Earlier row) | `MxU.Slides.Core/Library/ServicePicking.cs`, `Views/ServicePicker.cs` |
+| `Sources/FolderMenus.swift` (`EntryFolderMenuItems`) | `Views/Operator/StagePanel.cs` (`LayoutMenu`) |
+| `Sources/AppModel.swift` (`addArrangement`, `updateArrangement`, `deleteArrangement`), `SlideEditorModel.swift` (`sectionName`, `arrangedSlideCount`), `ServiceContinuousView.swift` (`ArrangementStrip.dropBlock`, `baseRunSections`), `SlideSceneBuilder.showsArrangements` | `MxU.Slides.Core/Lyrics/ArrangementEditing.cs` |
+| `Sources/ServiceContinuousView.swift` (`presentRows`, the card kinds, `CardSlidePosition`) | `MxU.Slides.Core/Scene/ContinuousRows.cs` |
+| `Sources/Modules/ControlBoardFolders.swift` (`handleControlBoardRowDrop`, the folder block's drop, `ControlBoardEndDropStrip`) | `MxU.Slides.Core/Automation/BoardDrops.cs` |
+| `SettingsView.swift` (`present.volunteerLibraries`), `PresentLayoutController.swift` (`runOnlyLibraryKinds`), `LibraryPresentLogic.volunteerKinds` | `VolunteerPanel.Presentations` in `Core/Control/VolunteerMode.cs`, the Presentations bin in `Views/Volunteer/VolunteerView.xaml(.cs)`, `MainViewModel.PresentFromLibrary` |
+| `MediaTransportStrip.swift` (the next-mark caption), `ScrubBar.swift` (`marks`), `MediaTransportController.swift` (`Row.marks`) | `Views/Operator/ScrubMarks.cs`, `Views/LiveShowControls.xaml`, `MainViewModel.Transport.cs` (`TransportMarks`, `TransportNextMark`) |
+
+### Phase 10: library sync (section 52)
+
+| Swift | C# |
+|---|---|
+| `automerge-swift/Sources/Automerge/Codable/Decoding/*` (the rules `AutomergeDecoder` applies) | `MxU.Slides.Sync/Format/MacDecoder.cs` |
+| `automerge-swift/Sources/Automerge/Codable/Encoding/*` (what `AutomergeEncoder` writes) | `MxU.Slides.Sync/Format/MacEncoder.cs`; a second copy written separately for the tests, `tests/MxU.Slides.Sync.Tests/Fakes/MacSimulator.cs` |
+| `PresenterCore/…/Documents/DocumentEntity.swift` (`DocumentKind`, `directoryName`), `Library/SyncScope.swift` (`scope(for:)`, `entityType(for:)`) | `MxU.Slides.Sync/Format/MacKinds.cs` |
+| `PresenterCore/…/Documents/DocumentStore.swift` (`url`, `save`'s merge-before-write, `ids(of:)`), `MediaImport/BlobStore.swift` (blob names) | `MxU.Slides.Sync/Engine/SharedFolder.cs`, `SyncEngine.Documents.cs` (`WriteShared`), `BlobMirror.cs` |
+| `PresenterCore/…/Documents/TypedDocument.swift` (`init(value)`: one change, "create"; `updateSlideList`'s inserts, deletes and moves; `wholeValueKeys`) | `MxU.Slides.Sync/Format/MacDocuments.cs`, `DocumentDiff.cs` (`WholeValueKeys`, `WriteWhole`) |
+| `PresenterCore/…/Library/SyncLedger.swift` (`hex(heads)`), `SyncScope.swift` (`SyncReconcileLogic.afterTombstone`: an edit beats a deletion) | `MxU.Slides.Sync/Automerge/AmDocument.cs` (`DocHeads`), `Engine/SyncEngine.Documents.cs` |
+| `PresenterCore/…/Library/BackupBundle.swift` (`formatVersion`, the layout) | `MxU.Slides.Sync/Engine/SharedFolder.cs` (`BackupFormatVersion`) |
+
+### MxU's autumn 2026 updates (upstream #10, #12 and #13; sections 54 to 56)
+
+| Swift | C# |
+|---|---|
+| `PresenterCore/Library/NoteSlideMarks.swift`, `NoteSlideSuggestions.swift`, `NoteSlideUpdate.swift`, `NoteLiveUpdates.swift`, `NoteFollowAlong.swift`, `NoteMedia.swift`, `NotePassages.swift`, `NoteReading.swift`, `NoteDeckCards.swift`, `NotePanels.swift`, `NoteSlides.swift`, `NoteSlidesMade.swift`, `NoteTextReplacement.swift`, `LocalNotes.swift` | `MxU.Slides.Core/Notes/*` (same names; `NotePassages` and `NoteDeckCards` are in `NotePanels.cs`, `LocalNotes` in `NoteReading.cs`, `NoteTextReplacement` in `NoteSlideMarks.cs`) |
+| `PresenterCore/Library/SlidePlanner.swift`, `SlideDesignMap.swift`, `SlideBuildingSettingsLogic.swift` | `Core/Notes/SlidePlanner.cs`, `NoteSlideBuilder.cs`, `SlideDesignMap.cs` (with `SlideOptions.VideoEnds`), `SlideMediaFacts.cs`, `SlideBuildingSettingsLogic.cs` |
+| `PresenterCore/…/Library/PhotoSpots.swift` | `MxU.Slides.Core/Library/PhotoSpots.cs` (the one copy; Make Slides calls it) |
+| `Import/NoteFileReader.swift`, `PDFGlyphReader.swift`, `DocxMedia.swift`, `ZipExtract.swift` | `Core/Notes/NoteFileReader.cs`, `NoteDocumentReaders.cs` (PDF through PdfPig) |
+| `PPTXImport/PPTXNoteText.swift` | `MxU.Slides.PptxImport/PptxNoteText.cs` |
+| slide history | `MxU.Slides.Core/Library/SlideHistory.cs` |
+| the app's notes views and Make Slides sheet | `Views/Notes/*`, `ViewModels/MainViewModel.Notes.cs`, `Views/MainWindow.Notes.cs` |
+| `LocalAPI/FollowMode.swift` | `MxU.Slides.LocalApi/Follow/FollowMode.cs` |
+| `LocalAPI/APIFireFeed.swift` | `MxU.Slides.LocalApi/Follow/ApiFireFeed.cs` |
+| `LocalAPI/LocalAPIClient.swift` | `MxU.Slides.LocalApi/Follow/LocalApiClient.cs` |
+| `LocalAPI/BonjourAdvertiser.swift`, `BonjourBrowser.swift` | `MxU.Slides.LocalApi/Follow/DnsSd.cs` (Windows' dnsapi) |
+| `LocalAPI/LocalAPIServer.swift`, `APIWebSocketHandler.swift`, `APIEventBus.swift`, `WireModels.swift`, `OpenAPIDocument.swift` (follow parts) | `LocalApiServer.cs`, `ApiWebSocketSession.cs`, `ApiEventBus.cs`, `WireModels.cs`, `OpenApiDocument.cs` |
+| `LocalAPIController.followRoutes` | `MxU.Slides.LocalApi/Follow/ApiRouteTable.Follow.cs` (`IFollowApi`) |
+| `PresenterCore/Library/FollowLogic.swift` | `MxU.Slides.Core/Follow/FollowLogic.cs` |
+| `Sources/FollowController.swift`, `FollowPairingSheet.swift`, the Backup settings | `MxU.Slides.Windows/Follow/FollowController.cs`, `Views/Follow/*` (`PairBackupWindow`, `FollowBanner`, `BackupSettingsSection`), `ViewModels/MainViewModel.Follow.cs` |
+| `PresenterCore/…/Timeline/VideoMarks.swift` | `MxU.Slides.Core/Media/VideoMarks.cs` |
+| `SlideScene/…/ConfidenceScene.swift` (`VideoCountdown` with marks), `LinkedText.swift` (Video Action Name) | `MxU.Slides.Core/Stage/ConfidenceInfo.cs`, `LinkedText.cs` |
+| `Sources/MediaTransportController.swift` (`fireVideoActions`, countdown marks) | `ViewModels/MainViewModel.VideoMarks.cs`, `MainViewModel.Transport.cs` |
+| `PresenterCore/…/Library/StarterPacks/StarterPacks.swift` (`addingLyricsDesigns`, `addingPhotoDesigns`, `shrinkingPoints`, `stayingPhotos`) | `MxU.Slides.Core/Library/StarterPacks.Repair.cs` (and the photo designs in `StarterPacks.cs`, `LibrarySeeder.cs`) |
+| `SlideScene/…/SlideSceneBuilder.swift` (photo spots, `cueItem`, `scaleAndBlur`) | `MxU.Slides.Core/Scene/SlideSceneBuilder.cs` |
+| `RenderEngine/…/MediaLooks.swift` | `MxU.Slides.Core/Animation/MediaLooks.cs` |
+| `RenderEngine/…/SceneModel.swift` (layer ids, custom and placed layers, `endFade`, `crossfadeLeaving`, `scaleAndBlur`) | `MxU.Slides.Core/Scene/SceneModel.cs`, `Animation/AnimatedItem.cs` |
+| `RenderEngine/…/Compositor.swift` (`crossfadeStacks`, `placedPictures`, `drawPlaced`, `playbackRemaining`) | `MxU.Slides.Windows/Rendering/SceneView.Layers.cs`, `SceneView.cs` (WPF containers and brushes instead of Metal passes) |
+| `RenderEngine/…/AnimationEvaluator.swift`, `VideoPushEvaluator.swift`, `OutputScaling.swift` (optional layer kind) | `Animation/AnimationEvaluator.cs`, `VideoPushEvaluator.cs`, `Outputs/OutputScaling.cs` |
+| `MediaEngine/…/MediaEngine.swift` (`playbackRemaining`) | `MxU.Slides.Windows/Rendering/MediaHub.cs` (`PlaybackRemaining`) |
+| `SlideScene/…/ShowState.swift`, `MediaTransportTarget.swift` (custom layers, `clear(layerID:)`, seeds) | `MxU.Slides.Core/Scene/ShowState.CustomLayers.cs`, `ShowState.cs`, `ShowState.Flow.cs`, `Media/MediaTransport.cs` |
+| `OutputEngine/…/ScreenMap.swift`, `OutputManager.swift` (the map, layer placements, `dominantScreen`, `seedPlacement`), `OutputLayout.swift` | `MxU.Slides.Core/Outputs/ScreenMap.cs`, `OutputConfiguration.ScreenMap.cs`, `OutputConfiguration.Feeds.cs`, `OutputLayout.cs`, `ScreenEditing.cs` |
+| `Sources/OutputPresetsController.swift` (`route`: placements, custom layers) | `OutputPresets.Apply`, `ViewModels/MainViewModel.ScreenMap.cs` (`CustomLayers`: one list of every preset's layers) |
+| `PresenterCore/…/Library/LyricPhrasing.swift`, `ScriptureReference.swift`, `MIDIControl.swift` (Take Over (Backup), note 36), `MediaCueRouting.swift` (`DroppedAsNewSlide`), `MediaImport/RecordingLibrary.swift` | their existing C# twins, updated |
+| `StreamEngine/…/UploadWatch.swift`, `StreamSession.swift`, `StreamHealth.swift`, `StreamConfiguration.swift` | `MxU.Slides.Broadcast/Streaming/*` (`UploadWatch.cs` also holds a port of HaishinKit's `NetworkMonitor` and `AdaptiveBitRateStrategy`) |
+| `RenderEngine/…/DropoutWatch.swift`, `OutputEngine/…/Export/SyncTestReader.swift` (`gridLuma`, `isBlackAbove`), `Recording/Recorder.swift` | `MxU.Slides.Core/Media/DropoutWatch.cs`, `MxU.Slides.Broadcast/Recording/SyncTestReader.cs`, `Recording/Recorder.cs` |
+| `Sources/BroadcastStatusChip.swift` (network line), `StreamRecordSettings.swift` (Bitrate mode) | `MxU.Slides.Broadcast/Control/BroadcastStatus.cs`, `Views/BroadcastWindow.cs` |
+
+Nothing to port from those updates: one main window never tabs, the Present card redraw fix, the focus fixes and the mixer's diagnostics line (macOS or SwiftUI only), and the strip's ticking moved to Core Animation (Windows already ticks four times a second).
+
+The Mac's tests for the files in these four tables are ported with them. Each phase's walkthrough lists them by name.
+
 ## Re-implemented for Windows (same behaviour, different code)
 
 | Mac | Windows |
@@ -199,6 +310,18 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
 | `PresenterCore/…/Diagnostics/ThreadStackCapture.swift` | `MxU.Slides.Windows/Infrastructure/ThreadStacks.cs` (Microsoft's ClrMD reads the stacks from a snapshot of the app; so far only the self-test's hang watchdog uses it) |
 | `MediaEngine/…/MediaEngine.swift` (`setAudioOutputDevice`, `setAudioOutputDelay`, `setAudioVolume`), `MediaPlayer.swift` (`audioOutputDeviceUniqueID`), `VideoAudioTap.swift` (the playout delay): AVPlayer plays its own sound | `MxU.Slides.Audio/Video/` (`VideoSound`, `VideoSoundPlayer`, `VideoClockFollower`, `TimeStretch`), `MxU.Slides.Windows/Rendering/MediaHub.Sound.cs`: the picture player is muted and our engine plays the sound, following its clock |
 | `Sources/Modules/AlertsModule.swift`, `TimersModule.swift`, `ConfidenceModule.swift`, `OutputsModule.swift`, `Sources/LivePanel.swift` (preview, screen picker, Open in Window), `OutputPresetChip.swift`, `AppShell.swift` (transition chips), `SettingsView.swift` (present.emptyRepeatsOnce, present.nextSkipsBlanks) | `MxU.Slides.Windows/Views/Operator/*` (`AlertsPanel`, `TimersPanel`, `StagePanel`, `ScreensPanel`, `LiveToolbar`, `PreviewPopOutWindow`, `PresentSettingsSection`, `OperatorKit`), `ViewModels/MainViewModel.{Alerts,Timers,Outputs,Present}.cs` |
+| `Sources/ArrangementPopover.swift`, `SectionPreviewPicker.swift`, `ServiceContinuousView.swift` (`ArrangementStrip`, `ArrangementPicker`) | `Views/Arrangements/*` (`ArrangementPicker`, `ArrangementStrip`, `ArrangementEditorWindow`), `ViewModels/MainViewModel.Arrangements.cs` |
+| `Sources/ServiceContinuousView.swift` | `Views/ContinuousSlidesView.xaml(.cs)`, `Views/SlideViewSwitch.cs`, `ViewModels/MainViewModel.Continuous.cs` |
+| `Sources/PresentLayoutController.swift` (`enterRunOnly`, `exitRunOnly`, `runOnlyModules`), `RunOnlyGate.swift`, `AppShell.swift` (`ModeSwitcher`), `SettingsView.swift` (Volunteer Mode, Tabs volunteers keep) | `Views/Volunteer/*` (`VolunteerLayout`, `VolunteerView`, `VolunteerModeButton`, `OperatorSettingsSection`, `PinDialog`), `ViewModels/MainViewModel.Volunteer.cs` |
+| `Sources/ServicePlannerView.swift` (collapsing headers, the bulk menu, the row's Arrangement menu), `AppShell.swift` (Set All Transitions) | `Views/ServiceListExtras.cs`, `Views/ServiceMenus.cs`, `ViewModels/MainViewModel.ServiceList.cs` |
+| `Sources/Modules/ControlBoardFolders.swift` and the modules' `draggablePayload` / `dropDestination` | `Views/Operator/BoardDragging.cs`, `DropLine.cs` (in `AlertsPanel`, `TimersPanel`, `ActionCombosWindow`, `SchedulerWindow`) |
+| `Sources/LivePanel.swift` (the preview's `aspectRatio`) | `Views/Operator/PreviewShape.cs` |
+| `Sources/PerformanceHUD.swift` (`TransitionChip`'s slider) | `Views/Operator/LiveToolbar.cs` (`LengthSlider`) |
+| automerge-swift 0.7.2's prebuilt `automergeFFI.xcframework` (UniFFI) | `native/automerge-ffi` (the same `automerge` crate 0.7.2 behind a small C interface), built by `tools/build-automerge.ps1` into `MxU.Slides.Sync/Native/automerge.dll`; `MxU.Slides.Sync/Automerge/*` (P/Invoke with safe handles) |
+| `Sources/ScreenMapEditor.swift`, the Screen Map page of `ScreenConfigurationView.swift`, `OutputPicture.swift` | `Views/ScreenMapWindow.cs` over `MxU.Slides.Core/Outputs/ScreenMapEditing.cs` |
+| `Sources/ThumbnailStore.swift` (NSCache cost limits) | `Rendering/ImageCache.cs` in `MediaHub` |
+| `Sources/VideoActionsTimeline.swift` (`VideoActionsCard`'s list, `VideoActionAddMenu`), `MediaEditorView.swift` (`addMark`, `moveMark`, `removeMark`, rename, a mark's actions) | `Views/VideoActionsWindow.cs`, `Views/MainWindow.VideoMarks.cs`, `MainViewModel.SaveVideoMarks`, over `VideoMarks.Renaming` / `WithActions` / `Removing` / `Clock` / `ParseClock` (a list, not a timeline) |
+| The Mac's undo (Automerge per document, plus a journal of closures) | `MxU.Slides.Core/Undo/*`, `Core/Library/LibraryStore.Undo.cs`: each document's JSON before and after is recorded at the library, and an undo merges three ways |
 
 ## Windows-only
 
@@ -255,56 +378,95 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
     - `Views/MotionBackgroundWindow.cs`, `Views/MainWindow.MotionBackgrounds.cs`, `ViewModels/MainViewModel.MotionBackgrounds.cs`, `Rendering/MotionPreviewer.cs`, `Rendering/MediaHub.Reload.cs`.
     - One change to a ported file: `Recording/Mp4SinkWriter.cs` got `CreateForEncoded(…, crashSafe: false)` for a plain MP4. The recorder's default is unchanged (crash-safe fragments).
   - `Infrastructure/SelfTest.{Looks,Transitions,Scripture,Connect,Production,Backgrounds}.cs`, and `Infrastructure/HeadlessBrowser.cs`: the self-test photographs the remote's pages in the PC's own Edge or Chrome, with no window.
+- **Phase 7** (sections 48 and 49):
+  - **Undo:** `Infrastructure/UndoWindows.cs`, `ViewModels/MainViewModel.Undo.cs`, `Views/EditBar.cs`, and in Core `UndoStep`, `UndoTarget`, `UndoDescription` (the step names).
+  - **Clipboard and paste:** `Infrastructure/AppClipboard.cs` (the formats "MxU Slides: slides" and "MxU Slides: slide objects"); `WindowsExtras.CopyOwner` (pasted things keep their extras); paste rules beyond the Mac's (plain text becomes a text box, lyrics pasted into a song become slides, a mask pasted with its matte follows it).
+  - **Locks and capo:** `Core/Editing/ObjectLocks.cs` (extra kind "object locks"); `SongCapo` and `Core/Stage/ConfidenceSceneBuilder.Capo.cs` (extra kind "song capo"). One change to a ported file: `ConfidenceSceneBuilder.SlideText` takes its `DisplayKey` from `StageKey`.
+  - **Find and Replace:** `Core/Editing/FindReplace.cs`, `Views/FindReplaceWindow.cs`, `ViewModels/MainViewModel.FindReplace.cs`.
+  - **Chord editor:** `Views/ChordEditorWindow.cs`, `ViewModels/MainViewModel.Chords.cs` (the Mac places chords in its canvas text editor).
+  - **Picking and dragging:** `ViewModels/MainViewModel.SlidePicks.cs`, `Views/EditorDragDrop.cs`, `Views/DropFeedback.cs`, `Views/PlaylistDrops.cs`, `ViewModels/MainViewModel.Dropping.cs`, `ViewModels/TimelineEditorViewModel.Drops.cs`.
+  - **Media look:** `Core/Library/MediaLookExtras.cs` (fit, zoom, crop, volume: a Windows extra on the file's hash), the look half of `Core/Media/MediaDressing.cs`, `SceneView.PlaceCropped`, `Rendering/MediaHub.Gain.cs`, `VideoSoundOptions.Gain`.
+  - **Themes:** `Core/Library/ThemeKinetics.cs`; `KineticExtras.Stored/Remove/Copied`; `ThemeLibrary`'s fresh object ids, unique design names and renaming a design in the slides that use it; `ThemeApplication.OwnThemes.Keep` (the question's "No").
+  - **Stage layout editor:** box cards (`StageLayoutEditing.MakeBox`, `FreeSpot`), safe margins, the sample/live switch, canvas sizes; slide notes on stage as the current slide's "Notes".
+  - **Shared editor pieces:** `Views/AnimationTab.xaml`, `AnimationTabViewModel`, `IAnimationHost`, `CompositionObjects.cs`, `Views/EditorMenus.cs`, `SlideCanvasEditor.SnapTargets` and `Decorate`.
+  - Auto Advance's "Apply to: its group / every slide"; changing a picture slide's Scale and a video slide's end from the slide menu (the Mac sets them only when it makes slides from notes); Theme Designs as its own window.
+  - `Infrastructure/SelfTest.Editing.cs`, `SelfTest.Editors7.cs`.
+- **Phase 8** (sections 50 and 51):
+  - **Library browsing:** `Core/Library/LibrarySearch.cs` (ranked search over every kind), `LibraryMarks.cs` (song favourites and tags as the extra `library-marks`), `LibraryDates.cs` (`usage.json`), `LibraryCatalog.cs`, `LibraryBatch.cs`; `Views/LibraryPanel.xaml`, `LibraryMenus.cs`, `MediaBinBar.cs`, `LibraryDepthDialogs.cs`.
+  - **Files from Explorer:** `Core/Library/OpenRequests.cs`, `Infrastructure/FileHandoff.cs`, `Views/MainWindow.Handoff.cs`, `scripts/file-types.ps1`, `scripts/uninstall.ps1`.
+  - **Diagnostics:** `Core/Diagnostics/HealthChecks.cs`, `HangDetector.cs`, `PcCheck.cs` (Check this PC, `SelfTestSandbox`), `Infrastructure/SystemInfo.cs`, `HangWatch.cs`, `ProblemReport.cs`, `PcCheckRunner.cs`, `Views/DiagnosticsWindow.cs`, `ReportProblemWindow.cs`, `HelpMenu.cs`.
+  - **Media:** `Rendering/MediaHub.ReloadInPlace.cs`; the music duplicate prompt in `ViewModels/MainViewModel.MusicImport.cs`.
+  - **Backups:** every-launch and weekly backups and safety copies in `BackupFiles.cs`, `AppSettings.Library.cs` (settings from a backup, applied at the next start), `Views/BackupWindow.cs`, `RestoreWindow.cs`, `LibraryCareSection.cs`. A Windows backup is a zip of JSON documents, not the Mac's Automerge store.
+  - **Operator:** `Infrastructure/AppSettings.Operator.cs`; the volunteer PIN (`VolunteerMode.HashPin`, `PinMatches`); the cheat sheet (`Views/Keys/CheatSheet.cs`); the plan-time picker (`ServicePlanTimes`, `MainViewModel.RunOfShow`); `ArrangementEditing.Duplicate` and `SetOrder`; `MainViewModel.ReanchorLive`; a folded row going live opens its group; `SongEditing.OrderText` folding repeats.
+  - `Infrastructure/SelfTest.LibraryDepth.cs`, `SelfTest.LibraryCare.cs`, `SelfTest.OperatorDepth.cs`.
+- **Phase 10** (section 52):
+  - `MxU.Slides.Sync/Engine/*`: the two-way bridge between the Windows JSON library and a Mac library folder (`SyncEngine`, the replicas and `SyncLedger`, `SyncBackup`, `BlobMirror`, `WindowsLibrary`, `SyncLog`); `Format/SchemaCheck.cs`, `Format/DocumentDiff.cs` (list edits matched by id), `WindowsActor`.
+  - `Core/Library/LibraryStore.cs` → `SaveIfUnchanged`, `DeleteIfUnchanged`, `NotifyChanged`.
+  - `ViewModels/MainViewModel.Sync.cs`, `Views/LibrarySyncSection.cs`, `Infrastructure/AppSettings.Sync.cs`, `Infrastructure/SelfTest.Sync.cs`.
+- **Phase 11** (section 53; the Mac has no Lottie or After Effects support):
+  - `MxU.Slides.Core/MotionTemplates/*` (`LottieDocument`, `LottieFiles`, `MotionFields`, `MotionTimeline`, `MotionTemplate`, `MotionTemplateStore`, `LottieBuilder`, `StarterMotionTemplates`).
+  - `MxU.Slides.MotionTemplates/*` (`Lottie/`, `Export/`, `AfterEffects/`): drawing with SkiaSharp.Skottie, live playback, MP4 export, the After Effects bridge. `tests/MxU.Slides.FakeAfterEffects` stands in for After Effects.
+  - `ViewModels/MainViewModel.MotionTemplates.cs`, `Rendering/MediaHub.Motion.cs`, `Rendering/MotionPreviews.cs`, `Views/MotionTemplatesWindow.cs`, `AfterEffectsWindow.cs`, `LottieGuideWindow.cs`, `MainWindow.MotionTemplates.cs`, `Infrastructure/AppSettings.MotionTemplates.cs`, `Infrastructure/SelfTest.MotionTemplates.cs`.
+  - Stored as Windows extras `motion templates`, `motion template animations` and `motion template uses`.
+  - Small changes to ported files: `Rendering/SceneView.cs` (a video that stands in for a live template draws the template), `Rendering/MediaHub.LiveInputs.cs` (`motion::` pictures are live pictures), `ViewModels/MainViewModel.Overlays.cs` (an overlay goes up through `ForShow`).
+- **MxU's autumn 2026 updates** (sections 54 to 56), the parts with no Swift twin:
+  - **Notes:** `ProImport/Rtf/RtfNoteLines.cs` (and `RtfReader`'s opt-in `weights`), `Core/Notes/NoteTextEditing.cs` (Edit Text), `Core/Notes/NoteModels.cs` (copy and value equality for the generated note classes), `Views/Notes/NoteTileBadges.cs`, `AppSettings.Notes.cs`, `Infrastructure/SelfTest.Notes.cs`.
+  - **Backup computer:** `Core/Follow/FollowCopy.cs` (copying a Windows booth's JSON items to a Windows backup); hooks in ported classes (`ActionRouter.Holds`, `TimerController.Acted`, `AudioBusStatus.EntryId`); `ThisComputer.Name`'s override (`MXU_SLIDES_COMPUTER_NAME`); `Infrastructure/SelfTest.Backup.cs`.
+  - **Engine:** photo designs in the worship looks (`StarterPacks.Worship.cs` → `PhotoDesigns`), the seeder's gentle repair (`LibrarySeeder.RepairGently`), `MediaLooks.Spread` (the blurred copy grown so WPF's faded rim falls outside the frame), the Screen Map saved in `settings.json` (`AppSettings.ScreenMap`), `Broadcast/Rtmp/LoopbackRtmpServer.cs`, `Infrastructure/SelfTest.UpstreamCore.cs`, `SelfTest.UpstreamStreams.cs`.
 
-## Not ported yet
+## Not ported yet, not done, not verified
 
-- **Timeline editor extras:** dragging library items onto the lanes (the main window's bins
-  aren't drag sources yet: use **+** beside a lane, or drop files from Explorer onto the music
-  lane or the tracks), the slide thumbnail that pops up over a slide cue (a tooltip names it),
+### Never tested against the real thing
+
+These work in the unit tests and the self-test, which use stand-ins. Nobody has run them with the real thing yet. Treat them as untested until someone does.
+
+- **The backup computer with a real Mac.** Tested between two copies of the Windows app on one PC, and against the Mac's own tests for the messages. The steps to try it are in [upstream-2026-11/backup.md](upstream-2026-11/backup.md).
+- **Library sync with a real Mac.** Tested against `MacSimulator` (documents written the way the Mac's code writes them) and the Mac's own fixtures. The steps are in [phase10/sync.md](phase10/sync.md), section 6.
+- **The After Effects bridge with a real After Effects.** Tested with `tests/MxU.Slides.FakeAfterEffects`. The steps are in [phase11/motion.md](phase11/motion.md), section 10.
+- **Planning Center with a real token.** The import (Phase 6) has only been run against made-up answers.
+
+### Skipped on purpose
+
+- **Phase 9 (broadcast and devices)** was deliberately skipped. Nothing from it is in this code. The older "Broadcast extras" list below still stands.
+
+### Phases 4 to 6
+
+- **Timeline editor extras:** the slide thumbnail that pops up over a slide cue (a tooltip names it),
   trackpad pinch (Ctrl+wheel zooms), MIDI Out and the other steps that need settings in the
   actions lane's quick **+** menu (add them with **Edit Actions…**, which is the full step editor), "Track Settings…" per track (Windows
   has no app-wide mixer: the tracks setup sets each family's output, and M/S each track), and
   the track-set list in the library (track sets are added from **+ beside Tracks › Add a Track Set**).
-- **Animation timeline** (`AnimationTimelinePanel.swift`): that is the slide editor's builds
-  timeline, not a song timeline; it isn't part of this editor.
-- **Automation editor extras:** dragging on the combo and scheduler boards (Windows has Move up/down and a Folder picker), dropping library items onto a combo or the scheduler board, undo for board moves and trigger renames, the "Edit…" button beside a step's media or music, run-only mode, and the capture-source preview line on scheduler rows. Audio-input steps show and keep their settings, but Windows offers no audio inputs to pick (the router skips those steps).
+  The timeline editor still keeps its own undo history (`TimelineEditHistory`), separate from the library's.
+- **Animation timeline** (`AnimationTimelinePanel.swift`): ported for the overlay and theme editors (`Views/AnimationTimelineView.cs`). The main window's slide editor doesn't show it.
+- **Automation editor extras:** dropping library items onto a combo or the scheduler board, the "Edit…" button beside a step's media or music, and the capture-source preview line on scheduler rows. Audio-input steps show and keep their settings, but Windows offers no audio inputs to pick (the router skips those steps). Undo in the combo and scheduler windows is now the library's (section 48); it hasn't been checked edit by edit.
 - **Overlay editor extras:**
-  - *Morph ("Change") steps* can't be made yet, because their end state is posed on the Mac's canvas (`AnimateCanvasOverlay.swift`). Existing ones play, re-time and delete. *Where it enters from* (a custom start pose) is the same.
-  - The *animation timeline* (`AnimationTimelinePanel.swift`) isn't there. Steps reorder with Earlier/Later and Move to, not drag and drop. *One step per line/word* (Phase 6) splits the whole text, because the Windows editor has no text selection, and the pieces follow one another instead of waiting for clicks. The slide editor has no presets gallery yet (Phase 7).
-  - *Camera push* can be turned on and its mode chosen; its alignment, margin, zoom and blur settings aren't shown.
-  - *Undo* is one step back: "Undo my changes to this overlay" restores it as it was when the editor first showed it.
-  - The *Overlays module's* pinned/recent views, grid/list switch and search.
+  - Its canvas has no Ctrl+C and Ctrl+V yet (Duplicate works).
+  - *One step per line/word* (Phase 6) splits the whole text, and the pieces follow one another instead of waiting for clicks. The slide editor has no presets gallery.
 - **Mask editor:** the Mac shows it inside the screen's settings. Here it is its own window, opened from the Screens window.
-- **Looks, Windows differences:** a screen can have its own look (the Mac sets looks only in output presets). There is no output preset editor on Windows yet, so preset looks come from imported or Mac-made presets. The Mac's grid tile "N pages" strip and look thumbnails (`PosterLookImage`, `ThumbnailStore.posterLook`) aren't ported, and neither are `SlideSceneBuilder.lookKey/withoutLayerMedia/posterLookScene` (they serve those thumbnails). `PosterLookSweepTests.swift` checks Mac UI source and has no Windows twin.
+- **Looks, Windows differences:** a screen can have its own look (the Mac sets looks only in output presets). There is no output preset editor on Windows yet (the Screen Map window edits a preset's placements and custom layers only), so preset looks come from imported or Mac-made presets. The Mac's grid tile "N pages" strip and look thumbnails (`PosterLookImage`, `ThumbnailStore.posterLook`) aren't ported, and neither are `SlideSceneBuilder.lookKey/withoutLayerMedia/posterLookScene` (they serve those thumbnails). `PosterLookSweepTests.swift` checks Mac UI source and has no Windows twin.
 - **Bold and italic in looks** are read from the font's name (`PlaceholderAnimations.FontTraits`), not from the font file as Core Text does.
 - **Echo and ghost trails** use a small (≤ 384 px) software picture for the history; effects listed before them that need pixel shaders aren't in that picture (the live item still has them). Trails on adjustment layers ("effects apply below") aren't drawn, as no adjustment-layer effects are on Windows yet.
-- **Broadcast extras:** SRT (the Mac uses libsrt through SRTHaishinKit, a native library; Windows would need that binary shipped, or a complete managed SRT with its handshake, retransmission and AES encryption, so an `srt://` destination fails at once with "SRT isn't available on Windows yet" while the preset's other destinations carry on); HDR/HEVC streaming and ProRes (no Windows encoder path; HEVC/HDR destinations stream SDR H.264, ProRes presets record H.264); platform sign-in (YouTube/Facebook OAuth needs the church's own API credentials), so streams use a server URL and key. The Mac's mixer (sound inputs, video sound and the multitrack sent into mixes, per-mix stream gain, extra mixes) isn't on Windows, so a mix carries the music buses only, and the only mix is the main one. Video sound has its own output (device, channels, delay: Settings › Sound), but it isn't sent into mixes. The "Check Sync…" sheet isn't ported.
+- **Broadcast extras:** SRT (the Mac uses libsrt through SRTHaishinKit, a native library; Windows would need that binary shipped, or a complete managed SRT with its handshake, retransmission and AES encryption, so an `srt://` destination fails at once with "SRT isn't available on Windows yet" while the preset's other destinations carry on); HDR/HEVC streaming and ProRes (no Windows encoder path; HEVC/HDR destinations stream SDR H.264, ProRes presets record H.264); platform sign-in (YouTube/Facebook OAuth needs the church's own API credentials), so streams use a server URL and key. The Mac's mixer (sound inputs, video sound and the multitrack sent into mixes, per-mix stream gain, extra mixes) isn't on Windows, so a mix carries the music buses only, and the only mix is the main one. Video sound has its own output (device, channels, delay: Settings › Sound), but it isn't sent into mixes. The "Check Sync…" sheet isn't ported. From MxU's autumn 2026 stream changes: HaishinKit's frame-rate halving, HLS upload measurement, and the mixer and DeckLink heartbeat summaries.
 - **Show flow extras (Phase 5):**
-  - *Editing auto-advance:* the Mac's AutoAdvanceControls, the bulk menu, a deck's Slide Show setting and a media item's Auto Advance… (Phase 7). The fields are read and honoured, so imported and Mac-made timers work.
-  - *Transport:* the floating transport strip and the scrub bar's trim handles.
-  - *Service list:* collapsing headers, multi-select (bulk Hide, bulk Transition), the picker's Upcoming/Earlier grouping, plan times (the rules are ported in `ServiceRunOrder`, with no picker), and undo for service edits.
+  - *Editing auto-advance:* done in Phase 7, except the Mac's bulk edit of several picked slides at once (the sheet has "Apply to: this slide / its group / every slide" instead).
+  - *Transport:* the floating transport strip and trim handles on the strip's scrub bar (the media editor has trim handles).
+  - *Service list:* the marquee (drag a box to choose rows).
   - *Clear:* tracks (stems) count as Music for the green state only while the Music tab plays.
 - **Rendering differences (Phase 5):**
-  - *Theme picking for some slides:* the Mac's Apply Theme to selected slides, and its question before a deck's theme replaces slides' own themes. Windows draws per-slide themes, but its Theme picker changes only the deck's theme.
   - *Word spacing on ordinary text boxes:* it's drawn on path text and tickers only.
   - *Keystone with tilt or swing:* tilt and swing are still flattened to a squash, so the combination is approximate.
-  - *Sharing fonts through the library* (`FontFile` documents): there's no shared library folder yet; fonts in the `fonts` folder are used.
+  - *Sharing fonts through the library* (`FontFile` documents): fonts in the `fonts` folder are used; library sync doesn't carry font files yet.
   - *A direct device reference* in a slide's live input shows only if a named input uses that device.
   - *Gapless loops:* a loop is a seek back to the in point, and the out point is checked each screen refresh (within a frame of the Mac's).
-- **Sound extras (Phase 5):** a playlist's Mix picker and per-playlist mixes, mix faders, output trims and mutes (they come with the mixer); dragging songs within a playlist (↑ ↓ and Move Up/Down instead); undo for playlist edits; song favourites and tags; "Edit in Library" on a track.
-- **Operator panel extras (Phase 5):** dragging alerts and timers (Move up/down and Folder › instead); undo for alert and timer edits and board moves; volunteer (run-only) mode; the Stage panel's "Edit Layout in Library" and folder submenus (there's no stage layout editor); the main preview keeping its target's shape (pop-outs do); the transition chips' inline slider. Live / Off is per screen, not per display. The look chip switches presets; its last item opens the Screens window, as there's no output preset editor.
-- **Library exchange extras (Phase 5):**
-  - the export panel's other formats (PDF, slide images, plain text, ChordPro): Export makes `.mxuslides` only;
-  - opening a `.mxuslides` by double-clicking it in Explorer: there's no file association, so import it or drop it on the library;
-  - the duplicate prompt for music imports;
-  - reloading a live video in place after its file is replaced;
-  - transcoding to HEVC, and ProRes playback: Windows has no decoder.
+- **Sound extras (Phase 5):** a playlist's Mix picker and per-playlist mixes, mix faders, output trims and mutes (they come with the mixer); "Edit in Library" on a track.
+- **Operator panel extras (Phase 5):** undo for timer edits and timer board moves (timers are saved beside the settings, not in the library, so the library's undo doesn't see them). Live / Off is per screen, not per display. The look chip switches presets; its last item opens the Screens window, as there's no output preset editor.
+- **Library exchange extras (Phase 5):** transcoding to HEVC, and ProRes playback: Windows has no decoder.
 - **Phase 6, not done yet:**
   - *Planning Center:*
     - downloading media attachments (they're listed as "to add");
     - OAuth sign-in (Personal Access Tokens only);
     - writing back to Planning Center;
-    - plan times and people;
+    - people;
     - applying the plan's song key (`ServiceLinkLogic.PendingSongKey` is ported but not wired);
     - sticky link rules.
   - *Browser remote:*
@@ -322,7 +484,7 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
     - the other vMix functions;
     - sACN discovery;
     - a fixture library;
-    - undo for production edits;
+    - undo for production edits (not checked since the library's undo arrived in Phase 7);
     - copying production steps when a slide, combo or cue is duplicated or pasted;
     - a timeline cue with only production steps reads "No actions".
   - *Motion backgrounds:*
@@ -333,4 +495,67 @@ The Mac tests for these files are ported too, in `apps/windows/tests/` (one test
     - the picker's slider goes to 3 s (the Mac allows 30 s typed);
     - a `.mxuslides` file carries only the shared fallback;
     - overlays, alerts and cameras still cut, as on the Mac.
-- **Sync with the Mac's library folder** (Automerge). The Mac uses Automerge's Rust core through a prebuilt Apple-only binary. Windows needs the same core built for Windows, which means installing the Rust toolchain to build it and shipping a native DLL. The toolchain will be installed to build it from source (Phase 10). Until then the two apps share documents (`.mxuslides` files), not the library folder.
+
+### Phase 7: editing and the editors
+
+- **Undo:** the theme, media and stage layout editors don't open an undo scope of their own yet (each `Flush()` has a comment marking the place). The timeline editor keeps its own history.
+- **`bakedSlide`** (the Mac's "No Theme" baking): Windows' *Blank* sets `Unthemed` without copying the theme's look into the slide.
+- **Clipboard:** copying text with its chords inside a text box (the Mac's `ChordClipboard`) isn't wired; the chord editor's bracket box carries chords as text. Formatted text pasted from another app keeps only its words (the Mac's `PastedFormatting`).
+- **Drag and drop:** slides dragged between presentations. Media dropped on a picture slide that waits for media doesn't fill its photo spot (`SlideMediaFacts.FillPlaceholder` is ported in Core but no drop calls it).
+- **Text:** the Mac's canvas text editor (typing on the slide itself); the inspector's text box and the words bar do that job here. All Caps on *selected* words is saved in the style run, but only a whole box's All Caps is drawn.
+- **Chords:** Numbers, Numerals and Do-Re-Mi notation are drawn, but not chosen in the chord editor.
+- **Stage layouts:** multi-view tile layouts (`MultiViewTiles`) open read-only.
+- **Effects:** *Apply to layers below* (`effectsApplyBelow`, adjustment layers) is kept but not drawn.
+- **Media editor:** a new trim or speed applies the next time a playing video is fired, not to the copy already playing.
+- **Bulk Auto Advance and Apply Theme** from several picked slides (`AutoAdvanceWindow.ForSlides` and `ThemePickerWindow.ForSlides` take a list, but the slide menu passes one slide).
+
+### Phase 8: the library and the operator
+
+- **Restoring a Mac backup** from the Restore window: refused with a message. (Library sync can use a Mac backup folder as its shared folder: section 52.)
+- **Team drives** and their cloud search rows (`TeamDriveLogic.searchRows`, `cloudMatches`).
+- The Mac's `DeleteMediaSheet` "This can't be undone" line isn't shown, since here the item and its file go to the Trash folder.
+- **Notes' unattended media import:** `ImportMediaFilesAsync(…, unattended: true)` is ready, but nothing calls it with `unattended: true` yet.
+- **Shortcuts:** the Mac's editor commands (Bold, Italic, Underline), sidebar toggles and Settings-page keys.
+- **Volunteer mode:** saved Present layouts ("Volunteer Layout"); the Local API and the browser remote aren't limited by it.
+- **Continuous view:** sticky card headers, inline playlist editing, and dropping slides between cards.
+- **Motion backgrounds:** replacing one reopens it twice in a row (`MediaFilesChanged`, then `MediaHub.ReloadSilentVideos`). Harmless; a later tidy-up could drop one.
+
+### Phase 10: library sync
+
+- The Mac's cloud sync protocol (its client isn't in the Mac repository). Windows syncs through a folder.
+- The kinds Windows sync doesn't carry: notes, font files, slide-building settings and service-link rules. They're left exactly as they are in the folder. (Notes themselves now work on Windows, section 54, but sync doesn't carry them yet.)
+- The `fonts` folder, media posters (`thumbnails`) and last-used dates (`usage.json`).
+- Station documents (a computer's own set-up stays on it, as between Macs).
+- Windows extras between two Windows PCs.
+- Whole numbers above 2,147,483,647: a document with one is refused, not cut short.
+
+### Phase 11: motion templates
+
+- Lottie features Skottie doesn't draw (most After Effects expressions, some effects) are drawn without them. Bodymovin's "Glyphs" text (text turned to shapes) can't be edited.
+- Picture fields take pictures from files; there's no picker for pictures already in the library.
+- The After Effects bridge changes text layers and colours by layer. It doesn't read or set Essential Graphics properties, and can't list compositions without `AfterFX.exe`.
+
+### MxU's autumn 2026 updates
+
+- **Custom layers:**
+  - the transport strip's layer picker doesn't list them (`MainViewModel.TransportPicker` returns the fixed layers; their videos show with Foreground Videos);
+  - the Clear row has no button for them (Clear Media does clear them, and a Clear Layer step can name one);
+  - the Local API can't clear one by its id;
+  - the slide grid's layer chips (`SlideLayerFacts.swift`);
+  - transitions on a custom layer follow Foreground Videos' setting.
+- **Make Slides:**
+  - the "Scale and Blur (tall picture)" caption on a row isn't shown (the tall picture still gets Scale and Blur);
+  - marking part of a paragraph, and editing rich text in place (the notes window marks and edits whole lines);
+  - the Add ghost tile on the slide grid (an Add is a badge on the slide before it);
+  - pasting HTML from a browser or Mail, with its pictures and video links (Paste takes plain text);
+  - web pictures in notes; `.doc` and `.rtfd` files;
+  - `NoteTextReplacementTests` and the `*SweepTests` (they test the Mac's own text view and Swift source).
+- **Backup computer:**
+  - copying items between a Mac and a PC (`FollowCopy.swift`'s `mergeCopy` and `FollowCopyTests`): a Windows backup skips a Mac booth's Automerge items;
+  - *Start Stream Here* after taking over from a streaming booth;
+  - the unconnected-screens warning (`Follow.unconnectedScreens`);
+  - `FiresTopicSweepTests` (a sweep over the Mac's Swift source; the C# fire points are covered by the self-test).
+- **Video marks:** the Mac's Video Actions *timeline* (pins you drag under a preview, nudge by a frame, a mark's colour, undo). Windows edits marks as a list in its own window. A video countdown's target (the end, the next mark, a named mark, counting up) is chosen in the stage layout editor (`StageLinkViewModel`); the slide inspector doesn't offer it.
+- **Screen Map:** the shared-outputs page ("Share it / Take it over"), `networkCarryFeed`, `restoreDisplayClaim`, the full output picture (Windows shows the screen's frame, rulers and placed layers, not its live picture), thumbnail chips, and dragging or resizing one placement by hand.
+- **Dissolves:** Windows fades the two stacks as containers; the Mac mixes them in a shader, so with two opaque stacks the middle is slightly darker here.
+- **Media engine:** the live-input dropout note and the still-image tally; the sRGB encode pass of `OutputMirror` (Metal-only).
