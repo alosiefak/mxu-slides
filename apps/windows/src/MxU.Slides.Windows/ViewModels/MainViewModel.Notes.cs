@@ -89,12 +89,14 @@ public sealed partial class MainViewModel
         note.MxuUpdatedAt = Now();
         FindNoteChanges(note);
         Library.Save(note);
+        MarkNoteUpdateTiles();
         NotesChanged?.Invoke();
     }
 
     public void DeleteNote(NoteDocument note)
     {
         Library.Delete<NoteDocument>(note.Id);
+        MarkNoteUpdateTiles();
         NotesChanged?.Invoke();
     }
 
@@ -303,6 +305,36 @@ public sealed partial class MainViewModel
         SaveNote(note);
     }
 
+    // MARK: Badges on the slide grid
+
+    /// <summary>The note that made the open deck and has changes waiting for it, if any.</summary>
+    public NoteDocument? NoteWithChangesForOpenDeck =>
+        CurrentPresentation is { } deck
+            ? Library.All<NoteDocument>().FirstOrDefault(n => n.RemovedFromMxU != true && n.PresentationId == deck.Id && n.PendingUpdates is { Count: > 0 })
+            : null;
+
+    /// <summary>
+    /// Puts the note's waiting changes on the open deck's tiles, as the Mac's grid does: Update on a
+    /// slide whose passage has new words, Remove on one whose passage is gone, and Add on the slide a
+    /// new passage's slide would follow. (The Mac draws an Add as a ghost tile between the slides;
+    /// here it's a badge on the slide before it.) Clicking a badge opens Changes from the Notes.
+    /// </summary>
+    private void MarkNoteUpdateTiles()
+    {
+        var updates = NoteWithChangesForOpenDeck?.PendingUpdates ?? [];
+        var firstSlideId = Slides.FirstOrDefault()?.Slide.Id;
+        foreach (var tile in Slides)
+        {
+            var own = updates.FirstOrDefault(u => u.Kind != NotePendingUpdates.New && u.SlideId == tile.Slide.Id);
+            // An Add that follows no slide of this deck (it goes first, or its place is gone) shows on the first tile.
+            var adds = updates.Count(u => u.Kind == NotePendingUpdates.New
+                && (u.AfterSlideId == tile.Slide.Id
+                    || (tile.Slide.Id == firstSlideId && Slides.All(t => t.Slide.Id != u.AfterSlideId))));
+            tile.NoteUpdate = own?.Kind == NotePendingUpdates.Words ? "Update" : own is not null ? "Remove" : null;
+            tile.NoteAdds = adds == 0 ? null : adds == 1 ? "+ Add" : $"+ Add {adds}";
+        }
+    }
+
     // MARK: Present beside the note
 
     /// <summary>The note beside its slides: prose, passages with their slides, and the deck's other slides.</summary>
@@ -343,4 +375,16 @@ public sealed partial class MainViewModel
         }
         Fire(deck, null, index, null);
     }
+}
+
+/// <summary>A slide tile's badges for changes waiting from the note that made it (see MarkNoteUpdateTiles).</summary>
+public sealed partial class SlideTileViewModel
+{
+    /// <summary>"Update" or "Remove" when the note proposes that for this slide; null when it doesn't.</summary>
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    public partial string? NoteUpdate { get; set; }
+
+    /// <summary>"+ Add" when the note has a new slide waiting to go in after this one; null when it doesn't.</summary>
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    public partial string? NoteAdds { get; set; }
 }

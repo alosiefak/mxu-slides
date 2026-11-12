@@ -23,7 +23,6 @@ public sealed class MakeSlidesWindow : Window
     private readonly NoteBody basis;
     private NoteBody body;
     private NoteSlideMarks.AutoMark autoMark;
-    private static NoteSlideMarks.AutoMark rememberedAutoMark = NoteSlideMarks.AutoMark.PickForMe;
     private string themeId;
     private string? destination;
     private readonly HashSet<string> excluded = [];
@@ -49,7 +48,8 @@ public sealed class MakeSlidesWindow : Window
             return clear;
         });
         // As the Mac (makeSlides.autoMark): the choice made last time on this computer, Pick for me at first.
-        autoMark = rememberedAutoMark;
+        autoMark = Enum.TryParse<NoteSlideMarks.AutoMark>(model.Settings.MakeSlidesAutoMark, out var remembered)
+            ? remembered : NoteSlideMarks.AutoMark.PickForMe;
         themeId = model.DeckOf(note)?.ThemeId ?? model.NotesThemeId;
         body = Marked();
         make = EditorKit.Button("Make Slides", Make, "Make the slides", accent: true);
@@ -74,7 +74,9 @@ public sealed class MakeSlidesWindow : Window
             Enum.GetValues<NoteSlideMarks.AutoMark>().Select(m => new EditorChoice(m.ToString(), m == NoteSlideMarks.AutoMark.Nothing ? "Only what I marked" : m.Title())).ToList(),
             autoMark.ToString(), id =>
             {
-                autoMark = rememberedAutoMark = Enum.Parse<NoteSlideMarks.AutoMark>(id);
+                autoMark = Enum.Parse<NoteSlideMarks.AutoMark>(id);
+                model.Settings.MakeSlidesAutoMark = id;
+                model.Settings.Save();
                 body = Marked();
                 excluded.Clear();
                 overrides.Clear();

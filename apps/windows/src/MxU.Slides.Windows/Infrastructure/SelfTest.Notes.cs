@@ -12,7 +12,7 @@ namespace MxU.Slides.Windows.Infrastructure;
 /// marked by hand, Make Slides picking the rest and making a deck in the theme, the slides it
 /// made, an edit to the note proposing an Update, applying it from Changes from the Notes (the
 /// old words kept in the slide's history), and the note beside the slides with the live slide lit.
-/// Pictures 120–127.
+/// The grid's Update and Add badges are checked too. Pictures 120–129.
 /// </summary>
 public sealed partial class SelfTest
 {
@@ -90,6 +90,11 @@ public sealed partial class SelfTest
             Save(notes, "125-notes-update-badge");
             if (update is not null)
             {
+                // The same change shows on the slide grid, as on the Mac: an orange Update on the slide it touches.
+                Check("the slide the edit touches wears an Update badge in the grid",
+                    model.Slides.Where(t => t.NoteUpdate == "Update").Select(t => t.Slide.Id).SequenceEqual([update.SlideId]));
+                await Delay(300);
+                Save(window, "128-grid-update-badge");
                 var changes = NoteChangesWindow.Open(notes, model, note);
                 await Delay(600);
                 Save(changes, "126-changes-from-the-notes");
@@ -101,6 +106,17 @@ public sealed partial class SelfTest
                     slide.Objects.Any(o => o.Text.Contains("ever-present help", StringComparison.Ordinal))
                     && slide.History?.FirstOrDefault()?.Reason == NoteSlides.UpdatedReason);
                 Check("nothing waits once it's applied", model.Library.Get<NoteDocument>(note.Id)!.PendingUpdates is null);
+                Check("the grid's badge goes once the change is applied", model.Slides.Count > 0 && model.Slides.All(t => t.NoteUpdate is null && t.NoteAdds is null));
+
+                // A new verse in the note is a new passage: an Add, shown on the slide it would follow.
+                notes.Select(note.Id);
+                notes.EditText(text => text + "\nHebrews 12:28 – Therefore let us be grateful for receiving a kingdom that cannot be shaken.");
+                note = model.Library.Get<NoteDocument>(note.Id)!;
+                var waiting = note.PendingUpdates ?? [];
+                Check("a verse added to the note proposes an Add, shown on the slide it would follow",
+                    waiting.Any(u => u.Kind == NotePendingUpdates.New) && model.Slides.Any(t => t.NoteAdds is not null));
+                await Delay(300);
+                Save(window, "129-grid-add-badge");
             }
 
             // Present beside the note: the live slide's line lights up.

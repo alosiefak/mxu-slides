@@ -4,6 +4,7 @@
         xmlns:vm="clr-namespace:MxU.Slides.Windows.ViewModels"
         xmlns:r="clr-namespace:MxU.Slides.Windows.Rendering"
         xmlns:v="clr-namespace:MxU.Slides.Windows.Views"
+        xmlns:n="clr-namespace:MxU.Slides.Windows.Views.Notes"
         Title="MxU Slides" Width="1440" Height="900" MinWidth="1100" MinHeight="680"
         Icon="/Assets/AppIcon.ico" WindowStartupLocation="CenterScreen">
     <Window.Resources>
@@ -24,6 +25,8 @@
                         <r:SceneView StaticScene="{Binding Scene}" Letterbox="#000000"
                                      Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource SixteenByNine}}" />
                         <v:MediaBadge Compact="True" Text="{Binding MissingMedia}" Detail="{Binding MissingMedia}" />
+                        <!-- Changes waiting from the note that made this slide (Views/Notes/NoteTileBadges.cs). -->
+                        <n:NoteTileBadges Update="{Binding NoteUpdate}" Adds="{Binding NoteAdds}" Clicked="NoteBadge_Click" />
                     </Grid>
                     <Grid Background="{Binding GroupBrush}" Height="22">
                         <Grid.ColumnDefinitions>

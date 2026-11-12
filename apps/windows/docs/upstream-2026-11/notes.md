@@ -21,8 +21,10 @@ change.
    slide type.
 5. **Make Slides**. The deck opens in the grid.
 6. Change the notes later (**Edit Text**): a passage whose slide would change shows **Update**, a new
-   passage shows **Add**, a removed one **Remove**. **Changes** lists them; Apply puts the new words
-   on the slide (the old ones go into the slide's history, so nothing is lost) or Skip leaves it.
+   passage shows **Add**, a removed one **Remove**. The same badges show on the deck's slides in the
+   main window's grid (an Add sits on the slide the new one would follow). **Changes**, or a click
+   on a badge, lists them; Apply puts the new words on the slide (the old ones go into the slide's
+   history, so nothing is lost) or Skip leaves it.
 7. **Present** opens the note beside the slides and lights the passage of whatever slide is live.
 
 ## How it works, piece by piece
@@ -69,6 +71,17 @@ finished note is saved on it.
 `NoteChangesWindow` (with `NoteFollowAlongWindow`). `MainViewModel.Notes.cs` holds their
 commands: import, save, Make Slides (`MakeSlides`), apply and skip updates.
 
+**The badges on the slide grid.** Each time a note is saved, `FindNoteChanges` stores what it
+proposes in the note itself (`PendingUpdates`). `MarkNoteUpdateTiles` (same file) then looks for a
+note that made the open deck and has changes waiting, and sets two small properties on each slide
+tile: `NoteUpdate` ("Update" or "Remove") and `NoteAdds` ("+ Add"). The tile template draws them
+with `Views/Notes/NoteTileBadges.cs`, which swallows the click so a badge never fires the slide
+under it. It runs again whenever the grid is rebuilt, so the badges go as changes are applied.
+
+**What this PC remembers.** How Make Slides picked passages last time (*Pick for me*, *Bold lines
+only*…) is kept in `settings.json` (`AppSettings.MakeSlidesAutoMark`), as the Mac keeps it in its
+own defaults. It's a per-computer habit, so it isn't in the shared design map.
+
 ## Different from the Mac
 
 - **Marking is whole blocks.** The Mac marks any stretch of text inside a paragraph; the Windows
@@ -78,10 +91,16 @@ commands: import, save, Make Slides (`MakeSlides`), apply and skip updates.
   the Mac edits the rich text in place.
 - **Pictures from the web** in a note aren't fetched (nothing calls out to the network); pictures
   inside a Word or PDF file are kept. RTF links are dropped. No .doc or .rtfd.
-- **Update / Add badges** show in the notes window; the Mac also shows them on the slide grid.
-- *Pick for me* is remembered for this session only (the Mac keeps the choice across launches).
-- Two tests wait for the engine catch-up's starter packs (`up-core`): they are skipped with a note
+- **An Add on the slide grid** is a "+ Add" badge on the slide the new one would follow; the Mac
+  draws a ghost tile of the new slide between the two. Update and Remove badges are the same.
+- **Copying from a browser or Mail** (HTML on the clipboard, with its pictures and Drive video
+  chips) isn't read: Paste takes the clipboard's plain text. The Mac's three tests for that
+  (`NoteFileMediaTests`: a browser's copy, a paste's pictures, a Drive chip's video link) aren't
+  ported, and neither are its four `NoteTextReplacementTests`, which test the Mac's own text view.
+- Five tests wait for the engine catch-up's starter packs (`up-core`): they are skipped with a note
   saying so, and pass once that lands.
+- Of the Mac's seven `DesignActionsTests`, the four for what Windows has are ported; the three for
+  applying a theme to a whole deck or to some slides wait for `Presentation.applyTheme` in C#.
 
 ## For PORTING.md
 
@@ -94,7 +113,7 @@ Ported line by line (add under the Swift file's row):
 | `Import/NoteFileReader.swift`, `PDFGlyphReader.swift`, `DocxMedia.swift`, `ZipExtract.swift` | `Core/Notes/NoteFileReader.cs`, `NoteDocumentReaders.cs` (PDF via PdfPig) |
 | `PPTXImport/PPTXNoteText.swift` | `MxU.Slides.PptxImport/PptxNoteText.cs` |
 | `PresenterCore/Library/DesignActions.swift`, slide history | `Core/Library/DesignActions.cs`, `SlideHistory.cs` |
-| Tests: `MakeSlidesFixturesTests`, `NoteSlideMarksTests`, `NoteSlideSuggestionsTests`, `SlidePlannerTests`, `NoteSlideUpdateTests`, `NoteLiveUpdatesTests`, `NotePanelsTests`, `NoteFollowAlongTests`, `PictureSlidesTests`, `NoteFileReaderTests`, `PPTXNoteTextTests` | `tests/MxU.Slides.Core.Tests/Notes/*`, `tests/MxU.Slides.PptxImport.Tests/PptxNoteTextTests.cs` (the shared `packages/make-slides-fixtures/*.json` are read as-is) |
+| Tests: `DesignActionsTests` (4 of 7), `MakeSlidesFixturesTests`, `NoteSlideMarksTests`, `NoteSlideSuggestionsTests`, `SlidePlannerTests`, `NoteSlideUpdateTests`, `NoteLiveUpdatesTests`, `NotePanelsTests`, `NoteFollowAlongTests`, `PictureSlidesTests`, `NoteFileReaderTests`, `PPTXNoteTextTests` | `tests/MxU.Slides.Core.Tests/Notes/*`, `tests/MxU.Slides.PptxImport.Tests/PptxNoteTextTests.cs` (the shared `packages/make-slides-fixtures/*.json` are read as-is) |
 | The app's notes views and Make Slides sheet | `Views/Notes/*`, `ViewModels/MainViewModel.Notes.cs`, `Views/MainWindow.Notes.cs` |
 
 Windows-only:
@@ -104,14 +123,18 @@ Windows-only:
 | `ProImport/Rtf/RtfNoteLines.cs` (+ RtfReader's opt-in `weights`) | RTF notes with bold and italic, through the ProPresenter RTF reader |
 | `Core/Notes/NoteTextEditing.cs` | Edit Text: a plain-text edit that keeps unchanged blocks |
 | `Core/Notes/NoteModels.cs` | Copy and value equality for the generated note classes (Swift's structs compare by value) |
+| `Views/Notes/NoteTileBadges.cs`, `AppSettings.Notes.cs` | The grid's Update / Remove / Add badges; the remembered way of picking passages |
 
 Not ported yet:
 
 | Swift | Why |
 |---|---|
 | Marking part of a paragraph, rich-text editing in place | The notes window marks and edits whole lines |
-| Update/Add badges on the slide grid | Shown in the notes window only |
+| The Add ghost tile on the slide grid (`NoteLiveUpdates.cells` in the grid) | An Add is a badge on the slide before it |
+| Pasting HTML (a browser's or Mail's copy, with pictures and video links) | Paste takes plain text |
 | Web pictures in notes; .doc and .rtfd | No network fetches; no reader for those formats |
+| `Presentation.applyTheme` / `adoptDesignActions` (deck-wide design actions) and their 3 tests | Not needed by Make Slides; the per-slide part is ported |
+| `NoteTextReplacementTests`, the `*SweepTests` over the Mac's Swift source | They test the Mac's own text view and source files |
 | Photo-spot drawing in the new starter designs | Comes with the engine catch-up (`up-core`) |
 
 *This is the walkthrough; see also [HOW-IT-WORKS.md](../HOW-IT-WORKS.md) and [PORTING.md](../PORTING.md).*
