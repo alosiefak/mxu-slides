@@ -211,7 +211,9 @@ public sealed partial class MainViewModel
     public void DeleteSong(string id)
     {
         if (audio?.PlayerForAudioItem(id) is { PlaylistId: null }) audio.StopAudioItem(id);
+        var hash = Library.Get<AudioItem>(id)?.FileHash;
         Library.Delete<AudioItem>(id);
+        if (hash is not null) RemoveUnusedFiles([hash]); // the file leaves the library with it, as on the Mac
         RefreshMusicTracks();
     }
 

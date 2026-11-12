@@ -79,12 +79,15 @@ public sealed class AudioImporter(LibraryStore store)
     /// the item already made for it). Null for a file type the importer doesn't take.
     /// </summary>
     /// <param name="name">The item's name (default: the file name without its extension).</param>
-    public AudioItem? Import(string sourcePath, string? name = null, string? folderId = null)
+    /// <param name="reuseSameFile">False when the operator chose "Add as New Copy" for a file the
+    /// library already has: a second item is made, sharing the one stored file.</param>
+    /// <param name="knownHash">The file's SHA-256 when the caller has just worked it out.</param>
+    public AudioItem? Import(string sourcePath, string? name = null, string? folderId = null, bool reuseSameFile = true, string? knownHash = null)
     {
         if (!IsAudioFile(sourcePath)) return null;
         if (!File.Exists(sourcePath)) throw new FileNotFoundException("The audio file is missing", sourcePath);
-        var (hash, blob) = CopyIn(sourcePath);
-        var existing = store.All<AudioItem>().FirstOrDefault(a => a.FileHash == hash);
+        var (hash, blob) = CopyIn(sourcePath, knownHash);
+        var existing = reuseSameFile ? store.All<AudioItem>().FirstOrDefault(a => a.FileHash == hash) : null;
         if (existing is not null) return existing;
         var item = new AudioItem
         {
@@ -122,10 +125,13 @@ public sealed class AudioImporter(LibraryStore store)
         return copy;
     }
 
+    /// <summary>How long a music file plays, or null when it can't be read (a file edited in place: MainViewModel.BlobEdits.cs).</summary>
+    public static double? DurationOf(string path) => AudioFileDecoder.ProbeDuration(path);
+
     // Copies a file into Blobs under its SHA-256 (once: the same content is only stored once).
-    private (string Hash, string Blob) CopyIn(string sourcePath)
+    private (string Hash, string Blob) CopyIn(string sourcePath, string? knownHash = null)
     {
-        var hash = LibraryStore.HashFile(sourcePath);
+        var hash = knownHash ?? LibraryStore.HashFile(sourcePath);
         var blob = Path.Combine(store.BlobDirectory, hash + Path.GetExtension(sourcePath).ToLowerInvariant());
         Directory.CreateDirectory(store.BlobDirectory);
         if (!File.Exists(blob))

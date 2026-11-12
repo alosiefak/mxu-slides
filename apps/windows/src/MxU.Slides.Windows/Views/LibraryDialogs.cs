@@ -25,7 +25,7 @@ internal static class LibraryDialogs
     internal static Action<ChoiceWindow>? Showing { get; set; }
 
     /// <summary>Over whichever window the operator is in (a dialog can come up during an import).</summary>
-    private static Window? Owner =>
+    internal static Window? Owner =>
         Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive && w is not ChoiceWindow) ?? Application.Current?.MainWindow;
 
     public static SlidesPresentationFile.Conflict? AskPresentationConflict(string name)
@@ -90,7 +90,7 @@ internal static class LibraryDialogs
         var count = groups.Sum(g => g.Uses.Count);
         var dialog = new ChoiceWindow(Owner, "Delete Media", $"Delete “{name}”?",
             $"Used in {count} place{(count == 1 ? "" : "s")}. Each spot shows a missing-media warning until the file is restored or replaced. "
-            + "The item moves to the library's Trash folder.", warning: true);
+            + "The item moves to the library's Trash folder, with its file unless another item uses it.", warning: true);
         dialog.AddBody(UsesList(groups));
         dialog.AddButton("Cancel", isCancel: true, isDefault: true);
         dialog.AddButton("Move to Trash", danger: true);
@@ -122,7 +122,7 @@ internal static class LibraryDialogs
     // MARK: Pieces
 
     /// <summary>The where-used list: one heading per kind ("Presentations (2)"), a row per use, "via Hymns theme" when it's the theme's.</summary>
-    private static UIElement UsesList(IReadOnlyList<MediaUsage.Group> groups)
+    internal static UIElement UsesList(IReadOnlyList<MediaUsage.Group> groups)
     {
         var list = new StackPanel();
         foreach (var group in groups)

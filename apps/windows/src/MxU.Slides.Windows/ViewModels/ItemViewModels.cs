@@ -73,8 +73,8 @@ public sealed partial class SlideTileViewModel : ObservableObject
     public partial bool IsSelected { get; set; }
 }
 
-/// <summary>A presentation row in the library list.</summary>
-public sealed class LibraryEntryViewModel(Presentation presentation)
+/// <summary>A presentation row in the library list (its favourite, tags and search match: ItemViewModels.Browse.cs).</summary>
+public sealed partial class LibraryEntryViewModel(Presentation presentation)
 {
     public Presentation Presentation { get; } = presentation;
     public string Name => Presentation.Name;

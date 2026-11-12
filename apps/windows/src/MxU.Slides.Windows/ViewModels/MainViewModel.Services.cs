@@ -221,6 +221,7 @@ public sealed partial class MainViewModel
         suppressServiceItemOpen = true;
         SelectedServiceItem = ServiceItems.FirstOrDefault(r => r.Item.Id == item.Id);
         suppressServiceItemOpen = false;
+        Catalog.Usage.Touch(item.RefId); // added to a service counts as used, as on the Mac (Recently Used)
     }
 
     [RelayCommand]

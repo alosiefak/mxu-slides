@@ -173,6 +173,8 @@
         </DockPanel>
         <!-- Library sync with a Mac (Views/LibrarySyncSection.cs). -->
         <v:LibrarySyncSection xmlns:v="clr-namespace:MxU.Slides.Windows.Views" />
+        <!-- Backups (automatic and by hand, restore), diagnostics, Check this PC, the welcome guide (Views/LibraryCareSection.cs). -->
+        <v:LibraryCareSection xmlns:v="clr-namespace:MxU.Slides.Windows.Views" />
         <!-- About: the version and the bundled fonts' credits and licence (Views/AboutSection.cs). -->
         <v:AboutSection xmlns:v="clr-namespace:MxU.Slides.Windows.Views" />
 

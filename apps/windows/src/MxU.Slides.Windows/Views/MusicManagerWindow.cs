@@ -375,7 +375,7 @@ public sealed class MusicManagerWindow : Window
             Title = "Import music", Multiselect = true,
             Filter = "Music|" + string.Join(";", AudioImporter.SupportedExtensions.Select(e => "*" + e)) + "|All files|*.*",
         };
-        if (dialog.ShowDialog(this) == true) model.ImportAudioFiles(dialog.FileNames);
+        if (dialog.ShowDialog(this) == true) _ = model.ImportAudioFilesAsync(dialog.FileNames);
     }
 
     /// <summary>The self-test's view: which playlist is shown and its rows.</summary>

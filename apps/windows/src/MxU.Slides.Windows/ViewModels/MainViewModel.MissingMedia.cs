@@ -98,7 +98,11 @@ public sealed partial class MainViewModel
     /// <summary>Redraws everything that shows media after an item got its file back or a new one.</summary>
     private void MediaFilesChanged(IEnumerable<string> ids)
     {
-        foreach (var id in ids) Media.ForgetFile(id);
+        foreach (var id in ids)
+        {
+            Media.ForgetFile(id);
+            Media.ReloadVideosInPlace(id); // a video on screen plays the new file at once (Rendering/MediaHub.ReloadInPlace.cs)
+        }
         Library.Blobs.NoteDirectoryChanged();
         RefreshMedia();
         RebuildSlides();
@@ -176,11 +180,13 @@ public sealed partial class MainViewModel
         if (groups.Count > 0 && !ConfirmDeleteUsedMedia(item.Name, groups)) return false;
         Library.Delete<MediaItem>(item.Id);
         Media.ForgetFile(item.Id);
+        // The file leaves the library with it, as on the Mac (MainViewModel.BlobEdits.cs), unless another item uses it.
+        var withFile = RemoveUnusedFiles([item.FileHash]) > 0 ? " and its file" : "";
         RefreshMedia();
         RebuildSlides();
         RefreshServiceItems();
         Notice = groups.Count == 0
-            ? $"Moved \"{item.Name}\" to the library's Trash folder. The file itself is kept."
+            ? $"Moved \"{item.Name}\"{withFile} to the library's Trash folder."
             : $"Moved \"{item.Name}\" to the library's Trash folder. Where it was used now says it's missing: Media › Locate missing file… brings it back.";
         return true;
     }

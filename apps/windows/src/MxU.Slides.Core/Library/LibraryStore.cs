@@ -83,6 +83,9 @@ public sealed partial class LibraryStore
     public static string FolderFor(Type type) =>
         Folders.TryGetValue(type, out var folder) ? folder : throw new ArgumentException($"{type.Name} is not a library document");
 
+    /// <summary>Every kind of document the library keeps (a backup carries each of their folders: LibraryBackup.cs).</summary>
+    public static IReadOnlyCollection<Type> DocumentTypes => Folders.Keys;
+
     public void Load()
     {
         Directory.CreateDirectory(Root);

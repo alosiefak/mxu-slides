@@ -111,6 +111,13 @@
                     </StackPanel>
                 </Button>
 
+                <!-- Help: the welcome guide, keys, diagnostics, Check this PC, report a problem (Views/HelpMenu.cs). -->
+                <Button x:Name="HelpButton" DockPanel.Dock="Right" Click="Help_Click" ToolTip="The welcome guide, keys, diagnostics and Report a Problem" Margin="6,0,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE897;" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Help" />
+                    </StackPanel>
+                </Button>
                 <Button DockPanel.Dock="Right" Click="Settings_Click" ToolTip="Screens and settings">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE7F8;" Margin="0,0,6,0" VerticalAlignment="Center" />
@@ -278,46 +285,8 @@
 
                 <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" Background="Transparent" />
 
-                <Border Style="{StaticResource Panel}" Grid.Row="2">
-                    <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Text="LIBRARY" Style="{StaticResource SectionLabel}" />
-                        <TextBox x:Name="LibrarySearchBox" DockPanel.Dock="Top" Text="{Binding LibrarySearch, UpdateSourceTrigger=PropertyChanged}"
-                                 Tag="Search songs, lyrics, authors…"
-                                 ToolTip="Search titles, authors, CCLI numbers and lyrics (Ctrl+F)" Margin="0,0,0,6" />
-                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
-                            <RadioButton Content="All" Margin="0,0,10,0" IsChecked="True" Checked="LibraryFilter_Checked" Tag="0" />
-                            <RadioButton Content="Songs" Margin="0,0,10,0" Checked="LibraryFilter_Checked" Tag="1" />
-                            <RadioButton Content="Presentations" Checked="LibraryFilter_Checked" Tag="2" />
-                        </StackPanel>
-                        <ListBox x:Name="LibraryList" ItemsSource="{Binding LibraryItems}" SelectedItem="{Binding SelectedLibraryEntry}"
-                                 PreviewMouseLeftButtonDown="LibraryList_PreviewMouseDown" PreviewMouseMove="LibraryList_PreviewMouseMove"
-                                 MouseDoubleClick="LibraryList_DoubleClick" AllowDrop="True" DragOver="LibraryList_DragOver" Drop="LibraryList_Drop">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="{x:Type vm:LibraryEntryViewModel}">
-                                    <DockPanel>
-                                        <TextBlock FontFamily="{StaticResource Icons}" Text="{Binding Glyph}" Foreground="{StaticResource MutedText}"
-                                                   Width="22" VerticalAlignment="Center" FontSize="12" />
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{Binding Detail}" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                            <ListBox.ContextMenu>
-                                <ContextMenu>
-                                    <MenuItem Header="Add to service" Command="{Binding AddCurrentToServiceCommand}" />
-                                    <MenuItem Header="Edit lyrics…" Click="EditLyrics_Click" />
-                                    <MenuItem Header="Rename…" Click="RenamePresentation_Click" />
-                                    <MenuItem Header="Duplicate" Command="{Binding DuplicatePresentationCommand}" />
-                                    <MenuItem Header="Export as .mxuslides (for a Mac or another PC)…" Click="ExportPresentation_Click" />
-                                    <Separator />
-                                    <MenuItem Header="Move to Trash" Click="DeletePresentation_Click" />
-                                </ContextMenu>
-                            </ListBox.ContextMenu>
-                        </ListBox>
-                    </DockPanel>
-                </Border>
+                <!-- The library: folders, sorting, search, favourites and tags, batch actions (Views/LibraryPanel.xaml). -->
+                <v:LibraryPanel x:Name="LibraryPanelView" Grid.Row="2" />
             </Grid>
 
             <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="Transparent" />
@@ -799,8 +768,8 @@
                         <Button Command="{Binding EditOverlaysCommand}" Content="Edit…" Margin="0,0,6,0" ToolTip="Design overlays: text, shapes, masks and animations" />
                         <Button Command="{Binding DuplicateOverlayCommand}" Content="Duplicate" ToolTip="Make your own copy of the selected overlay" />
                     </StackPanel>
-                    <TextBox Text="{Binding MediaSearch, UpdateSourceTrigger=PropertyChanged}" Width="180" HorizontalAlignment="Left" Tag="Search media…"
-                             Visibility="{Binding ShowingMedia, Converter={StaticResource Visible}}" />
+                    <!-- Search, sort, folder and favourites for the media bin (Views/MediaBinBar.cs). -->
+                    <v:MediaBinBar HorizontalAlignment="Left" Visibility="{Binding ShowingMedia, Converter={StaticResource Visible}}" />
                     <ComboBox ItemsSource="{Binding OverlayPacks}" SelectedItem="{Binding SelectedOverlayPack}" Width="180" HorizontalAlignment="Left"
                               Visibility="{Binding ShowingOverlays, Converter={StaticResource Visible}}" />
                 </DockPanel>
@@ -922,9 +891,9 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:MediaTileViewModel}">
                                 <Border x:Name="Frame" Width="170" Margin="0,0,8,0" CornerRadius="5" BorderThickness="2" BorderBrush="Transparent" Background="#141414"
-                                        Cursor="Hand" MouseLeftButtonUp="MediaTile_Click" ToolTip="{Binding Name}">
+                                        Cursor="Hand" MouseLeftButtonUp="MediaTile_Click" ToolTip="{Binding Tooltip}">
                                     <Border.ContextMenu>
-                                        <ContextMenu>
+                                        <ContextMenu Opened="MediaMenu_Opened">
                                             <MenuItem Header="Show now" Click="MediaShow_Click" />
                                             <MenuItem Header="Use as background for the open song" Click="MediaAsSongBackground_Click" />
                                             <MenuItem Header="Use as background for the selected slide" Click="MediaAsSlideBackground_Click" />
@@ -945,6 +914,9 @@
                                     <Grid>
                                         <r:SceneView StaticScene="{Binding Preview}" PlaysVideo="False" Height="92" />
                                         <v:MediaBadge Text="{Binding Badge}" Detail="{Binding BadgeDetail}" />
+                                        <!-- A favourite's star (Phase 8; Ctrl+click or Shift+click picks tiles: MainWindow.LibraryPanel.cs). -->
+                                        <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE735;" Foreground="#F5C542" FontSize="12" Margin="6,5"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="{Binding IsFavorite, Converter={StaticResource Visible}}" />
                                         <Border VerticalAlignment="Bottom" Background="#B0000000" Padding="5,2">
                                             <DockPanel>
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding Kind}" FontSize="10" Foreground="{StaticResource MutedText}" Margin="4,0,0,0" />
@@ -954,6 +926,9 @@
                                     </Grid>
                                 </Border>
                                 <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsPicked}" Value="True">
+                                        <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                    </DataTrigger>
                                     <DataTrigger Binding="{Binding IsLive}" Value="True">
                                         <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Live}" />
                                     </DataTrigger>
