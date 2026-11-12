@@ -87,6 +87,9 @@ public sealed partial class ShowState
         slideArrivedSettled = arrivesSettled;
 
         var background = SlideSceneBuilder.EffectiveBackground(slide, presentation, arrangementId);
+        SweepCustomLayers(background);
+        // A background that names one of the preset's custom layers plays there instead.
+        if (background is not null && CustomLayerOf(background) is not null) background = null;
         LayerKind? backgroundLayer = background is null ? null : SlideSceneBuilder.LayerKindOf(background.Layer);
 
         // A new slide sweeps foreground media off unless it brings its own.
@@ -533,6 +536,7 @@ public sealed partial class ShowState
                     liveMedia.Remove(layer);
                     directMediaFires.Remove(layer);
                 }
+                if (function == ShowFunction.Media) ClearCustomLayers();
                 break;
             case ShowFunction.Overlays:
                 foreach (var overlay in liveOverlays.ToList()) DismissOverlayQuiet(overlay.Id, atHostTime);
@@ -616,9 +620,13 @@ public sealed partial class ShowState
     {
         var animated = AnimatedScene(canvasSize, resolveLinkedText, slideThemeOverride);
         var scene = new RenderScene(animated.CanvasSize) { Background = animated.Background };
+        string? below = null;
         foreach (var layer in animated.Layers)
-            foreach (var item in layer.Items)
-                scene.AddItem(item.Render, layer.Kind);
+        {
+            var into = scene.Matching(layer.Id, layer.Kind, layer.Name, below);
+            below = layer.Id;
+            into.Items.AddRange(layer.Items.Select(item => item.Render));
+        }
         return scene;
     }
 
@@ -640,6 +648,7 @@ public sealed partial class ShowState
         var scene = new AnimatedScene(canvas);
         foreach (var (layer, media) in liveMedia)
             scene.AddItem(SlideSceneBuilder.MediaItem($"live-media-{layer.Raw()}", media, canvas), layer);
+        AddCustomLayers(scene, canvas);
 
         if (Live is { } live) AddSlide(scene, live, canvas, resolveLinkedText, slideThemeOverride);
 

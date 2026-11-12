@@ -19,6 +19,12 @@ public interface IShowActions
     void ClearLayer(LayerKind layer);
 
     /// <summary>
+    /// Clears one of the active output preset's custom layers (the Screen Map), by its id. False
+    /// when the active preset has no such layer: the action was made for another preset.
+    /// </summary>
+    bool ClearCustomLayer(string layerId) => false;
+
+    /// <summary>
     /// Clear All from an action: clears every layer except <paramref name="protecting"/> (the
     /// layers the firing slide just filled). Unlike the Clear All button it must not cancel
     /// the router's pending delayed steps.

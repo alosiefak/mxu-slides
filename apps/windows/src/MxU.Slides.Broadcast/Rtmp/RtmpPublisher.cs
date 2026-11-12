@@ -19,6 +19,9 @@ internal sealed class RtmpPublishOptions
     /// <summary>A write that makes no progress this long means the network is gone.</summary>
     public TimeSpan WriteStallTimeout { get; init; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>The socket's send buffer. Tests make it small, so a stalled server is felt at once.</summary>
+    public int SendBufferSize { get; init; } = 512 * 1024;
+
     /// <summary>The chunk size we send with once connected (HaishinKit's default, 8 KB).</summary>
     public int ChunkSize { get; init; } = 8 * 1024;
 
@@ -81,7 +84,7 @@ internal sealed class RtmpPublisher : IAsyncDisposable
         this.url = url;
         this.streamKey = streamKey;
         this.options = options;
-        socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true, SendBufferSize = 512 * 1024 };
+        socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true, SendBufferSize = options.SendBufferSize };
     }
 
     /// <summary>The message stream id the server gave our stream (from createStream).</summary>
@@ -309,21 +312,36 @@ internal sealed class RtmpPublisher : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Bytes go to the network in 16 KB slices, each counted in <see cref="BytesSent"/> as it
+    /// leaves: on a slow upload a 256 KB batch takes seconds, and the stream's once-a-second
+    /// measurement (<see cref="StreamSession"/>'s upload watch) must see the bytes trickle out,
+    /// not arrive in one lump (HaishinKit counts each chunk it hands the socket, too). Each slice
+    /// gets the stall timeout.
+    /// </summary>
+    private const int SliceBytes = 16 * 1024;
+
     private async Task FlushAsync(MemoryStream buffer)
     {
         if (buffer.Length == 0) return;
-        using var stall = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token);
-        stall.CancelAfter(options.WriteStallTimeout);
         try
         {
-            await stream.WriteAsync(buffer.GetBuffer().AsMemory(0, (int)buffer.Length), stall.Token);
-            await stream.FlushAsync(stall.Token);
+            for (var offset = 0; offset < buffer.Length; offset += SliceBytes)
+            {
+                var length = (int)Math.Min(SliceBytes, buffer.Length - offset);
+                using var stall = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token);
+                stall.CancelAfter(options.WriteStallTimeout);
+                await stream.WriteAsync(buffer.GetBuffer().AsMemory(offset, length), stall.Token);
+                Interlocked.Add(ref bytesSent, length);
+            }
+            using var flush = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token);
+            flush.CancelAfter(options.WriteStallTimeout);
+            await stream.FlushAsync(flush.Token);
         }
         catch (OperationCanceledException) when (!stopping.IsCancellationRequested)
         {
             throw StreamSessionException.TransportClosed("network stalled (nothing sent for 15 seconds)");
         }
-        Interlocked.Add(ref bytesSent, buffer.Length);
     }
 
     private async Task ReadLoopAsync()

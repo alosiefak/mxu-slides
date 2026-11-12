@@ -25,7 +25,7 @@ public static class AnimationEvaluator
         var layers = new List<ResolvedLayer>(scene.Layers.Count);
         foreach (var layer in scene.Layers)
         {
-            var pushed = VideoPushEvaluator.PushedLayers.Contains(layer.Kind);
+            var pushed = layer.Kind is { } kind && VideoPushEvaluator.PushedLayers.Contains(kind);
             var items = new List<ResolvedItem>(layer.Items.Count);
             foreach (var item in layer.Items)
             {
@@ -58,7 +58,10 @@ public static class AnimationEvaluator
                     if (!resolved.Motion.IsIdentity) motions[resolved.Item.Id] = resolved.Motion;
                 }
             }
-            layers.Add(new ResolvedLayer(layer.Kind, layer.IsHidden, items));
+            layers.Add(new ResolvedLayer(layer.Kind, layer.IsHidden, items)
+            {
+                Id = layer.Id, Placed = layer.Placed, CrossfadeProgress = layer.CrossfadeProgress,
+            });
         }
         return new ResolvedScene(scene.CanvasSize, scene.Background, layers, motions);
     }

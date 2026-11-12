@@ -48,6 +48,17 @@ public class MidiControlTests
     }
 
     [Fact]
+    public void TakeOverIsAPresentationCommandOnNote36LikeTheMac()
+    {
+        Assert.Equal(MidiCommand.FollowTakeOver, new MidiCommandMap().CommandForNote(36));
+        Assert.Equal(MidiCommandGroup.Presentation, MidiCommand.FollowTakeOver.Group());
+        Assert.Equal("followTakeOver", MidiCommand.FollowTakeOver.Raw());
+        Assert.Equal("Take Over (Backup)", MidiCommand.FollowTakeOver.DisplayName());
+        Assert.Equal(MidiCommand.RewindTimeline, MidiCommands.Parse("rewindTimeline"));
+        Assert.Equal("Rewind Timeline", MidiCommand.RewindTimeline.DisplayName());
+    }
+
+    [Fact]
     public void PlaybackAndProPresenterCueRecipesResolve()
     {
         var map = new MidiCommandMap();

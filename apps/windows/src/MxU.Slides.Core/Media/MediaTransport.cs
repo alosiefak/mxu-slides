@@ -64,10 +64,21 @@ public enum TransportOrigin
 }
 
 /// <summary>A video the transport strip could control.</summary>
-public sealed record TransportCandidate(string MediaId, LayerKind Layer, TransportOrigin Origin, bool IsLooping, DateTimeOffset FiredAt);
+public sealed record TransportCandidate(string MediaId, LayerKind Layer, TransportOrigin Origin, bool IsLooping, DateTimeOffset FiredAt)
+{
+    /// <summary>The custom layer (Screen Map) the video plays on; null for a built-in layer.</summary>
+    public string? LayerId { get; init; }
+}
 
 /// <summary>A video that is live, before its player has been read: the media id, its layer and where it came from.</summary>
-public sealed record TransportSeed(string MediaId, LayerKind Layer, TransportOrigin Origin);
+public sealed record TransportSeed(string MediaId, LayerKind Layer, TransportOrigin Origin)
+{
+    /// <summary>
+    /// The custom layer the video plays on (a Screen Map layer); null for a built-in layer. A
+    /// custom layer's video is offered with Foreground Videos, as the Mac counts it foreground.
+    /// </summary>
+    public string? LayerId { get; init; }
+}
 
 /// <summary>
 /// Which video the transport strip controls. The operator looks at one layer at a time

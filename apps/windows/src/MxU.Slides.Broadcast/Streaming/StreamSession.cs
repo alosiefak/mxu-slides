@@ -24,6 +24,52 @@ public sealed class StreamSessionOptions
 
     /// <summary>Tests: how long Stop gives an HLS upload to finish (3 s, as on the Mac).</summary>
     internal TimeSpan HlsStopGrace { get; init; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Tests: how often an RTMP stream's upload is measured (once a second, as on the Mac). The
+    /// stall check counts measurements, so a faster one also notices a stall sooner.
+    /// </summary>
+    internal TimeSpan MonitorInterval { get; init; } = TimeSpan.FromSeconds(1);
+}
+
+/// <summary>
+/// The sound a stream sent and dropped: each buffer's length is counted as it is queued, and a
+/// buffer the full queue drops to make room is taken off again and counted as dropped. Port of
+/// the Mac's StreamSession.counted. Thread-safe.
+/// </summary>
+internal sealed class AudioPipeCount
+{
+    private readonly Lock gate = new();
+    private double seconds;
+    private int dropped;
+
+    public double Seconds
+    {
+        get { lock (gate) return seconds; }
+    }
+
+    public int Dropped
+    {
+        get { lock (gate) return dropped; }
+    }
+
+    public static double SecondsOf(PendingAudioBuffer buffer) =>
+        (double)buffer.Length / Math.Max(1, buffer.Channels) / Math.Max(1, buffer.SampleRate);
+
+    public void Sent(PendingAudioBuffer buffer)
+    {
+        lock (gate) seconds += SecondsOf(buffer);
+    }
+
+    /// <summary>The queue's drop callback: the buffer it let go never reaches the server.</summary>
+    public void Lost(PendingAudioBuffer buffer)
+    {
+        lock (gate)
+        {
+            seconds -= SecondsOf(buffer);
+            dropped++;
+        }
+    }
 }
 
 /// <summary>
@@ -38,7 +84,14 @@ public sealed class StreamSessionOptions
 /// and return at once. When the encoder falls behind, the oldest queued frame is dropped and
 /// counted in <see cref="StreamSessionStatus.FramesDropped"/>, as on the Mac. Frames given
 /// before the session is publishing are ignored and not counted. Everything else (encoding,
-/// sending) runs on the session's own tasks. <see cref="Status"/> may be read from any thread;
+/// sending) runs on the session's own tasks.
+///
+/// An RTMP stream is measured once a second (<see cref="UploadWatch"/>): the status gets what
+/// is really leaving the PC, the video bitrate in use and how far behind the upload is. When
+/// nothing has left for ten seconds, or twenty seconds of stream are waiting, the connection is
+/// dropped on purpose and made again, rather than staying "live" while nothing arrives. In
+/// Adaptive mode (<see cref="StreamVideoConfiguration.AdaptiveFloorKbps"/>) the encoder's
+/// bitrate steps down to what the upload can carry, and back up once it can. <see cref="Status"/> may be read from any thread;
 /// <see cref="StateChanged"/> is raised on an engine thread. Port of StreamSession.swift.
 /// </summary>
 public sealed class StreamSession : IProgramSink, IDisposable
@@ -46,6 +99,13 @@ public sealed class StreamSession : IProgramSink, IDisposable
     private readonly Lock gate = new();
     private readonly StreamSessionOptions options;
     private readonly HlsContinuity hlsContinuity = new();
+    private readonly AudioPipeCount audioCount = new();
+    private StreamEndpoint destination;
+    private bool retargeted;
+    private int? uploadKbps;
+    private int? videoKbps;
+    private double? backlogSeconds;
+    private string? lastDrop;
     private StreamSessionState state = StreamSessionState.Idle;
     private int framesSubmitted;
     private int framesDropped;
@@ -58,12 +118,16 @@ public sealed class StreamSession : IProgramSink, IDisposable
 
     public StreamSession(StreamEndpoint destination, StreamVideoConfiguration video, StreamSessionOptions? options = null)
     {
-        Destination = destination;
+        this.destination = destination;
         Video = video;
         this.options = options ?? new StreamSessionOptions();
     }
 
-    public StreamEndpoint Destination { get; }
+    /// <summary>Where the stream goes: the endpoint it was made with, until <see cref="Retarget"/>.</summary>
+    public StreamEndpoint Destination
+    {
+        get { lock (gate) return destination; }
+    }
 
     public StreamVideoConfiguration Video { get; }
 
@@ -77,7 +141,30 @@ public sealed class StreamSession : IProgramSink, IDisposable
     {
         get
         {
-            lock (gate) return new StreamSessionStatus(state, framesSubmitted, framesDropped);
+            lock (gate)
+                return new StreamSessionStatus(state, framesSubmitted, framesDropped)
+                {
+                    AudioSecondsSent = audioCount.Seconds,
+                    AudioBuffersDropped = audioCount.Dropped,
+                    UploadKbps = uploadKbps,
+                    VideoKbps = videoKbps,
+                    BacklogSeconds = backlogSeconds,
+                    LastDrop = lastDrop,
+                };
+        }
+    }
+
+    /// <summary>
+    /// Sends the stream somewhere else (a platform handed out a new stream key for the same
+    /// event). A live RTMP stream reconnects to it within a second; otherwise it is used at the
+    /// next connection.
+    /// </summary>
+    public void Retarget(StreamEndpoint endpoint)
+    {
+        lock (gate)
+        {
+            destination = endpoint;
+            retargeted = true;
         }
     }
 
@@ -210,7 +297,14 @@ public sealed class StreamSession : IProgramSink, IDisposable
             BroadcastLog.Warning("stream", $"audio format changed mid-stream: {Destination.Name} pinned={was.Item1} Hz×{was.Item2} got={buffer.SampleRate} Hz×{buffer.Channels} — dropping until reconnect");
         if (pipe is null) return;
         var copy = PendingAudioBuffer.Copy(buffer);
-        if (!pipe.Writer.TryWrite(copy)) copy.Return();
+        // Counted before it is queued: a full queue drops its oldest buffer in the call, and
+        // takes that one off the count (AudioPipeCount.Lost).
+        audioCount.Sent(copy);
+        if (!pipe.Writer.TryWrite(copy))
+        {
+            audioCount.Lost(copy);
+            copy.Return();
+        }
     }
 
     private async Task SuperviseAsync(CancellationToken cancellation)
@@ -223,7 +317,11 @@ public sealed class StreamSession : IProgramSink, IDisposable
                 dropped.Return();
                 Interlocked.Increment(ref framesDropped);
             });
-            var audioQueue = PendingQueues.Newest<PendingAudioBuffer>(16, dropped => dropped.Return());
+            var audioQueue = PendingQueues.Newest<PendingAudioBuffer>(16, dropped =>
+            {
+                audioCount.Lost(dropped);
+                dropped.Return();
+            });
             lock (gate)
             {
                 if (state.Kind == StreamStateKind.Stopped) return;
@@ -257,6 +355,7 @@ public sealed class StreamSession : IProgramSink, IDisposable
                 }
                 attempt = wasPublishing ? 1 : attempt + 1;
                 BroadcastLog.Warning("stream", $"transport lost: {Destination.Name} attempt {attempt} — {error.Message}");
+                lock (gate) lastDrop = (error as StreamSessionException)?.FailureDescription ?? error.Message;
                 SetState(StreamSessionState.Reconnecting(attempt));
                 var delay = Math.Min(15.0, Math.Pow(2.0, attempt - 1));
                 try
@@ -315,11 +414,14 @@ public sealed class StreamSession : IProgramSink, IDisposable
 
     private async Task RunRtmpAsync(Channel<PendingVideoFrame> frameQueue, Channel<PendingAudioBuffer> audioQueue, CancellationToken cancellation)
     {
-        var url = RtmpUrl.Parse(Destination.Url);
+        var destination = Destination;
+        var url = RtmpUrl.Parse(destination.Url);
         using var encoder = CreateVideoEncoder(keyframeInterval: 2);
-        var publisher = await RtmpPublisher.ConnectAsync(url, Destination.StreamKey, options.Rtmp, cancellation);
+        var watch = new UploadWatch(Video.BitrateKbps * 1000, Video.AdaptiveFloorKbps * 1000, options.AudioBitrateKbps * 1000);
+        lock (gate) retargeted = false;
+        var publisher = await RtmpPublisher.ConnectAsync(url, destination.StreamKey, options.Rtmp, cancellation);
         using var pumps = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        Task? videoPump = null, audioPump = null;
+        Task? videoPump = null, audioPump = null, monitor = null;
         try
         {
             publisher.SendMetadata(FlvTags.OnMetaData(
@@ -329,10 +431,11 @@ public sealed class StreamSession : IProgramSink, IDisposable
             BroadcastLog.Info("stream", $"publishing: {Destination.Name} -> {url.Host}/{url.App.Split('?')[0]} via {encoder.Name}");
 
             var timeline = new MediaTimeline();
-            videoPump = Task.Run(() => PumpRtmpVideoAsync(frameQueue.Reader, encoder, publisher, timeline, pumps.Token), CancellationToken.None);
+            videoPump = Task.Run(() => PumpRtmpVideoAsync(frameQueue.Reader, encoder, watch, publisher, timeline, pumps.Token), CancellationToken.None);
             audioPump = Task.Run(() => PumpRtmpAudioAsync(audioQueue.Reader, publisher, timeline, pumps.Token), CancellationToken.None);
+            monitor = Task.Run(() => MonitorUploadAsync(publisher, encoder, watch, pumps.Token), CancellationToken.None);
 
-            var first = await Task.WhenAny(videoPump, audioPump, publisher.Completion);
+            var first = await Task.WhenAny(videoPump, audioPump, monitor, publisher.Completion);
             if (publisher.Completion.IsFaulted) await publisher.Completion;
             if (first.IsFaulted) await first;
             if (!cancellation.IsCancellationRequested && !IsStopped)
@@ -341,7 +444,7 @@ public sealed class StreamSession : IProgramSink, IDisposable
         finally
         {
             pumps.Cancel();
-            foreach (var pump in new[] { videoPump, audioPump })
+            foreach (var pump in new[] { videoPump, audioPump, monitor })
             {
                 if (pump is null) continue;
                 try { await pump; } catch { }
@@ -355,14 +458,56 @@ public sealed class StreamSession : IProgramSink, IDisposable
         get { lock (gate) return state.Kind == StreamStateKind.Stopped; }
     }
 
+    /// <summary>
+    /// Once a second: measures the upload (the status line's network numbers), and ends this
+    /// connection (so the supervisor makes a new one) when the stream was retargeted or the
+    /// upload has stalled. Port of the watch task in the Mac's StreamSession.run.
+    /// </summary>
+    private async Task MonitorUploadAsync(RtmpPublisher publisher, H264Encoder encoder, UploadWatch watch, CancellationToken cancellation)
+    {
+        var interval = options.MonitorInterval;
+        while (true)
+        {
+            await Task.Delay(interval, cancellation);
+            watch.Tick(publisher.BytesSent, publisher.BytesQueued, interval.TotalSeconds);
+            bool retarget;
+            lock (gate)
+            {
+                uploadKbps = watch.Stall.BytesOutPerSecond / 125;
+                // What the encoder really runs at (the watch's wish reaches it with the next picture).
+                videoKbps = encoder.BitrateKbps;
+                backlogSeconds = watch.Stall.QueuedBytes / ((double)(encoder.BitrateKbps + options.AudioBitrateKbps) * 125);
+                retarget = retargeted;
+            }
+            if (retarget) throw StreamSessionException.TransportClosed("new destination");
+            if (watch.Stall.Stalled(Video.BitrateKbps) is { } reason)
+                throw StreamSessionException.TransportClosed($"upload stalled: {reason}");
+        }
+    }
+
     private async Task PumpRtmpVideoAsync(
-        ChannelReader<PendingVideoFrame> reader, H264Encoder encoder, RtmpPublisher publisher, MediaTimeline timeline, CancellationToken cancellation)
+        ChannelReader<PendingVideoFrame> reader, H264Encoder encoder, UploadWatch watch, RtmpPublisher publisher, MediaTimeline timeline, CancellationToken cancellation)
     {
         var converter = new Nv12Converter(encoder.Settings.Width, encoder.Settings.Height);
         var nv12 = new byte[converter.FrameSize];
         var encoderDrops = 0;
+        var adapts = watch.IsAdaptive;
         await foreach (var frame in reader.ReadAllAsync(cancellation))
         {
+            // Adaptive mode: the encoder takes the bitrate the watch wants, between pictures.
+            if (adapts && watch.VideoKbps != encoder.BitrateKbps)
+            {
+                var from = encoder.BitrateKbps;
+                if (encoder.SetBitrate(watch.VideoKbps))
+                {
+                    BroadcastLog.Info("stream", $"{Destination.Name}: bitrate {from} → {encoder.BitrateKbps} kbps (upload {watch.Stall.BytesOutPerSecond / 125} kbps)");
+                }
+                else
+                {
+                    adapts = false;
+                    BroadcastLog.Warning("stream", $"{Destination.Name}: {encoder.Name} can't change its bitrate while streaming; staying at {from} kbps");
+                }
+            }
             try
             {
                 converter.Convert(frame.Span, frame.Width, frame.Height, frame.Stride, nv12);

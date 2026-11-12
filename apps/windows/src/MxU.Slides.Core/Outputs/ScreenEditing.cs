@@ -116,7 +116,7 @@ public static class ScreenEditing
     public static IReadOnlyList<OutputLayoutKind> LayoutChoices(OutputLayoutKind current) =>
         current == OutputLayoutKind.Custom
             ? OutputLayoutKinds.All
-            : [OutputLayoutKind.Single, OutputLayoutKind.Mirror, OutputLayoutKind.Grouped, OutputLayoutKind.EdgeBlend, OutputLayoutKind.LedWall];
+            : [OutputLayoutKind.Single, OutputLayoutKind.Mirror, OutputLayoutKind.Grouped, OutputLayoutKind.EdgeBlend];
 
     /// <summary>The layout picker's tooltip.</summary>
     public static string LayoutHelp(OutputLayoutKind kind) => kind switch
@@ -125,7 +125,6 @@ public static class ScreenEditing
         OutputLayoutKind.Mirror => "Every output shows the whole canvas — same picture on each.",
         OutputLayoutKind.Grouped => "Outputs tile the canvas edge to edge — a video wall with hard seams.",
         OutputLayoutKind.EdgeBlend => "Outputs overlap and ramp into each other — click a seam to tune its blend.",
-        OutputLayoutKind.LedWall => "Wall-native pixels landing at exact coordinates inside the processor's frame — 1:1, never scaled.",
         _ => "Hand-placed regions — anything the named shapes can't express.",
     };
 

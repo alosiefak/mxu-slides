@@ -40,6 +40,7 @@ internal sealed class H264Encoder : IDisposable
         this.encoder = encoder;
         this.activate = activate;
         this.settings = settings;
+        BitrateKbps = Math.Max(100, settings.BitrateKbps);
     }
 
     public string Name => encoder.Name;
@@ -178,6 +179,23 @@ internal sealed class H264Encoder : IDisposable
         if (forceKeyframe) encoder.TrySet(MF.CODECAPI_AVEncVideoForceKeyFrame, ComVariantValue.UInt32(1));
         var sample = MediaFoundation.CreateSample(nv12, ToHns(presentationTime), settings.FrameDuration);
         return Collect(Guard(() => encoder.Process(sample)));
+    }
+
+    /// <summary>The bitrate the encoder is set to now: the settings' until <see cref="SetBitrate"/> changes it.</summary>
+    public int BitrateKbps { get; private set; }
+
+    /// <summary>
+    /// Changes the bitrate while encoding (a stream adapting to a slow upload). Windows' H.264
+    /// encoders take a new mean bitrate between pictures, with no new keyframe and no new
+    /// sequence header, as VideoToolbox does for HaishinKit. False when this encoder can't.
+    /// </summary>
+    public bool SetBitrate(int kbps)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        var bitrate = (uint)Math.Max(100_000, kbps * 1000);
+        if (!encoder.TrySet(MF.CODECAPI_AVEncCommonMeanBitRate, ComVariantValue.UInt32(bitrate))) return false;
+        BitrateKbps = (int)(bitrate / 1000);
+        return true;
     }
 
     /// <summary>Returns the pictures the encoder still holds (call at the end of a stream).</summary>

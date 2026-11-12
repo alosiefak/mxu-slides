@@ -16,7 +16,7 @@ public static partial class StarterPacks
     public static readonly StarterPack[] All = Enum.GetValues<StarterPack>();
 
     /// <summary>Bumped when the packs change, so libraries seeded by an older build get refreshed copies.</summary>
-    public const int Revision = 2;
+    public const int Revision = 3;
 
     public static readonly string[] OverlayItems =
         ["name", "nameTimed", "scriptureVerse", "point", "ctaLower", "ticker", "verseSide", "pointSide", "cta", "search", "bars"];
@@ -301,6 +301,10 @@ public static partial class StarterPacks
             {
                 LyricsSlide(), PointsSlide(), SectionTitleSlide(), VerseSlide(), PointSlide(), QuoteSlide(),
                 FromOverlay(CallToAction($"{ThemeId}.ctaFull", CardLayout.Full), "ctaFull", "Call to Action", $"{ThemeId}.ctaFull.head", fullScreen: true),
+            };
+            slides.AddRange(PhotoDesigns("Full Slide"));
+            slides.AddRange(
+            [
                 SimplifiedThird("lowerDefault", "Lower Third", PointLowerThird($"{ThemeId}.lowerDefault"),
                     $"{ThemeId}.lowerDefault.text", [$"{ThemeId}.lowerDefault.tag", $"{ThemeId}.lowerDefault.kicker"], "Lower Thirds"),
                 FromOverlay(LyricsLowerThird($"{ThemeId}.lyricsLower"), "lyricsLower", "Lyrics (Lower Third)", $"{ThemeId}.lyricsLower.text", folder: "Lower Thirds"),
@@ -308,13 +312,18 @@ public static partial class StarterPacks
                 FromOverlay(VerseLowerThird($"{ThemeId}.verseLower"), "verseLower", "Verse + Reference (Lower Third)", $"{ThemeId}.verseLower.verse", folder: "Lower Thirds"),
                 FromOverlay(PointLowerThird($"{ThemeId}.pointLower"), "pointLower", "Point (Lower Third)", $"{ThemeId}.pointLower.text", folder: "Lower Thirds"),
                 FromOverlay(CallToAction($"{ThemeId}.ctaLower", CardLayout.LowerThird), "ctaLower", "Call to Action (Lower Third)", $"{ThemeId}.ctaLower.head", folder: "Lower Thirds"),
+            ]);
+            slides.AddRange(PhotoDesigns("Lower Thirds"));
+            slides.AddRange(
+            [
                 SimplifiedThird("sideDefault", "Side Third", PointSideThird($"{ThemeId}.sideDefault"),
                     $"{ThemeId}.sideDefault.text", [$"{ThemeId}.sideDefault.kicker"], "Side Thirds"),
                 FromOverlay(LyricsSideThird($"{ThemeId}.lyricsSide"), "lyricsSide", "Lyrics (Side Third)", $"{ThemeId}.lyricsSide.text", folder: "Side Thirds"),
                 FromOverlay(PointSideThird($"{ThemeId}.pointSide"), "pointSide", "Point (Side Third)", $"{ThemeId}.pointSide.text", folder: "Side Thirds"),
                 FromOverlay(VerseSideThird($"{ThemeId}.verseSide"), "verseSide", "Verse + Reference (Side Third)", $"{ThemeId}.verseSide.verse", folder: "Side Thirds"),
                 FromOverlay(CallToAction($"{ThemeId}.ctaSide", CardLayout.SideThird), "ctaSide", "Call to Action (Side Third)", $"{ThemeId}.ctaSide.head", folder: "Side Thirds"),
-            };
+            ]);
+            slides.AddRange(PhotoDesigns("Side Thirds"));
             return new Theme
             {
                 Id = ThemeId, Name = pack.Title(), FontFamily = look.Body, FontSize = 72,
@@ -467,7 +476,10 @@ public static partial class StarterPacks
                 {
                     FontName = look.Body, FontSize = 80, ColorHex = look.Ink, LineHeightMultiple = 1.25,
                     HorizontalAlignment = TextHorizontalAlignment.Left, VerticalAlignment = TextVerticalAlignment.Middle,
+                    // Long points shrink, but never below the floor a congregation can read from the back.
+                    AutoShrink = true, MinFontSize = PointsFloor,
                     LineFill = Bold ? new TextLineFill { Fill = Fill(look.Accent), WidthMode = TextLineFillWidthMode.LineWidth, VerticalPadding = 4, HorizontalPadding = 24 } : null,
+                    ParagraphSpacing = 28,
                 },
                 AnimationSteps = lineSteps,
             };
@@ -605,6 +617,102 @@ public static partial class StarterPacks
                 order.Add(shadowOut.Id);
             }
             return ThemeSlide("quote", "Quote", objects, order, fullScreen: true);
+        }
+
+        // MARK: Photo designs
+
+        /// <summary>
+        /// A photo spot: a plate the slide's picture fills (<see cref="PhotoSpots"/>). Every spot
+        /// arrives, and none leaves on a click, so a picture stays up until the next slide.
+        /// </summary>
+        private SlideObject PhotoSpot(string id, double x, double y, double w, double h, double? radius = null, List<AnimationStep>? steps = null)
+        {
+            var spot = Block(id, "Photo", x, y, w, h, color: look.Plate2, radius: radius,
+                stroke: Bold ? new ObjectStroke { ColorHex = look.Accent, Width = 6 } : null, steps: steps);
+            spot.PhotoSpot = true;
+            return spot;
+        }
+
+        /// <summary>The picture designs for one folder: Full Slide, Lower Thirds or Side Thirds.</summary>
+        private List<Slide> PhotoDesigns(string folder)
+        {
+            const string caption = "Baptism Sunday";
+            switch (folder)
+            {
+                case "Full Slide":
+                {
+                    Slide Photos(string item, string name, (double X, double Y, double W, double H)[] frames)
+                    {
+                        var b = $"{ThemeId}.{item}";
+                        var ins = frames.Select((_, i) => PlateIn($"{b}.spot{i}.in", delay: i == 0 ? null : 0.12 * i, edge: AnimationEdge.Left)).ToList();
+                        var objects = frames.Select((f, i) => PhotoSpot($"{b}.spot{i}", f.X, f.Y, f.W, f.H, steps: [ins[i]])).ToList();
+                        return ThemeSlide(item, name, objects, ins.Select(s => s.Id).ToList(), fullScreen: true);
+                    }
+                    var b = $"{ThemeId}.photoText";
+                    var spotIn = PlateIn($"{b}.spot.in", edge: AnimationEdge.Left);
+                    var textIn = TextIn($"{b}.text.in", delay: -0.05, rise: 40);
+                    var photoText = ThemeSlide("photoText", "Photo + Text",
+                    [
+                        PhotoSpot($"{b}.spot", 100, 100, 1000, 880, steps: [spotIn]),
+                        Label($"{b}.text", "Text", caption, 1180, 140, 640, 800, 72, display: true,
+                            tracking: Bold ? 2 : 0, uppercase: Bold, inset: 0, lineHeight: 1.08, steps: [textIn]),
+                    ], Ids(spotIn, textIn), fullScreen: true);
+                    return
+                    [
+                        Photos("photo", "Photo", [(120, 90, 1680, 900)]),
+                        photoText,
+                        Photos("photo2", "2 Photos", [(100, 170, 840, 740), (980, 170, 840, 740)]),
+                        Photos("photo3", "3 Photos", [(100, 240, 550, 600), (685, 240, 550, 600), (1270, 240, 550, 600)]),
+                    ];
+                }
+                case "Lower Thirds":
+                {
+                    var b = $"{ThemeId}.photoTextLower";
+                    var bandIn = PlateIn($"{b}.band.in", edge: AnimationEdge.Bottom, big: true);
+                    var spotIn = PopIn($"{b}.spot.in", delay: -0.05, from: 0.6);
+                    var textIn = TextIn($"{b}.text.in", delay: -0.2, rise: 36);
+                    var photoText = ThemeSlide("photoTextLower", "Photo + Text (Lower Third)",
+                    [
+                        Block($"{b}.band", "Band", 0, 760, 1920, 240, fill: Gradient(look.Plate2, look.Plate, 90), radius: 0, steps: [bandIn]),
+                        PhotoSpot($"{b}.spot", 160, 785, 190, 190, steps: [spotIn]),
+                        Label($"{b}.text", "Text", "Scan to give, or visit our website", 390, 800, 1370, 160, 48, display: true,
+                            tracking: Bold ? 2 : 0, uppercase: Bold, inset: 0, lineHeight: 1.08, shrink: true, page: true, steps: [textIn]),
+                    ], Ids(bandIn, spotIn, textIn), fullScreen: false, folder);
+                    var f = $"{ThemeId}.photoLower";
+                    var frameIn = PlateIn($"{f}.frame.in", edge: AnimationEdge.Right);
+                    var tileIn = PopIn($"{f}.spot.in", delay: -0.05, from: 0.6);
+                    var photo = ThemeSlide("photoLower", "Photo (Lower Third)",
+                    [
+                        Block($"{f}.frame", "Frame", 1540, 640, 300, 300, color: look.Plate, steps: [frameIn]),
+                        PhotoSpot($"{f}.spot", 1556, 656, 268, 268, steps: [tileIn]),
+                    ], Ids(frameIn, tileIn), fullScreen: false, folder);
+                    return [photoText, photo];
+                }
+                default:
+                {
+                    var push = new VideoPush { Zoom = 1.05, Backdrop = true };
+                    var s = $"{ThemeId}.photoSide";
+                    var spotIn = PlateIn($"{s}.spot.in", edge: AnimationEdge.Right, big: true, videoPush: push);
+                    var photo = ThemeSlide("photoSide", "Photo (Side Third)",
+                    [
+                        PhotoSpot($"{s}.spot", 1280, 0, 640, 1080, radius: 0, steps: [spotIn]),
+                    ], Ids(spotIn), fullScreen: false, folder);
+                    var b = $"{ThemeId}.photoTextSide";
+                    var panelIn = PlateIn($"{b}.panel.in", edge: AnimationEdge.Right, big: true, videoPush: new VideoPush { Zoom = 1.05, Backdrop = true });
+                    var barIn = RuleIn($"{b}.bar.in", delay: -0.3, edge: AnimationEdge.Top, duration: 0.9);
+                    var spotPop = PopIn($"{b}.spot.in", delay: -0.3, from: 0.8);
+                    var textIn = TextIn($"{b}.text.in", delay: -0.05, rise: 40);
+                    var photoText = ThemeSlide("photoTextSide", "Photo + Text (Side Third)",
+                    [
+                        Block($"{b}.panel", "Panel", 1280, 0, 640, 1080, fill: Gradient(look.Plate2, look.Plate, 0), radius: 0, steps: [panelIn]),
+                        Block($"{b}.bar", "Bar", 1280, 0, Bold ? 18 : 6, 1080, color: look.Accent, radius: 0, steps: [barIn]),
+                        PhotoSpot($"{b}.spot", 1340, 120, 520, 440, steps: [spotPop]),
+                        Label($"{b}.text", "Text", caption, 1340, 600, 520, 380, 44, display: true, valign: TextVerticalAlignment.Top,
+                            uppercase: Bold, inset: 0, lineHeight: 1.1, shrink: true, page: true, steps: [textIn]),
+                    ], Ids(panelIn, barIn, spotPop, textIn), fullScreen: false, folder);
+                    return [photo, photoText];
+                }
+            }
         }
 
         // MARK: Overlays

@@ -1,4 +1,5 @@
 using System.Globalization;
+using MxU.Slides.Core.Model;
 
 namespace MxU.Slides.Core.Scene;
 
@@ -104,7 +105,11 @@ public enum SceneTextVerticalAlignment { Top, Middle, Bottom }
 
 public enum SceneTextTransform { None, Uppercase }
 
-public enum SceneMediaScaleMode { Fill, Fit, Stretch }
+/// <summary>
+/// How media meets its frame. <see cref="ScaleAndBlur"/> fits the picture over a blurred, zoomed
+/// copy of itself that fills the frame (MediaLooks expands it into those two before drawing).
+/// </summary>
+public enum SceneMediaScaleMode { Fill, Fit, Stretch, ScaleAndBlur }
 
 public enum SceneBlendMode { Normal, Multiply, Screen, Add }
 
@@ -300,12 +305,52 @@ public sealed record RenderItem
 
     /// <summary>The media this item should play when it is a video, so playback can be shared across views.</summary>
     public bool Loops { get; init; } = true;
+
+    /// <summary>A video that fades out over its last second, to black or to clear (see MediaLooks). Port of RenderItem.endFade.</summary>
+    public MediaEndFade? EndFade { get; init; }
 }
 
-public sealed class RenderLayer(LayerKind kind)
+public sealed class RenderLayer
 {
-    public LayerKind Kind { get; } = kind;
+    public RenderLayer(LayerKind kind)
+    {
+        Id = kind.Raw();
+        Kind = kind;
+        Name = kind.DisplayName();
+    }
+
+    /// <summary>A custom layer from the Screen Map (an output preset's own layer, by its id).</summary>
+    public RenderLayer(string customId, string name)
+    {
+        Id = customId;
+        Name = name;
+    }
+
+    /// <summary>The layer's id: a built-in layer's raw name ("videos"), or a custom layer's id.</summary>
+    public string Id { get; }
+
+    /// <summary>The built-in layer, or null for a custom layer.</summary>
+    public LayerKind? Kind { get; }
+
+    public string Name { get; }
+    public bool IsCustom => Kind is null;
     public List<RenderItem> Items { get; } = [];
+
+    /// <summary>Set when the Screen Map places this layer on this screen: draw the layer's picture into these frames.</summary>
+    public PlacedLayer? Placed { get; set; }
+
+    /// <summary>Media layers (custom ones included) hold the old picture under a dissolve. Port of RenderLayer.isMediaLayer.</summary>
+    public bool IsMediaLayer => Kind is null or LayerKind.LoopingVideos or LayerKind.StillGraphics or LayerKind.Videos;
+}
+
+/// <summary>
+/// Where the Screen Map puts a layer on one screen: the layer is drawn as one picture of the
+/// room's canvas (<see cref="CanvasSize"/>), and that picture lands in each frame (screen canvas
+/// units), fitted, or filling and cropped. Port of PlacedLayer in SceneModel.swift.
+/// </summary>
+public sealed record PlacedLayer(SceneSize CanvasSize, IReadOnlyList<PlacedLayer.Frame> Frames)
+{
+    public sealed record Frame(SceneRect Rect, bool Fill = false);
 }
 
 public sealed class RenderScene
@@ -314,18 +359,49 @@ public sealed class RenderScene
     {
         CanvasSize = canvasSize;
         Background = background ?? SceneColor.Black;
-        Layers = LayerKinds.All.Select(kind => new RenderLayer(kind)).ToArray();
+        layers = LayerKinds.All.Select(kind => new RenderLayer(kind)).ToList();
     }
+
+    private readonly List<RenderLayer> layers;
 
     public SceneSize CanvasSize { get; }
     public SceneColor Background { get; set; }
 
-    /// <summary>All layers in compositing order (bottom first), always one per <see cref="LayerKind"/>.</summary>
-    public IReadOnlyList<RenderLayer> Layers { get; }
+    /// <summary>All layers in compositing order (bottom first): one per <see cref="LayerKind"/>, plus any custom layers.</summary>
+    public IReadOnlyList<RenderLayer> Layers => layers;
 
-    public RenderLayer this[LayerKind kind] => Layers[(int)kind];
+    public RenderLayer this[LayerKind kind] => layers.First(layer => layer.Kind == kind);
+
+    /// <summary>A layer by id (a built-in raw name or a custom id), or null.</summary>
+    public RenderLayer? Layer(string id) => layers.FirstOrDefault(layer => layer.Id == id);
 
     public void AddItem(RenderItem item, LayerKind layer) => this[layer].Items.Add(item);
+
+    /// <summary>Adds to a layer by id; nothing happens when no layer has it.</summary>
+    public void AddItem(RenderItem item, string layerId) => Layer(layerId)?.Items.Add(item);
+
+    /// <summary>
+    /// Adds a custom layer just above the layer it names (above the Slide layer when that's
+    /// missing, else on top). Port of RenderScene.insertCustomLayer.
+    /// </summary>
+    public RenderLayer InsertCustomLayer(string id, string name, string? above)
+    {
+        if (Layer(id) is { } existing) return existing;
+        var anchor = layers.FindIndex(layer => layer.Id == above);
+        if (anchor < 0) anchor = layers.FindIndex(layer => layer.Kind == LayerKind.Slide);
+        if (anchor < 0) anchor = layers.Count - 1;
+        var added = new RenderLayer(id, name);
+        layers.Insert(anchor + 1, added);
+        return added;
+    }
+
+    /// <summary>
+    /// This scene's layer matching another scene's: the same built-in layer, or the custom layer
+    /// with that id, added just above <paramref name="below"/> when missing (copies keep custom
+    /// layers in their place).
+    /// </summary>
+    public RenderLayer Matching(string id, LayerKind? kind, string name, string? below) =>
+        kind is { } k ? this[k] : InsertCustomLayer(id, name, below);
 
     public IEnumerable<RenderItem> AllItems => Layers.SelectMany(layer => layer.Items);
 

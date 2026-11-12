@@ -28,20 +28,69 @@ public class SceneTransitionEngineTests
     public void ContentEditsDoNotAnimateMembershipDoes()
     {
         Assert.Empty(SceneTransitionEngine.ChangedLayers(Scene(["a"]), Scene(["a"]))); // same ids = a content edit, never a fade
-        Assert.Equal([LayerKind.Slide], SceneTransitionEngine.ChangedLayers(Scene(["a"]), Scene(["b"])));
+        Assert.Equal(["slide"], SceneTransitionEngine.ChangedLayers(Scene(["a"]), Scene(["b"])));
     }
 
     [Fact]
-    public void DissolveFadesLeavingAndArrivingButNeverStaying()
+    public void AlphaLayerDissolveFadesWholeStacks()
     {
         var composite = SceneTransitionEngine.Composite(
             Scene(["stay", "leave"]), Scene(["stay", "arrive"]),
             new SceneTransition(SceneTransitionKind.Dissolve, 1), 0.25, [LayerKind.Slide]);
-        var items = SlideItems(composite);
-        Assert.Equal(0.75, items.First(i => i.Id == "leave::leaving").Render.Opacity, 0.001);
-        Assert.Equal(0.25, items.First(i => i.Id == "arrive").Render.Opacity, 0.001);
-        Assert.Equal(1, items.First(i => i.Id == "stay").Render.Opacity, 0.001);
-        Assert.Single(items, i => i.Id == "stay"); // no colliding twins
+        var layer = composite[LayerKind.Slide];
+        Assert.Equal(0.25, layer.CrossfadeProgress ?? -1, 0.001);
+        Assert.Equal(["stay::leaving", "leave::leaving"], layer.Items.Where(i => i.CrossfadeLeaving).Select(i => i.Id));
+        Assert.Equal(["stay", "arrive"], layer.Items.Where(i => !i.CrossfadeLeaving).Select(i => i.Id));
+        Assert.All(layer.Items, i => Assert.Equal(1, i.Render.Opacity)); // the view mixes; items stay full
+
+        var flat = SceneTransitionEngine.Flattened(composite)[LayerKind.Slide];
+        Assert.Null(flat.CrossfadeProgress);
+        Assert.Equal(0.75, flat.Items.First(i => i.Id == "leave::leaving").Render.Opacity, 0.001);
+        Assert.Equal(0.25, flat.Items.First(i => i.Id == "arrive").Render.Opacity, 0.001);
+        Assert.Equal(["stay"], flat.Items.Where(i => i.Id.StartsWith("stay", StringComparison.Ordinal)).Select(i => i.Id)); // staying once
+        Assert.Equal(1, flat.Items.First(i => i.Id == "stay").Render.Opacity, 0.001);
+        Assert.DoesNotContain(flat.Items, i => i.CrossfadeLeaving);
+    }
+
+    [Fact]
+    public void EachLayerRunsOnItsOwnLength()
+    {
+        AnimatedScene Both(string id)
+        {
+            var scene = Scene([id]);
+            scene.AddItem(new RenderItem { Id = "live-media-loopingVideos", Frame = new SceneRect(0, 0, 10, 10), Content = new ItemContent.Media($"bg-{id}", SceneMediaScaleMode.Fill) }, LayerKind.LoopingVideos);
+            return scene;
+        }
+        var mid = SceneTransitionEngine.Composite(Both("a"), Both("b"), new Dictionary<string, SceneTransition>
+        {
+            ["slide"] = new(SceneTransitionKind.Dissolve, 1),
+            ["loopingVideos"] = new(SceneTransitionKind.Dissolve, 0.25),
+        }, elapsed: 0.5);
+        Assert.Equal(["live-media-loopingVideos"], mid[LayerKind.LoopingVideos].Items.Select(i => i.Id)); // landed already
+        Assert.Equal(0.5, mid[LayerKind.Slide].CrossfadeProgress ?? -1, 0.001);
+    }
+
+    [Fact]
+    public void ACustomLayerSitsAboveItsAnchorAndTransitionsAsMedia()
+    {
+        // Port of CustomLayerTests.swift (the scene half): a custom layer composites above the layer it names.
+        static AnimatedScene WithCustom(string media)
+        {
+            var scene = new AnimatedScene(new SceneSize(192, 108));
+            scene.InsertCustomLayer("wall", "LED Wall", "videos");
+            scene.AddItem(new RenderItem { Id = "live-media-wall", Frame = new SceneRect(0, 0, 10, 10), Content = new ItemContent.Media(media, SceneMediaScaleMode.Fill) }, "wall");
+            return scene;
+        }
+        var ids = WithCustom("a").Layers.Select(l => l.Id).ToList();
+        Assert.Equal(ids.IndexOf("videos") + 1, ids.IndexOf("wall"));
+        Assert.Equal(["wall"], SceneTransitionEngine.ChangedLayers(WithCustom("a"), WithCustom("b")));
+        var engine = new SceneTransitionEngine(WithCustom("a"));
+        engine.Push(WithCustom("b"), (LayerKind kind) => kind == LayerKind.Videos ? new SceneTransition(SceneTransitionKind.Dissolve, 1) : null, now: 0);
+        var mid = engine.Scene(0.5).Layer("wall")!;
+        Assert.Null(mid.CrossfadeProgress); // a media layer holds the old picture under the new one
+        Assert.Equal(2, mid.Items.Count);
+        var copy = WithCustom("a").Copy();
+        Assert.Equal(ids, copy.Layers.Select(l => l.Id)); // copies keep the custom layer in its place
     }
 
     [Fact]
@@ -101,7 +150,7 @@ public class SceneTransitionEngineTests
             }, LayerKind.Slide);
             return scene;
         }
-        Assert.Equal([LayerKind.Slide], SceneTransitionEngine.ChangedLayers(FillScene("clip-a"), FillScene("clip-b"))); // a fill media swap is a content change
+        Assert.Equal(["slide"], SceneTransitionEngine.ChangedLayers(FillScene("clip-a"), FillScene("clip-b"))); // a fill media swap is a content change
         var engine = new SceneTransitionEngine(FillScene("clip-a"));
         engine.Push(FillScene("clip-b"), new SceneTransition(SceneTransitionKind.Dissolve, 1), now: 0);
         Assert.Equal(["clip-a"], engine.HeldMediaIds(0)); // the outgoing fill player holds through the fade
@@ -116,7 +165,7 @@ public class SceneTransitionEngineTests
             scene.AddItem(new RenderItem { Id = "live-media-loopingVideos", Frame = new SceneRect(0, 0, 192, 108), Content = new ItemContent.Media(mediaId, SceneMediaScaleMode.Fill) }, LayerKind.LoopingVideos);
             return scene;
         }
-        Assert.Equal([LayerKind.LoopingVideos], SceneTransitionEngine.ChangedLayers(MediaScene("clip-a"), MediaScene("clip-b")));
+        Assert.Equal(["loopingVideos"], SceneTransitionEngine.ChangedLayers(MediaScene("clip-a"), MediaScene("clip-b")));
         var mid = SceneTransitionEngine.Composite(MediaScene("clip-a"), MediaScene("clip-b"),
             new SceneTransition(SceneTransitionKind.Dissolve, 1), 0.5, [LayerKind.LoopingVideos])[LayerKind.LoopingVideos].Items;
         Assert.Equal(2, mid.Count); // both clips render mid-fade

@@ -470,7 +470,7 @@ public sealed partial class MainViewModel
         outputs.Themes = () => [.. Library.All<Theme>().OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase)];
         outputs.LooksChanged += () => RenderOutputs(SceneTransition.Cut);
         if (Settings.ActiveOutputPresetId is { } presetId && Library.Get<OutputPreset>(presetId) is { } preset)
-            OutputPresets.Apply(outputs.Config, preset, ThemeExists);
+            ApplyPresetToOutputs(outputs, preset);
     }
 
     /// <summary>Looks as themes, scoped to their folder or design; a look whose theme has gone is left out (that screen shows the slide as designed).</summary>
@@ -520,7 +520,7 @@ public sealed partial class MainViewModel
         SettlePending();
         void Activate()
         {
-            OutputPresets.Apply(outputs.Config, preset, ThemeExists);
+            ApplyPresetToOutputs(outputs, preset);
             Settings.ActiveOutputPresetId = preset?.Id;
             Settings.Save();
             RenderOutputs(SceneTransition.Cut);

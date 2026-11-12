@@ -42,9 +42,15 @@ public static class OutputScaling
         if (Reshape(scene.CanvasSize, screen, mode) is not { } shape) return scene;
         var full = new SceneRect(scene.CanvasSize);
         var scaled = new RenderScene(shape.Canvas, scene.Background);
+        string? below = null;
         foreach (var layer in scene.Layers)
+        {
+            var into = scaled.Matching(layer.Id, layer.Kind, layer.Name, below);
+            below = layer.Id;
+            into.Placed = layer.Placed;
             foreach (var item in layer.Items)
-                scaled.AddItem(item with { Frame = Moved(item.Frame, item.Id, layer.Kind, full, shape) }, layer.Kind);
+                into.Items.Add(item with { Frame = Moved(item.Frame, item.Id, layer.Kind, full, shape) });
+        }
         return scaled;
     }
 
@@ -54,20 +60,25 @@ public static class OutputScaling
         if (Reshape(scene.CanvasSize, screen, mode) is not { } shape) return scene;
         var full = new SceneRect(scene.CanvasSize);
         var scaled = new AnimatedScene(shape.Canvas, scene.Background);
+        string? below = null;
         foreach (var layer in scene.Layers)
         {
-            scaled[layer.Kind].IsHidden = layer.IsHidden;
+            var into = scaled.Matching(layer, below);
+            below = layer.Id;
+            into.IsHidden = layer.IsHidden;
+            into.Placed = layer.Placed;
+            into.CrossfadeProgress = layer.CrossfadeProgress;
             foreach (var item in layer.Items)
             {
                 var frame = Moved(item.Render.Frame, item.Id, layer.Kind, full, shape);
-                scaled.AddItem(item with { Render = item.Render with { Frame = frame } }, layer.Kind);
+                into.Items.Add(item with { Render = item.Render with { Frame = frame } });
             }
         }
         return scaled;
     }
 
     /// <summary>Whether a full-canvas item stretches to the grown canvas under Fit, instead of moving with the slide.</summary>
-    public static bool Bleeds(string itemId, LayerKind layer) =>
+    public static bool Bleeds(string itemId, LayerKind? layer) =>
         layer == LayerKind.LoopingVideos || (layer == LayerKind.Slide && itemId.EndsWith("-backdrop", StringComparison.Ordinal));
 
     private readonly record struct Shape(SceneSize Canvas, double Dx, double Dy, bool GrowsBackgrounds);
@@ -87,7 +98,7 @@ public static class OutputScaling
         return new Shape(size, (size.Width - canvas.Width) / 2, (size.Height - canvas.Height) / 2, mode == OutputScaleMode.Fit);
     }
 
-    private static SceneRect Moved(SceneRect frame, string id, LayerKind layer, SceneRect full, Shape shape) =>
+    private static SceneRect Moved(SceneRect frame, string id, LayerKind? layer, SceneRect full, Shape shape) =>
         shape.GrowsBackgrounds && frame == full && Bleeds(id, layer)
             ? new SceneRect(shape.Canvas)
             : frame with { X = frame.X + shape.Dx, Y = frame.Y + shape.Dy };

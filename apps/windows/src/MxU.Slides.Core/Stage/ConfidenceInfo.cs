@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using MxU.Slides.Core.Media;
 using MxU.Slides.Core.Model;
 
 namespace MxU.Slides.Core.Stage;
@@ -23,11 +24,39 @@ public sealed record CueAlert(string Message, AlertBehavior Behavior, AlertTarge
 /// <summary>A playing (or parked) video or audio file: <see cref="Position"/> was read at <see cref="AnchoredAt"/>.</summary>
 public sealed record VideoCountdown(string Name, double Duration, double Position, DateTimeOffset AnchoredAt, bool IsPlaying)
 {
-    public double Remaining(DateTimeOffset at)
+    /// <summary>The video's marks in pass time (<see cref="VideoMarks.Points"/>), for counting to a mark.</summary>
+    public IReadOnlyList<VideoMarks.Point> Marks { get; init; } = [];
+
+    public double Remaining(DateTimeOffset at) => Math.Max(0, Duration - PositionAt(at));
+
+    public double PositionAt(DateTimeOffset at)
     {
         var advance = IsPlaying ? Math.Max(0, (at - AnchoredAt).TotalSeconds) : 0;
-        return Math.Max(0, Duration - (Position + advance));
+        return Math.Min(Duration, Position + advance);
     }
+
+    /// <summary>The mark a countdown with this rule counts to now, or null for the end.</summary>
+    public VideoMarks.Point? Target(DateTimeOffset at, VideoCountdownTarget target, string? name) =>
+        VideoMarks.Target(Marks, PositionAt(at), target, name);
+
+    /// <summary>
+    /// What a video countdown reads: the seconds left to its target (a mark, else the end), or,
+    /// counting up, the seconds since the mark before under the same rule (the top for the end).
+    /// </summary>
+    public double Seconds(DateTimeOffset at, VideoCountdownTarget target, string? name, bool countsUp)
+    {
+        var now = PositionAt(at);
+        var end = Target(at, target, name)?.At ?? Duration;
+        if (!countsUp) return Math.Max(0, end - now);
+        return Math.Max(0, Math.Min(now, end) - VideoMarks.CountUpStart(Marks, now, target, name));
+    }
+
+    // The marks are compared by value, so republishing an unchanged countdown changes nothing.
+    public bool Equals(VideoCountdown? other) =>
+        other is not null && Name == other.Name && Duration == other.Duration && Position == other.Position
+        && AnchoredAt == other.AnchoredAt && IsPlaying == other.IsPlaying && Marks.SequenceEqual(other.Marks);
+
+    public override int GetHashCode() => HashCode.Combine(Name, Duration, Position, AnchoredAt, IsPlaying, Marks.Count);
 }
 
 public sealed record ObjectText(string Name, string Text);

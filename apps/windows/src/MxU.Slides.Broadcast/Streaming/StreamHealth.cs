@@ -35,6 +35,11 @@ public sealed class PlatformHealthTracker(
         if (status == "unknown") return;
         switch (status)
         {
+            case "ended":
+                // The platform ended the broadcast (its event was stopped, or ran out of time).
+                settled.Remove(destinationId);
+                verdicts[destinationId] = PlatformVerdict.Ended;
+                break;
             case "noData":
                 if (!settled.Contains(destinationId) && elapsed < GraceSeconds) return;
                 settled.Remove(destinationId);
@@ -55,6 +60,14 @@ public sealed class PlatformHealthTracker(
         }
     }
 
+    /// <summary>Starts one destination afresh (it was retargeted at a new broadcast): no verdict, polled often.</summary>
+    public void Forget(string destinationId)
+    {
+        consecutiveNoData.Remove(destinationId);
+        settled.Remove(destinationId);
+        verdicts.Remove(destinationId);
+    }
+
     public void Reset()
     {
         consecutiveNoData.Clear();
@@ -63,7 +76,7 @@ public sealed class PlatformHealthTracker(
     }
 }
 
-public enum PlatformVerdictKind { Healthy, Degraded, NoData }
+public enum PlatformVerdictKind { Healthy, Degraded, NoData, Ended }
 
 /// <summary>What a platform says about one stream. Degraded carries the platform's issue lines.</summary>
 public sealed record PlatformVerdict(PlatformVerdictKind Kind, IReadOnlyList<string> Issues)
@@ -71,6 +84,9 @@ public sealed record PlatformVerdict(PlatformVerdictKind Kind, IReadOnlyList<str
     public static PlatformVerdict Healthy { get; } = new(PlatformVerdictKind.Healthy, []);
 
     public static PlatformVerdict NoData { get; } = new(PlatformVerdictKind.NoData, []);
+
+    /// <summary>The platform says the broadcast is over, though we may still be sending.</summary>
+    public static PlatformVerdict Ended { get; } = new(PlatformVerdictKind.Ended, []);
 
     public static PlatformVerdict Degraded(IReadOnlyList<string> issues) => new(PlatformVerdictKind.Degraded, [.. issues]);
 
@@ -81,9 +97,34 @@ public sealed record PlatformVerdict(PlatformVerdictKind Kind, IReadOnlyList<str
 }
 
 /// <summary>
+/// How the upload is keeping up, for the status menu: <see cref="Good"/>, <see cref="Slow"/> (a
+/// second or more is waiting to be sent, or the quality was lowered to fit) or
+/// <see cref="Stalled"/> (nothing is leaving while something waits). Read from the backlog, not
+/// the send rate: a still slide sends very little and is still good. Port of NetworkHealth.
+/// </summary>
+public enum NetworkHealth { Good, Slow, Stalled }
+
+public static class NetworkHealths
+{
+    /// <summary>Null until a publishing stream has been measured.</summary>
+    public static NetworkHealth? Of(StreamSessionStatus status, int fullKbps)
+    {
+        if (status.State.Kind != StreamStateKind.Publishing || status.UploadKbps is not { } upload) return null;
+        var backlog = status.BacklogSeconds ?? 0;
+        if (upload == 0 && backlog > 0.5) return NetworkHealth.Stalled;
+        if (backlog >= 1 || (status.VideoKbps ?? fullKbps) < fullKbps * 9 / 10) return NetworkHealth.Slow;
+        return NetworkHealth.Good;
+    }
+
+    /// <summary>The word the Mac shows: "good", "slow", "stalled".</summary>
+    public static string Raw(this NetworkHealth health) => health.ToString().ToLowerInvariant();
+}
+
+/// <summary>
 /// The one colour and word the broadcast chip shows for every stream at once: any failure is
-/// red "STREAM FAILED"; reconnecting or connecting is amber; a live stream the platform says
-/// gets no data is amber "NO DATA"; otherwise green "LIVE". Port of StreamHealthRollup.
+/// red "STREAM FAILED"; a broadcast the platform ended is red "BROADCAST ENDED"; reconnecting
+/// or connecting is amber; a live stream the platform says gets no data is amber "NO DATA";
+/// otherwise green "LIVE". Port of StreamHealthRollup.
 /// </summary>
 public static class StreamHealthRollup
 {
@@ -101,6 +142,8 @@ public static class StreamHealthRollup
             {
                 case StreamStateKind.Failed:
                     return Tint.Red;
+                case var _ when input.Verdict == PlatformVerdict.Ended:
+                    return Tint.Red;
                 case StreamStateKind.Reconnecting or StreamStateKind.Connecting:
                     tint = Tint.Amber;
                     break;
@@ -115,6 +158,7 @@ public static class StreamHealthRollup
     public static string Word(IReadOnlyList<Input> inputs)
     {
         if (inputs.Any(i => i.State.Kind == StreamStateKind.Failed)) return "STREAM FAILED";
+        if (inputs.Any(i => i.Verdict == PlatformVerdict.Ended)) return "BROADCAST ENDED";
         if (inputs.Any(i => i.State.Kind == StreamStateKind.Reconnecting)) return "RECONNECTING";
         if (inputs.Any(i => i.State.Kind == StreamStateKind.Connecting)) return "CONNECTING";
         if (inputs.Any(i => i.State.Kind == StreamStateKind.Publishing && i.Verdict == PlatformVerdict.NoData)) return "NO DATA";

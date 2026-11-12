@@ -57,6 +57,13 @@ public sealed class OutputManager
             settings.Screens = ScreenSetup.Capture(Config);
             settings.Save();
         };
+        Config.SetScreenMap(settings.ScreenMap);
+        Config.ScreenMapChanged += () =>
+        {
+            settings.ScreenMap = Config.ScreenMap;
+            settings.Save();
+            main.Dispatcher.BeginInvoke(() => Rebuild(force: false));
+        };
         Config.StateChanged += () => main.Dispatcher.BeginInvoke(() => Rebuild(force: false));
         displayDebounce = new DispatcherTimer(TimeSpan.FromMilliseconds(800), DispatcherPriority.Normal, (_, _) =>
         {
@@ -194,7 +201,7 @@ public sealed class OutputManager
             // Each confidence screen shows its own stage layout (ConfidenceMonitorController on the Mac).
             OutputFeedKind.Confidence => stageScreens.TryGetValue(screenId, out var own) ? own : stage,
             _ => (feed.SlideThemeKey is { } look && looks.TryGetValue(look, out var variant) ? variant : audience) is { } program
-                ? Config.Program(feed, program)
+                ? Config.Program(feed, program, key => looks.GetValueOrDefault(key))
                 : null,
         };
     }

@@ -100,6 +100,16 @@ internal sealed class RecordingShow : IShowActions
     public Action<Slide, Presentation>? OnFireSlide { get; set; }
 
     public void ClearLayer(LayerKind layer) => Calls.Add($"clearLayer:{layer.Raw()}");
+
+    /// <summary>The active preset's custom layers (the Screen Map), by id.</summary>
+    public HashSet<string> CustomLayerIds { get; } = [];
+
+    public bool ClearCustomLayer(string layerId)
+    {
+        if (!CustomLayerIds.Contains(layerId)) return false;
+        Calls.Add($"clearCustomLayer:{layerId}");
+        return true;
+    }
     public void ClearAll(IReadOnlySet<LayerKind> protecting) =>
         Calls.Add($"clearAll:{string.Join(",", protecting.Select(l => l.Raw()).Order(StringComparer.Ordinal))}");
     public void ClearAudio() => Calls.Add("clearAudio");

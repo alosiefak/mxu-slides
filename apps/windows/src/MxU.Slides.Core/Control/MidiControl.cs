@@ -15,6 +15,9 @@ public enum MidiCommand
     ToggleOverlay, SelectOverlayFolder, SelectActionComboFolder,
     StartTimer, StopTimer, ResetTimer, TriggerActionCombo, FireAlert,
     StartTimeline, StopTimeline, RewindTimeline,
+    // A backup computer taking over from the booth (the Mac's Follow mode). The command is
+    // listed so a Mac's MIDI map round-trips; Follow itself is the backup feature's to wire.
+    FollowTakeOver,
 }
 
 public static class MidiCommands
@@ -62,6 +65,7 @@ public static class MidiCommands
         MidiCommand.FireAlert => 33,
         MidiCommand.StartTimeline => 14,
         MidiCommand.StopTimeline => 15,
+        MidiCommand.FollowTakeOver => 36,
         _ => 16,
     };
 
@@ -71,7 +75,8 @@ public static class MidiCommands
             or MidiCommand.ClearAudio or MidiCommand.ClearAlerts or MidiCommand.ClearInputs => MidiCommandGroup.Clears,
         MidiCommand.VideoGoToBeginning or MidiCommand.VideoPlayPause or MidiCommand.VideoPlay or MidiCommand.VideoPause => MidiCommandGroup.Video,
         MidiCommand.NextServiceItem or MidiCommand.PreviousServiceItem or MidiCommand.NextSlide or MidiCommand.PreviousSlide
-            or MidiCommand.StartTimeline or MidiCommand.StopTimeline or MidiCommand.RewindTimeline => MidiCommandGroup.Presentation,
+            or MidiCommand.StartTimeline or MidiCommand.StopTimeline or MidiCommand.RewindTimeline
+            or MidiCommand.FollowTakeOver => MidiCommandGroup.Presentation,
         _ => MidiCommandGroup.SelectByIndex,
     };
 
@@ -110,6 +115,7 @@ public static class MidiCommands
         MidiCommand.FireAlert => "Fire Alert",
         MidiCommand.StartTimeline => "Start Timeline",
         MidiCommand.StopTimeline => "Stop Timeline",
+        MidiCommand.FollowTakeOver => "Take Over (Backup)",
         _ => "Rewind Timeline",
     };
 }

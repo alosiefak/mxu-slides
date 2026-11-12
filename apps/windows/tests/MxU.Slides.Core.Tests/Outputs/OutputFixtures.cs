@@ -59,8 +59,8 @@ internal static class OutputFixtures
     public static byte At(byte[] coverage, int width, int x, int y) => coverage[y * width + x];
 
     /// <summary>The scene's layers and items as comparable values (RenderScene itself compares by reference).</summary>
-    public static (SceneSize Canvas, SceneColor Background, (LayerKind Layer, RenderItem Item)[] Items) Snapshot(RenderScene scene) =>
-        (scene.CanvasSize, scene.Background, scene.Layers.SelectMany(layer => layer.Items.Select(item => (layer.Kind, item))).ToArray());
+    public static (SceneSize Canvas, SceneColor Background, (string Layer, RenderItem Item)[] Items) Snapshot(RenderScene scene) =>
+        (scene.CanvasSize, scene.Background, scene.Layers.SelectMany(layer => layer.Items.Select(item => (layer.Id, item))).ToArray());
 
     public static void SameScene(RenderScene expected, RenderScene actual)
     {

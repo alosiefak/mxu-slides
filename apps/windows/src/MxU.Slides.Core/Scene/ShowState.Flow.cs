@@ -68,6 +68,7 @@ public sealed partial class ShowState
                 if (SlideSceneBuilder.FillMediaId(o) is { } id && seen.Add(id))
                     seeds.Add(new TransportSeed(id, layer, TransportOrigin.Overlays));
         }
+        seeds.AddRange(CustomLayerSeeds(seen));
         return seeds;
     }
 }

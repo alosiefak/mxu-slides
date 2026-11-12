@@ -86,7 +86,7 @@ public static class LyricPhrasing
         var first = Key(words.FirstOrDefault());
         var cue = RunsOn.Contains(Key(previousWords.LastOrDefault()))
             || Continuations.Contains(first)
-            || (words.Length <= 2 && !Interjections.Contains(first)
+            || (words.Length <= 2 && !Interjections.Contains(first) && !PhraseOpeners.Contains(first)
                 && (next is null || Words(next).Length > 3));
         return fits && cue;
     }
@@ -138,6 +138,9 @@ public static class LyricPhrasing
                 var cost = best[start] + 1;
                 if (size < limit) cost += end == count || ends[end - 1] ? 0.7 : 0.9;
                 if (SlideEndsBadly.Contains(Key(Words(lines[end - 1]).LastOrDefault()))) cost += 5;
+                // A short line ("In desperation") usually leads into the next one, so a slide
+                // that ends on it pays a little: the chart's own pairing wins a tie.
+                if (end < count && LeadsOn(lines[end - 1])) cost += 0.5;
                 cost += Enumerable.Range(start, end - 1 - start).Count(index => ends[index]) * 3;
                 if (cost < best[end])
                 {
@@ -156,12 +159,19 @@ public static class LyricPhrasing
         return slides;
     }
 
+    internal static bool LeadsOn(string line)
+    {
+        var words = Words(line);
+        return words.Length <= 2 && !Interjections.Contains(Key(words.FirstOrDefault()));
+    }
+
     internal static bool EndsPhrase(int index, IReadOnlyList<string> bare)
     {
         var line = bare[index];
         var after = index + 1 < bare.Count ? bare[index + 1] : null;
         var besideItself = (index > 0 && bare[index - 1] == line) || after == line;
-        return line.Length > 0 && !besideItself && Enumerable.Range(0, bare.Count).Any(other =>
+        // The song's first line coming back later is a reprise, not the end of a phrase.
+        return line.Length > 0 && !besideItself && bare[0] != line && Enumerable.Range(0, bare.Count).Any(other =>
             Math.Abs(other - index) > 1 && bare[other] == line
             && (other + 1 < bare.Count ? bare[other + 1] : null) != after);
     }
@@ -210,6 +220,14 @@ public static class LyricPhrasing
     [
         "the", "a", "an", "of", "to", "for", "and", "or", "but", "with", "in", "on", "at", "by",
         "from", "into", "about", "than", "that", "my", "your", "our", "his", "her", "their", "its",
+    ];
+
+    // Words a short line can open a new phrase with ("In desperation", "And spoke"): such a
+    // line keeps the chart's break instead of being joined onto the line before.
+    internal static readonly HashSet<string> PhraseOpeners =
+    [
+        "in", "on", "at", "by", "from", "into", "with", "for", "to", "and", "or", "but", "so", "when",
+        "if", "as", "the", "a", "an", "my", "your", "his", "our", "their", "this", "that", "who",
     ];
 
     internal static readonly HashSet<string> Interjections = ["oh", "o", "hallelujah", "alleluia", "amen", "hosanna", "whoa", "yeah"];

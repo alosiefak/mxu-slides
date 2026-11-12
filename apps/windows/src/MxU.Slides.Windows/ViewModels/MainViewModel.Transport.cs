@@ -227,6 +227,7 @@ public sealed partial class MainViewModel
     /// <summary>Brings the strip up to date (four times a second while anything is live).</summary>
     private void RefreshTransport()
     {
+        FireVideoMarks();
         var rows = TransportRows();
         var candidates = rows.Select(r => r.Candidate).ToList();
         var target = TransportTarget.Resolve(candidates, TransportViewedLayer, transportPinnedId, preferNonLooping: transportPinnedId is null);
@@ -380,6 +381,9 @@ public sealed partial class MainViewModel
         if (TransportTarget.CountdownTarget([.. rows.Select(r => r.Candidate)], layer) is not { } target) return null;
         var row = rows.First(r => r.Candidate.MediaId == target.MediaId);
         var now = DateTimeOffset.Now;
-        return new VideoCountdown(row.Name, row.State.Duration, row.State.PositionAt(now), now, row.State.IsPlaying);
+        return new VideoCountdown(row.Name, row.State.Duration, row.State.PositionAt(now), now, row.State.IsPlaying)
+        {
+            Marks = CountdownMarks(row.Candidate.MediaId, row.State.Duration),
+        };
     }
 }

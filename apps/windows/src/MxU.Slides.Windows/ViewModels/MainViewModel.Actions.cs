@@ -64,6 +64,13 @@ public sealed partial class MainViewModel : IShowActions
 
     void IShowActions.ClearLayer(LayerKind layer) => Clear(() => Show.Clear(layer, ShowState.HostClock()));
 
+    bool IShowActions.ClearCustomLayer(string layerId)
+    {
+        if (Show.CustomLayers.All(layer => layer.Id != layerId)) return false;
+        ClearLayer(layerId);
+        return true;
+    }
+
     void IShowActions.ClearAll(IReadOnlySet<LayerKind> protecting) => Clear(() =>
     {
         foreach (var layer in LayerKinds.All.Where(l => !protecting.Contains(l))) Show.Clear(layer);

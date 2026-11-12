@@ -89,6 +89,19 @@ public class LyricPhrasingTests
     }
 
     [Fact]
+    public void AShortLineThatOpensAPhraseKeepsTheChartsBreak()
+    {
+        string[] verse =
+        [
+            "How great the [C]chasm", "That lay be[Gsus4]tween [G]us", "How high the [F]mountain[Am]",
+            "I could [Gsus4]not climb", "In desper[C]ation", "I turned to [Gsus4]Hea[G]ven",
+            "And spoke Your [F]name", "In[Gsus4]to the [C]night",
+        ];
+        Assert.Equal(verse, LyricPhrasing.Rejoined(verse, new LyricPhrasing.Casing(string.Join("\n", verse))));
+        Assert.Equal(new[] { 2, 2, 2, 2 }, LyricPhrasing.Slides(verse, perSlide: 2).Select(s => s.Count));
+    }
+
+    [Fact]
     public void SlidesBreakWherePhrasesEndNotEveryTwoLines()
     {
         string[] lines =

@@ -24,6 +24,21 @@ public class ActionRouterTests
 
     private static SlideAction Step(string id, SlideActionKind kind, Action<SlideAction>? fill = null) => Make.Action(id, kind, fill);
 
+    // The Mac's router clears by layer id (controls.clear(layerID:)), so a step can name a custom layer.
+    [Fact]
+    public void ClearLayerReachesACustomLayerByItsIdAndSkipsOneNobodyKnows()
+    {
+        show.CustomLayerIds.Add("LOWER");
+        Router().Execute(
+        [
+            Step("1", SlideActionKind.ClearLayer, a => a.Layer = "LOWER"),
+            Step("2", SlideActionKind.ClearLayer, a => a.Layer = "GONE"),
+            Step("3", SlideActionKind.ClearLayer),
+        ]);
+        Assert.Equal(["clearCustomLayer:LOWER"], show.Calls);
+        Assert.Equal(["clearLayer missing layer", "clearLayer missing layer"], notes.Where(n => n.Crumb == "actions.skipped").Select(n => n.Detail));
+    }
+
     [Fact]
     public void EachStepReachesTheShowWithItsTarget()
     {

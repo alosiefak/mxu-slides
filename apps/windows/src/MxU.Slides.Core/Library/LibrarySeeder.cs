@@ -50,15 +50,38 @@ public static class LibrarySeeder
         var marker = Path.Combine(library.Root, RevisionFile);
         var current = File.Exists(marker) && int.TryParse(File.ReadAllText(marker).Trim(), out var r) ? r : 0;
         var outdated = current < StarterPacks.Revision;
+        // From revision 2 on, a newer build repairs gently, as the Mac does: it adds the designs it
+        // ships (the photo designs, revision 3) and fixes changed ones, and keeps the user's edits.
+        // Older libraries still get fresh copies.
+        var gentle = outdated && current >= GentleRepairFrom;
         foreach (var pack in StarterPacks.All)
         {
-            if (outdated || library.Get<Theme>(pack.ThemeId()) is null) library.Save(pack.MakeTheme());
+            var theme = library.Get<Theme>(pack.ThemeId());
+            if (theme is null || (outdated && !gentle)) library.Save(pack.MakeTheme());
+            else if (gentle) RepairGently(library, pack, theme);
             foreach (var overlay in pack.MakeOverlays())
-                if (outdated || library.Get<Overlay>(overlay.Id) is null) library.Save(overlay);
+                if ((outdated && !gentle) || library.Get<Overlay>(overlay.Id) is null) library.Save(overlay);
         }
         if (outdated)
             LibraryStore.AtomicWrite(marker, System.Text.Encoding.UTF8.GetBytes(StarterPacks.Revision.ToString(CultureInfo.InvariantCulture)));
         AddWindowsStarters(library);
+    }
+
+    /// <summary>The first revision whose themes are repaired in place rather than replaced.</summary>
+    internal const int GentleRepairFrom = 2;
+
+    private static void RepairGently(LibraryStore library, StarterPack pack, Theme theme)
+    {
+        var slides = theme.Slides ?? [];
+        var repaired = pack.AddingPhotoDesigns(slides);
+        // The Points floor is the Mac packs' (Windows' own looks size their points themselves).
+        if (!pack.IsWorshipLook()) repaired = pack.ShrinkingPoints(repaired);
+        repaired = pack.StayingPhotos(repaired);
+        if (Json.MxuJson.StructurallyEqual(repaired, slides)) return;
+        // The store hands out its own copy, so the repair is saved on a clone of it.
+        var copy = Json.MxuJson.Clone(theme);
+        copy.Slides = repaired;
+        library.Save(copy);
     }
 
     private const string WindowsStartersFile = "windows-starters.txt";

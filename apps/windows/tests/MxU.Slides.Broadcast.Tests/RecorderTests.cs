@@ -211,6 +211,32 @@ public sealed class RecorderTests : IDisposable
         var probe = MediaProbe.Read(path);
         Assert.True(probe.HasAudio, "audio appends should produce an audio track");
         Assert.Equal(MF.MFAudioFormat_AAC, probe.AudioSubtype);
+        // Every tenth of a second of sound reached the file or was counted as dropped.
+        var status = recorder.Status;
+        Assert.Equal(1, status.AudioSeconds + status.DroppedAudioBuffers * 0.1, 9);
+    }
+
+    [Fact]
+    public async Task ABlackSpanIsReportedWithItsFileTime()
+    {
+        var recorder = new Recorder(Path.Combine(scratch, "black.mp4"), Software(new RecordingConfiguration(RecordingCodec.H264, 320, 180)));
+        var spans = new List<(double Start, double Seconds)>();
+        recorder.BlackSpan += (start, seconds) => { lock (spans) spans.Add((start, seconds)); };
+        for (var frame = 0; frame < 60; frame++)
+        {
+            var black = frame is >= 30 and < 45;
+            recorder.Append(Gray(hostTime: 500 + frame / 30.0, gray: black ? (byte)0 : (byte)0x80));
+            if (frame == 0) await FirstFrameWritten(recorder);
+            // Gently, so the eight-picture queue never drops one of the black pictures.
+            while (recorder.Status.AppendedFrames + recorder.Status.DroppedFrames < frame - 4) await Task.Delay(5, Ct);
+        }
+        await recorder.FinishAsync();
+        lock (spans)
+        {
+            Assert.Single(spans);
+            Assert.Equal(1, spans[0].Start, 0.001);
+            Assert.Equal(0.5, spans[0].Seconds, 0.001);
+        }
     }
 
     [Fact]

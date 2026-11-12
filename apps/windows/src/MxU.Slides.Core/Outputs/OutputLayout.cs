@@ -17,9 +17,6 @@ public enum OutputLayoutKind
     /// <summary>Outputs overlap and ramp into each other (projector blending).</summary>
     EdgeBlend,
 
-    /// <summary>Wall-native pixels placed 1:1 at exact coordinates in a processor's frame.</summary>
-    LedWall,
-
     /// <summary>Hand-placed regions: anything the named shapes can't express.</summary>
     Custom,
 }
@@ -34,7 +31,6 @@ public static class OutputLayoutKinds
         OutputLayoutKind.Mirror => "mirror",
         OutputLayoutKind.Grouped => "grouped",
         OutputLayoutKind.EdgeBlend => "edgeBlend",
-        OutputLayoutKind.LedWall => "ledWall",
         _ => "custom",
     };
 
@@ -44,7 +40,6 @@ public static class OutputLayoutKinds
         OutputLayoutKind.Mirror => "Mirror",
         OutputLayoutKind.Grouped => "Grouped",
         OutputLayoutKind.EdgeBlend => "Edge Blend",
-        OutputLayoutKind.LedWall => "LED Wall",
         _ => "Custom",
     };
 }
@@ -62,11 +57,10 @@ public static class OutputLayout
     /// Anything that isn't exactly one of the named shapes reads as Custom, so a
     /// hand-edited setup stays fully editable instead of being forced into a shape.
     /// </summary>
-    public static OutputLayoutKind Classify(IReadOnlyList<OutputSliceState> slices, Func<Guid, bool> hasBlends, Func<Guid, bool>? hasPlacement = null)
+    public static OutputLayoutKind Classify(IReadOnlyList<OutputSliceState> slices, Func<Guid, bool> hasBlends)
     {
-        hasPlacement ??= _ => false;
-        if (slices.Count == 1 && hasPlacement(slices[0].Id)) return OutputLayoutKind.LedWall;
-        if (slices.Any(slice => hasPlacement(slice.Id))) return OutputLayoutKind.Custom;
+        // A placement in a processor's frame (an LED wall) is where an output lands, not a
+        // shape: it no longer decides the layout (MxU moved LED walls to New LED Wall…).
         if (slices.Count <= 1) return OutputLayoutKind.Single;
 
         static bool IsFull(SceneRect rect) =>
@@ -115,7 +109,7 @@ public static class OutputLayout
         (3, 0) => "Left",
         (3, 1) => "Center",
         (3, 2) => "Right",
-        _ => $"Output {index + 1}",
+        _ => $"Slice {index + 1}",
     };
 }
 
@@ -124,7 +118,7 @@ public sealed partial class OutputConfiguration
 {
     /// <summary>The named layout a screen's slices form now (blends and placements as the picker reads them).</summary>
     public OutputLayoutKind Layout(Guid screenId) =>
-        OutputLayout.Classify(Slices(screenId), id => Adjustments(id).HasBlends, id => Placement(id) is not null);
+        OutputLayout.Classify(Slices(screenId), id => Adjustments(id).HasBlends);
 
     /// <summary>
     /// Replaces a screen's extra slices with the named layout. Each removed slice
@@ -142,23 +136,11 @@ public sealed partial class OutputConfiguration
             release(slice.Id);
             RemoveSlice(slice.Id);
         }
-        if (kind is not (OutputLayoutKind.LedWall or OutputLayoutKind.Custom)) SetPlacement(screenId, null);
-
         switch (kind)
         {
             case OutputLayoutKind.Single:
             case OutputLayoutKind.Custom:
                 return;
-            case OutputLayoutKind.LedWall:
-            {
-                // Keep a placement the user already moved; otherwise seed the wall 1:1 at the frame's top-left.
-                if (Placement(screenId) is not null) return;
-                var frameWidth = screen.Width <= 1920 && screen.Height <= 1080 ? 1920 : 3840;
-                var frameHeight = frameWidth == 1920 ? 1080 : 2160;
-                SetPlacement(screenId, new OutputPlacement(
-                    frameWidth, frameHeight, 0, 0, Math.Min(screen.Width, frameWidth), Math.Min(screen.Height, frameHeight)));
-                return;
-            }
             case OutputLayoutKind.Mirror:
                 for (var index = 1; index < Math.Max(2, outputCount); index++)
                     AddSlice(screenId, $"Mirror {index + 1}");
@@ -186,5 +168,20 @@ public sealed partial class OutputConfiguration
                 return;
             }
         }
+    }
+
+    /// <summary>
+    /// Seeds an output's placement in a processor's frame (New LED Wall…, Share it): 1:1 at
+    /// wall-native pixels, at the left, under the outputs already sharing that frame when it
+    /// fits there, else at the top. Port of OutputManager.seedPlacement.
+    /// </summary>
+    public void SeedPlacement(Guid sliceId, int frameWidth, int frameHeight, IReadOnlyList<OutputPlacement>? siblings = null)
+    {
+        if (SliceInfo(sliceId) is not { } info) return;
+        double width = Math.Min(info.Width, frameWidth);
+        double height = Math.Min(info.Height, frameHeight);
+        var below = (siblings ?? []).Select(p => p.Y + p.Height).DefaultIfEmpty(0).Max();
+        var y = below + height <= frameHeight ? below : 0;
+        SetPlacement(sliceId, new OutputPlacement(frameWidth, frameHeight, 0, y, width, height));
     }
 }

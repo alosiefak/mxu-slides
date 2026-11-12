@@ -132,6 +132,10 @@ public readonly record struct HiddenTextRun(int Line, int Column, int Length, bo
 public sealed record AnimatedItem
 {
     public required RenderItem Render { get; init; }
+
+    /// <summary>Part of the picture a dissolve takes away (see <see cref="AnimatedLayer.CrossfadeProgress"/>).</summary>
+    public bool CrossfadeLeaving { get; init; }
+
     public IReadOnlyList<SceneAnimationStep> AnimationSteps { get; init; } = [];
     public AnimationContext? AnimationContext { get; init; }
 
@@ -159,10 +163,42 @@ public sealed record AnimatedItem
     public static implicit operator AnimatedItem(RenderItem item) => new() { Render = item };
 }
 
-public sealed class AnimatedLayer(LayerKind kind)
+public sealed class AnimatedLayer
 {
-    public LayerKind Kind { get; } = kind;
+    public AnimatedLayer(LayerKind kind)
+    {
+        Id = kind.Raw();
+        Kind = kind;
+        Name = kind.DisplayName();
+    }
+
+    /// <summary>A custom layer from the Screen Map.</summary>
+    public AnimatedLayer(string customId, string name)
+    {
+        Id = customId;
+        Name = name;
+    }
+
+    /// <summary>A built-in layer's raw name ("videos"), or a custom layer's id.</summary>
+    public string Id { get; }
+
+    /// <summary>The built-in layer, or null for a custom layer.</summary>
+    public LayerKind? Kind { get; }
+
+    public string Name { get; }
+    public bool IsCustom => Kind is null;
+    public bool IsMediaLayer => Kind is null or LayerKind.LoopingVideos or LayerKind.StillGraphics or LayerKind.Videos;
     public bool IsHidden { get; set; }
+
+    /// <summary>Set when the Screen Map places this layer on this screen (see <see cref="PlacedLayer"/>).</summary>
+    public PlacedLayer? Placed { get; set; }
+
+    /// <summary>
+    /// Set while a dissolve plays on a non-media layer: the items are the leaving stack (marked
+    /// <see cref="AnimatedItem.CrossfadeLeaving"/>) and the arriving one, and the view draws each
+    /// as one picture and mixes them by this amount. Port of RenderLayer.crossfadeProgress.
+    /// </summary>
+    public double? CrossfadeProgress { get; set; }
     public List<AnimatedItem> Items { get; } = [];
 
     /// <summary>
@@ -179,16 +215,49 @@ public sealed class AnimatedScene
     {
         CanvasSize = canvasSize;
         Background = background ?? SceneColor.Black;
-        Layers = LayerKinds.All.Select(kind => new AnimatedLayer(kind)).ToArray();
+        layers = LayerKinds.All.Select(kind => new AnimatedLayer(kind)).ToList();
     }
+
+    private readonly List<AnimatedLayer> layers;
 
     public SceneSize CanvasSize { get; }
     public SceneColor Background { get; set; }
-    public IReadOnlyList<AnimatedLayer> Layers { get; }
 
-    public AnimatedLayer this[LayerKind kind] => Layers[(int)kind];
+    /// <summary>Bottom first: one per <see cref="LayerKind"/>, plus any custom layers above the layer each names.</summary>
+    public IReadOnlyList<AnimatedLayer> Layers => layers;
+
+    public AnimatedLayer this[LayerKind kind] => layers.First(layer => layer.Kind == kind);
+
+    public AnimatedLayer? Layer(string id) => layers.FirstOrDefault(layer => layer.Id == id);
 
     public void AddItem(AnimatedItem item, LayerKind layer) => this[layer].Items.Add(item);
+
+    public void AddItem(AnimatedItem item, string layerId) => Layer(layerId)?.Items.Add(item);
+
+    /// <inheritdoc cref="RenderScene.InsertCustomLayer"/>
+    public AnimatedLayer InsertCustomLayer(string id, string name, string? above)
+    {
+        if (Layer(id) is { } existing) return existing;
+        var anchor = layers.FindIndex(layer => layer.Id == above);
+        if (anchor < 0) anchor = layers.FindIndex(layer => layer.Kind == LayerKind.Slide);
+        if (anchor < 0) anchor = layers.Count - 1;
+        var added = new AnimatedLayer(id, name);
+        layers.Insert(anchor + 1, added);
+        return added;
+    }
+
+    /// <summary>
+    /// This scene's layer matching another scene's: the same built-in layer, or the custom layer
+    /// with that id, added just above <paramref name="below"/> (the id of the layer under it in
+    /// the other scene) when this scene hasn't got it yet. Used when a scene is copied or rebuilt
+    /// layer by layer, so custom layers keep their place.
+    /// </summary>
+    public AnimatedLayer Matching(string id, LayerKind? kind, string name, string? below) =>
+        kind is { } k ? this[k] : InsertCustomLayer(id, name, below);
+
+    public AnimatedLayer Matching(AnimatedLayer layer, string? below) => Matching(layer.Id, layer.Kind, layer.Name, below);
+
+    public AnimatedLayer Matching(RenderLayer layer, string? below) => Matching(layer.Id, layer.Kind, layer.Name, below);
 
     public IEnumerable<AnimatedItem> AllItems => Layers.SelectMany(layer => layer.Items);
 
@@ -202,11 +271,16 @@ public sealed class AnimatedScene
     public AnimatedScene Copy()
     {
         var copy = new AnimatedScene(CanvasSize, Background);
+        string? below = null;
         foreach (var layer in Layers)
         {
-            copy[layer.Kind].IsHidden = layer.IsHidden;
-            copy[layer.Kind].Mix = layer.Mix;
-            copy[layer.Kind].Items.AddRange(layer.Items);
+            var into = copy.Matching(layer, below);
+            below = layer.Id;
+            into.IsHidden = layer.IsHidden;
+            into.Mix = layer.Mix;
+            into.Placed = layer.Placed;
+            into.CrossfadeProgress = layer.CrossfadeProgress;
+            into.Items.AddRange(layer.Items);
         }
         return copy;
     }
@@ -215,9 +289,16 @@ public sealed class AnimatedScene
     public static AnimatedScene From(RenderScene scene, Func<RenderItem, LayerKind, AnimatedItem>? animate = null)
     {
         var animated = new AnimatedScene(scene.CanvasSize, scene.Background);
+        string? below = null;
         foreach (var layer in scene.Layers)
+        {
+            var into = animated.Matching(layer, below);
+            below = layer.Id;
+            into.Placed = layer.Placed;
+            // A custom layer animates as a media layer would (it holds fired media).
             foreach (var item in layer.Items)
-                animated.AddItem(animate?.Invoke(item, layer.Kind) ?? item, layer.Kind);
+                into.Items.Add(animate?.Invoke(item, layer.Kind ?? LayerKind.Videos) ?? item);
+        }
         return animated;
     }
 }
@@ -274,7 +355,15 @@ public sealed record AnimationMotion
 /// <summary>One piece to draw this frame: the item as it now looks, and how to move it.</summary>
 public sealed record ResolvedItem(AnimatedItem Item, AnimationMotion Motion);
 
-public sealed record ResolvedLayer(LayerKind Kind, bool IsHidden, IReadOnlyList<ResolvedItem> Items);
+public sealed record ResolvedLayer(LayerKind? Kind, bool IsHidden, IReadOnlyList<ResolvedItem> Items)
+{
+    /// <summary>The layer's id: a built-in raw name, or a custom layer's id.</summary>
+    public string Id { get; init; } = Kind?.Raw() ?? "";
+
+    public PlacedLayer? Placed { get; init; }
+
+    public double? CrossfadeProgress { get; init; }
+}
 
 /// <summary>A scene evaluated at one instant. Port of ResolvedBuildScene.</summary>
 public sealed record ResolvedScene(

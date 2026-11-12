@@ -281,6 +281,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await Section("OperatorDepth", OperatorDepthCheck);
             await Section("Notes", NotesCheck);
             await Section("Backup", BackupCheck);
+            await Section("UpstreamCore", UpstreamCoreCheck);
         }
         catch (Exception ex)
         {

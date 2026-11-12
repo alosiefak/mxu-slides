@@ -8,6 +8,7 @@
             <Button DockPanel.Dock="Right" Content="Done" IsDefault="True" IsCancel="True" Style="{StaticResource AccentButton}" MinWidth="90" Click="Done_Click" />
             <StackPanel Orientation="Horizontal">
                 <Button Content="Identify displays" Click="Identify_Click" Margin="0,0,8,0" ToolTip="Flash each display's number and name on it" />
+                <Button Content="Screen Map…" Click="ScreenMap_Click" Margin="0,0,8,0" ToolTip="Where the screens sit in the room, and where each preset places its layers" />
                 <TextBlock x:Name="Footer" Style="{StaticResource Muted}" VerticalAlignment="Center" FontSize="11" TextWrapping="Wrap" />
             </StackPanel>
         </DockPanel>

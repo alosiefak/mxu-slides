@@ -63,7 +63,15 @@ public sealed class StreamingControllerTests : IDisposable
     {
         var preset = Preset();
         var plain = StreamingController.ResolveVideo(preset, StreamingController.SessionPlanFor(Destination("A")));
-        Assert.Equal(new StreamVideoConfiguration(1920, 1080, 30, 4500), plain);
+        // Adaptive is the default (an older preset reads that way on the Mac), down to 2 Mbps.
+        Assert.Equal(new StreamVideoConfiguration(1920, 1080, 30, 4500, AdaptiveFloorKbps: 2000), plain);
+        preset.AdaptBitrate = false;
+        Assert.Null(StreamingController.ResolveVideo(preset, StreamingController.SessionPlanFor(Destination("A"))).AdaptiveFloorKbps);
+        preset.AdaptBitrate = true;
+        preset.MinBitrateKbps = 3000;
+        Assert.Equal(3000, StreamingController.ResolveVideo(preset, StreamingController.SessionPlanFor(Destination("A"))).AdaptiveFloorKbps);
+        preset.AdaptBitrate = null;
+        preset.MinBitrateKbps = null;
 
         var overridden = StreamingController.ResolveVideo(preset, StreamingController.SessionPlanFor(Destination("B", width: 1280, height: 720)));
         Assert.Equal((1280, 720, 6000), (overridden.Width, overridden.Height, overridden.BitrateKbps));

@@ -34,6 +34,9 @@ public partial class ScreensWindow : Window
     private bool loading;
     private IReadOnlyList<DeckLinkDevice> deckLinks = [];
 
+    /// <summary>Opens the Screen Map (ScreenMapWindow.cs).</summary>
+    private void ScreenMap_Click(object sender, RoutedEventArgs e) => ScreenMapWindow.Show(this, outputs);
+
     /// <summary>Opens the mask editor for the selected screen (and output, if one is selected).</summary>
     private void Masks_Click(object sender, RoutedEventArgs e)
     {

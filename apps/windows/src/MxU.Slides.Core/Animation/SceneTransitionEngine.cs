@@ -43,7 +43,7 @@ public sealed record SceneTransition
 /// </summary>
 public sealed class SceneTransitionEngine
 {
-    private sealed record Active(AnimatedScene Previous, double StartedAt, IReadOnlyDictionary<LayerKind, SceneTransition> Transitions, double Duration);
+    private sealed record Active(AnimatedScene Previous, double StartedAt, IReadOnlyDictionary<string, SceneTransition> Transitions, double Duration);
 
     private readonly Lock gate = new();
     private AnimatedScene target;
@@ -59,16 +59,23 @@ public sealed class SceneTransitionEngine
         {
             var ids = new HashSet<string>();
             if (active is null || now - active.StartedAt >= active.Duration) return ids;
-            foreach (var layer in active.Previous.Layers.Where(l => active.Transitions.ContainsKey(l.Kind)))
+            foreach (var layer in active.Previous.Layers.Where(l => active.Transitions.ContainsKey(l.Id)))
                 foreach (var item in layer.Items)
                     if (MediaId(item.Render.Content) is { } id) ids.Add(id);
             return ids;
         }
     }
 
-    public void Push(AnimatedScene scene, SceneTransition transition, double now) => Push(scene, _ => transition, now);
+    public void Push(AnimatedScene scene, SceneTransition transition, double now) => Push(scene, (string _) => transition, now);
 
-    public void Push(AnimatedScene scene, Func<LayerKind, SceneTransition?> transitionFor, double now)
+    /// <summary>
+    /// Pushes with a transition per built-in layer. A custom layer (Screen Map) holds fired media,
+    /// so it changes the way Foreground Videos does.
+    /// </summary>
+    public void Push(AnimatedScene scene, Func<LayerKind, SceneTransition?> transitionFor, double now) =>
+        Push(scene, (string id) => transitionFor(LayerKinds.Parse(id) ?? LayerKind.Videos), now);
+
+    public void Push(AnimatedScene scene, Func<string, SceneTransition?> transitionFor, double now)
     {
         lock (gate)
         {
@@ -78,7 +85,7 @@ public sealed class SceneTransitionEngine
                 target = scene;
                 return;
             }
-            var transitions = new Dictionary<LayerKind, SceneTransition>();
+            var transitions = new Dictionary<string, SceneTransition>(StringComparer.Ordinal);
             foreach (var layer in changed)
                 if (transitionFor(layer) is { Kind: not SceneTransitionKind.Cut } transition) transitions[layer] = transition;
             if (transitions.Count == 0)
@@ -87,32 +94,32 @@ public sealed class SceneTransitionEngine
                 active = null;
                 return;
             }
-            var from = active is null ? target : Composite(active.Previous, target, active.Transitions, Progress(active, now));
+            // Interrupted: start from where every layer had got to, its whole-stack mixes flattened.
+            var from = active is null ? target : Flattened(Composite(active.Previous, target, active.Transitions, now - active.StartedAt));
             active = new Active(from, now, transitions, transitions.Values.Max(t => t.Duration));
             target = scene;
         }
     }
 
-    /// <summary>The scene to draw at <paramref name="now"/>; the fade ends (and is dropped) once it lands.</summary>
+    /// <summary>The scene to draw at <paramref name="now"/>; the fade ends (and is dropped) once every layer lands.</summary>
     public AnimatedScene Scene(double now)
     {
         lock (gate)
         {
             if (active is null) return target;
-            var progress = Progress(active, now);
-            if (progress >= 1)
+            if (now - active.StartedAt >= active.Duration)
             {
                 active = null;
                 return target;
             }
-            return Composite(active.Previous, target, active.Transitions, progress);
+            return Composite(active.Previous, target, active.Transitions, now - active.StartedAt);
         }
     }
 
     /// <summary>True while a transition is still playing at <paramref name="now"/>, so the view keeps drawing frames.</summary>
     public bool IsTransitioning(double now)
     {
-        lock (gate) return active is not null && Progress(active, now) < 1;
+        lock (gate) return active is not null && now - active.StartedAt < active.Duration;
     }
 
     /// <summary>The newest scene pushed (what shows once any transition lands).</summary>
@@ -120,8 +127,6 @@ public sealed class SceneTransitionEngine
     {
         get { lock (gate) return target; }
     }
-
-    private static double Progress(Active active, double now) => Math.Clamp((now - active.StartedAt) / active.Duration, 0, 1);
 
     internal static string? MediaId(ItemContent content) => content switch
     {
@@ -134,41 +139,58 @@ public sealed class SceneTransitionEngine
     internal static string MembershipKey(AnimatedItem item) =>
         MediaId(item.Render.Content) is { } id ? $"{item.Id}|{id}" : item.Id;
 
-    internal static HashSet<LayerKind> ChangedLayers(AnimatedScene old, AnimatedScene @new)
+    /// <summary>The ids of the layers (built-in and custom) whose items differ between the scenes.</summary>
+    internal static HashSet<string> ChangedLayers(AnimatedScene old, AnimatedScene @new)
     {
-        var changed = new HashSet<LayerKind>();
-        foreach (var kind in LayerKinds.All)
-            if (!old[kind].Items.Select(MembershipKey).ToHashSet().SetEquals(@new[kind].Items.Select(MembershipKey)))
-                changed.Add(kind);
+        var changed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in old.Layers.Select(l => l.Id).Concat(@new.Layers.Select(l => l.Id)).Distinct())
+        {
+            var before = old.Layer(id)?.Items.Select(MembershipKey).ToHashSet() ?? [];
+            var after = @new.Layer(id)?.Items.Select(MembershipKey) ?? [];
+            if (!before.SetEquals(after)) changed.Add(id);
+        }
         return changed;
     }
 
+    /// <summary>One transition on some layers, at a share of its length (tests and the Phase 6 previews).</summary>
     internal static AnimatedScene Composite(AnimatedScene previous, AnimatedScene target, SceneTransition transition, double progress, IEnumerable<LayerKind> layers) =>
-        Composite(previous, target, layers.ToDictionary(layer => layer, _ => transition), progress);
+        Composite(previous, target, layers.ToDictionary(layer => layer.Raw(), _ => transition, StringComparer.Ordinal), progress * transition.Duration);
 
-    internal static AnimatedScene Composite(AnimatedScene previous, AnimatedScene target, IReadOnlyDictionary<LayerKind, SceneTransition> transitions, double progress)
+    /// <summary>
+    /// The scene <paramref name="elapsed"/> seconds into its transitions. Each layer runs on its own
+    /// length (a quick background fade lands while the words still dissolve), and a layer whose
+    /// transition is over shows the target as it is.
+    /// </summary>
+    internal static AnimatedScene Composite(AnimatedScene previous, AnimatedScene target, IReadOnlyDictionary<string, SceneTransition> transitions, double elapsed)
     {
         var scene = target.Copy();
+        var order = scene.Layers.Select(l => l.Id).ToList();
         foreach (var layer in scene.Layers)
         {
-            if (!transitions.TryGetValue(layer.Kind, out var transition)) continue;
-            var oldLayer = previous[layer.Kind];
+            if (!transitions.TryGetValue(layer.Id, out var transition)) continue;
+            var progress = Math.Clamp(elapsed / transition.Duration, 0, 1);
+            if (progress >= 1) continue;
+            var oldLayer = previous.Layer(layer.Id);
+            IReadOnlyList<AnimatedItem> oldLayerItems = oldLayer?.Items ?? [];
             if (transition.Kind == SceneTransitionKind.Picture && transition.Picture is { } picture)
             {
                 // The whole old picture and the whole new one, for the view's shader to mix: every item
                 // the layer showed comes along as a ::leaving copy (staying ones too, so each picture is
                 // complete). If the old picture was itself mid-transition, it is drawn as it was then.
                 layer.Items.Clear();
-                layer.Items.AddRange([.. oldLayer.Items.Select(Leaving), .. target[layer.Kind].Items]);
+                layer.Items.AddRange([.. oldLayerItems.Select(Leaving), .. target.Layer(layer.Id)?.Items ?? []]);
+                layer.CrossfadeProgress = null;
                 // A light leak on a layer lower down already lights the screen: this one lights only its own pixels.
+                var index = order.IndexOf(layer.Id);
                 var litBelow = picture.Kind == WindowsTransitionKind.LightLeak
-                    && transitions.Any(other => other.Key < layer.Kind && other.Value.Picture?.Kind == WindowsTransitionKind.LightLeak);
-                layer.Mix = new LayerMix(picture, progress, progress * transition.Duration, oldLayer.Mix, litBelow);
+                    && transitions.Any(other => order.IndexOf(other.Key) is var at && at >= 0 && at < index
+                        && other.Value.Picture?.Kind == WindowsTransitionKind.LightLeak);
+                layer.Mix = new LayerMix(picture, progress, progress * transition.Duration, oldLayer?.Mix, litBelow);
                 continue;
             }
             // A picture transition that was interrupted by one of the Mac's kinds: its two pictures
             // can't be mixed by an item fade, so they're cross-faded where they had got to.
-            var oldItems = oldLayer.Mix is { } interrupted ? Flattened(oldLayer.Items, interrupted) : oldLayer.Items;
+            var oldItems = oldLayer?.Mix is { } interrupted ? Flattened(oldLayerItems, interrupted) : oldLayerItems;
             var newItems = layer.Items.ToList();
             var oldKeys = oldItems.Select(MembershipKey).ToHashSet();
             var newKeys = newItems.Select(MembershipKey).ToHashSet();
@@ -180,21 +202,35 @@ public sealed class SceneTransitionEngine
             List<AnimatedItem> ArrivingFaded(IEnumerable<AnimatedItem> items, double opacity) => items
                 .Select(item => oldKeys.Contains(MembershipKey(item)) ? item : Faded(item, opacity))
                 .ToList();
+            // The whole old stack (staying items too), for a dissolve that mixes two pictures.
+            List<AnimatedItem> Outgoing() => [.. oldItems.Select(item => Leaving(item) with { CrossfadeLeaving = true })];
 
+            var isMedia = layer.IsMediaLayer;
             var hasArrivals = newItems.Any(item => !oldKeys.Contains(MembershipKey(item)));
-            var holdsUnder = hasArrivals && layer.Kind is LayerKind.LoopingVideos or LayerKind.StillGraphics or LayerKind.Videos;
+            var holdsUnder = hasArrivals && isMedia;
             List<AnimatedItem> items;
             switch (transition.Kind)
             {
                 case SceneTransitionKind.Cut:
                     continue;
+                case SceneTransitionKind.Dissolve when !isMedia:
+                    // Words, overlays, alerts: each stack fades as one picture, so an opaque backdrop
+                    // leaving never lets what it covered show through its fading words.
+                    items = [.. Outgoing(), .. newItems];
+                    layer.CrossfadeProgress = progress;
+                    break;
+                case SceneTransitionKind.BlurDissolve when !isMedia:
+                    var swellMix = (1 - Math.Abs(progress * 2 - 1)) * 60;
+                    items = [.. Blurred(Outgoing(), swellMix), .. Blurred(newItems, swellMix)];
+                    layer.CrossfadeProgress = progress;
+                    break;
                 case SceneTransitionKind.Dissolve:
                     items = [.. holdsUnder ? leaving : leaving.Select(i => Faded(i, 1 - progress)), .. ArrivingFaded(newItems, progress)];
                     break;
                 case SceneTransitionKind.Fade:
                     var firstHalf = progress < 0.5;
                     var plateOpacity = firstHalf ? progress * 2 : (1 - progress) * 2;
-                    items = [.. firstHalf ? oldItems : newItems, Plate(layer.Kind, scene.CanvasSize, transition.Plate.WithAlpha(plateOpacity))];
+                    items = [.. firstHalf ? oldItems : newItems, Plate(layer.Id, scene.CanvasSize, transition.Plate.WithAlpha(plateOpacity))];
                     break;
                 case SceneTransitionKind.BlurDissolve:
                     var swell = (1 - Math.Abs(progress * 2 - 1)) * 60;
@@ -210,7 +246,7 @@ public sealed class SceneTransitionEngine
                     [
                         .. Burned(leaving.Select(i => Faded(i, 1 - progress)), peak, progress),
                         .. Burned(ArrivingFaded(newItems, progress), peak, progress),
-                        Plate(layer.Kind, scene.CanvasSize, new SceneColor(1, 0.72, 0.42, peak * 0.35)),
+                        Plate(layer.Id, scene.CanvasSize, new SceneColor(1, 0.72, 0.42, peak * 0.35)),
                     ];
                     break;
             }
@@ -218,6 +254,41 @@ public sealed class SceneTransitionEngine
             layer.Items.AddRange(items);
         }
         return scene;
+    }
+
+    /// <summary>
+    /// A scene with its whole-stack mixes turned into item fades where they had got to (an item in
+    /// both stacks shows once, at full): the starting point when a new push interrupts a dissolve.
+    /// Port of SceneTransitionEngine.flattened.
+    /// </summary>
+    internal static AnimatedScene Flattened(AnimatedScene scene)
+    {
+        if (scene.Layers.All(l => l.CrossfadeProgress is null)) return scene;
+        var flat = scene.Copy();
+        foreach (var layer in flat.Layers)
+        {
+            if (layer.CrossfadeProgress is not { } progress) continue;
+            string Key(AnimatedItem item) => MembershipKey(item.CrossfadeLeaving
+                ? item with { Render = item.Render with { Id = item.Id[..^LeavingSuffix.Length] } }
+                : item);
+            var before = layer.Items.Where(i => i.CrossfadeLeaving).Select(Key).ToHashSet();
+            var after = layer.Items.Where(i => !i.CrossfadeLeaving).Select(Key).ToHashSet();
+            var items = new List<AnimatedItem>();
+            foreach (var item in layer.Items)
+            {
+                var key = Key(item);
+                if (before.Contains(key) && after.Contains(key))
+                {
+                    if (!item.CrossfadeLeaving) items.Add(item);
+                    continue;
+                }
+                items.Add(Faded(item, item.CrossfadeLeaving ? 1 - progress : progress) with { CrossfadeLeaving = false });
+            }
+            layer.CrossfadeProgress = null;
+            layer.Items.Clear();
+            layer.Items.AddRange(items);
+        }
+        return flat;
     }
 
     internal const string LeavingSuffix = "::leaving";
@@ -234,9 +305,9 @@ public sealed class SceneTransitionEngine
         return [.. items.Select(item => Faded(item, item.Id.EndsWith(LeavingSuffix, StringComparison.Ordinal) ? 1 - shown : shown))];
     }
 
-    private static AnimatedItem Plate(LayerKind layer, SceneSize canvas, SceneColor color) => new RenderItem
+    private static AnimatedItem Plate(string layerId, SceneSize canvas, SceneColor color) => new RenderItem
     {
-        Id = $"transition-plate-{layer.Raw()}",
+        Id = $"transition-plate-{layerId}",
         Frame = new SceneRect(canvas),
         Content = new ItemContent.Shape(new ShapeStyle(SceneShapeKind.Rect, new SceneFill.Solid(color))),
     };

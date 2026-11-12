@@ -37,11 +37,14 @@ public static class MediaCueRouting
         Classification = MediaClassification.Background,
     };
 
-    public static CueMedia DroppedAsNewSlide(MediaItem item) => new()
+    public static CueMedia DroppedAsNewSlide(MediaItem item) => DroppedAsNewSlide(item.Id, item.MediaKind);
+
+    /// <summary>The same rule from just the id and kind, for a file that isn't a library item yet.</summary>
+    public static CueMedia DroppedAsNewSlide(string mediaId, MediaKind kind) => new()
     {
-        MediaId = item.Id,
-        Layer = item.MediaKind == MediaKind.Image ? CueMediaLayer.StillGraphics : CueMediaLayer.Videos,
-        Loops = item.MediaKind == MediaKind.Video ? false : null,
+        MediaId = mediaId,
+        Layer = kind == MediaKind.Image ? CueMediaLayer.StillGraphics : CueMediaLayer.Videos,
+        Loops = kind == MediaKind.Video ? false : null,
         Classification = MediaClassification.Foreground,
     };
 }

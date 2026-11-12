@@ -81,7 +81,11 @@ public class PictureTransitionEngineTests
         // Half-way through the push (eased, 0.5), the two pictures were worth half each; now both leave.
         Assert.Equal(0.5, layer.Items.First(i => i.Id == "a::leaving::leaving").Render.Opacity, 1e-6);
         Assert.Equal(0.5, layer.Items.First(i => i.Id == "b::leaving").Render.Opacity, 1e-6);
-        Assert.Equal(0, layer.Items.First(i => i.Id == "c").Render.Opacity, 1e-6);
+        // The dissolve mixes the old stack (as it was) and the new one as whole pictures (MxU's
+        // per-layer crossfade), so "c" is drawn full in the arriving picture, which starts unseen.
+        Assert.Equal(0, layer.CrossfadeProgress ?? -1, 1e-6);
+        Assert.Equal(1, layer.Items.First(i => i.Id == "c").Render.Opacity, 1e-6);
+        Assert.True(layer.Items.First(i => i.Id == "b::leaving").CrossfadeLeaving);
     }
 
     [Fact]

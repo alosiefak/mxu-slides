@@ -64,6 +64,8 @@ public sealed record StreamEndpoint
 /// The picture a stream sends: size, frame rate, bitrate and codec. Port of
 /// StreamVideoConfiguration. <see cref="Hdr"/> is carried for parity with the Mac,
 /// but Windows has no HDR program feed, so it is always streamed as SDR.
+/// <see cref="AdaptiveFloorKbps"/> is the lowest the bitrate may go when the upload can't keep
+/// up (Adaptive mode); null keeps it constant.
 /// </summary>
 public sealed record StreamVideoConfiguration(
     int Width,
@@ -71,8 +73,22 @@ public sealed record StreamVideoConfiguration(
     int FrameRate = 30,
     int BitrateKbps = 4500,
     StreamCodec Codec = StreamCodec.H264,
-    bool Hdr = false)
+    bool Hdr = false,
+    int? AdaptiveFloorKbps = null)
 {
+    /// <summary>The floor when a preset asks for Adaptive but names no lowest bitrate.</summary>
+    public const int DefaultFloorKbps = 2000;
+
+    /// <summary>
+    /// A preset's bitrate mode as a floor: null for Constant; Adaptive (the default, as the Mac
+    /// reads an older preset) goes no lower than its chosen lowest, and never above its own bitrate.
+    /// </summary>
+    public static int? AdaptiveFloor(bool? adapt, int? minKbps, int bitrateKbps)
+    {
+        if (!(adapt ?? true)) return null;
+        return Math.Min(minKbps ?? DefaultFloorKbps, bitrateKbps);
+    }
+
     /// <summary>The encoders need even sizes (4:2:0 colour halves both axes).</summary>
     public int EncodedWidth => Math.Max(2, Width & ~1);
 
