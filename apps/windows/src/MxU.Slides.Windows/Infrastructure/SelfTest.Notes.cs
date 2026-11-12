@@ -74,6 +74,17 @@ public sealed partial class SelfTest
             Check("the scripture slide puts its reference in the design's own box",
                 scripture is not null && scripture.ThemeSlideName is { Length: > 0 } && scripture.Objects.Any(o => o.Text == "Psalm 46:1"));
             Check("the run-sheet line (Intro: …) is no slide", !deck.Slides.Any(s => s.Objects.Any(o => o.Text.Contains("earthquake", StringComparison.Ordinal))));
+            // Words that don't fit their box are cut off on the output: name the boxes if any do.
+            // Only the boxes Make Slides wrote in count. A box still holding the design's own text
+            // (the starter Quote design's big “ mark measures as too big for its box) is the theme's.
+            var designs = model.ThemeById(deck.ThemeId)?.Slides ?? [];
+            bool Written(Slide slide, SlideObject box) =>
+                !(designs.FirstOrDefault(d => d.Name == slide.ThemeSlideName)?.Objects ?? []).Any(o => o.Name == box.Name && o.Text == box.Text);
+            var cut = deck.Slides.SelectMany((slide, i) =>
+                Core.Scene.SlideSceneBuilder.ClippedTextObjectIds(slide, model.SceneOf(deck, slide), Rendering.TextLayout.OverflowsFrame)
+                    .Select(id => slide.Objects.First(o => o.Id == id)).Where(box => Written(slide, box))
+                    .Select(box => $"slide {i + 1} “{box.Name}”")).ToList();
+            Check($"no made slide cuts off the note's words{(cut.Count == 0 ? "" : $" ({string.Join(", ", cut)})")}", cut.Count == 0);
             await Snapshot("122-made-title", model.SceneOf(deck, deck.Slides[0]));
             if (scripture is not null) await Snapshot("123-made-scripture", model.SceneOf(deck, scripture));
             await Delay(400);

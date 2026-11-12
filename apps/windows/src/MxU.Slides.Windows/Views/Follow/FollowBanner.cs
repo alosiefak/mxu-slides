@@ -80,6 +80,13 @@ public sealed class FollowBanner : UserControl
         };
     }
 
+    /// <summary>18% of the colour over the app's dark grey (#181818), as one opaque colour.</summary>
+    private static Color Tint(Color color)
+    {
+        static byte Mix(byte c) => (byte)Math.Round((0x18 * 0.82) + (c * 0.18));
+        return Color.FromRgb(Mix(color.R), Mix(color.G), Mix(color.B));
+    }
+
     private void Bar(Color color, string title, string detail, params (string Label, Action Click)[] buttons)
     {
         var row = new DockPanel { LastChildFill = true };
@@ -99,7 +106,9 @@ public sealed class FollowBanner : UserControl
         row.Children.Add(text);
         Content = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(0x2E, color.R, color.G, color.B)),
+            // A tint of the dot's colour over the toolbar's dark grey. It's mixed here into one solid
+            // colour: a see-through tint would show the window's white backing and hide the white words.
+            Background = new SolidColorBrush(Tint(color)),
             Padding = new Thickness(14, 8, 14, 8),
             Child = row,
         };

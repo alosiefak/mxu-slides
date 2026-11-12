@@ -55,7 +55,7 @@ public sealed class PairBackupWindow : Window
 
     private UIElement Layout()
     {
-        var root = new StackPanel { Margin = new Thickness(18) };
+        var root = new StackPanel();
         root.Children.Add(new TextBlock { Text = "Make this the backup", FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
         root.Children.Add(EditorKit.Muted(
             "This computer shows what the main computer shows, or stays ready with clear screens. It answers its own triggers only after it takes over.", 11, 10));
@@ -76,7 +76,9 @@ public sealed class PairBackupWindow : Window
         buttons.Children.Add(cancel);
         buttons.Children.Add(EditorKit.Button("Start Backing Up", () => _ = StartAsync(), accent: true));
         root.Children.Add(buttons);
-        return root;
+        // The space round the edge is the border's padding (not a margin on the panel), so the whole
+        // sheet, edge to edge, is one element: that is what the self-test pictures.
+        return new Border { Padding = new Thickness(18), Child = root };
     }
 
     private void ShowPeers(IReadOnlyList<BonjourBrowser.Peer> found)

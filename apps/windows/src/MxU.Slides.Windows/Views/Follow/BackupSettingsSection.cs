@@ -140,9 +140,13 @@ public sealed class BackupSettingsSection : UserControl
             api.Children.Add(EditorKit.Muted("The backup reaches this computer through its API (Network & API above), which is off.", 11, 0));
             steps.Children.Add(api);
         }
-        steps.Children.Add(EditorKit.Faint(
+        // Wrapped, not trimmed: this is the line that explains the firewall prompt, so all of it must show.
+        var firewall = EditorKit.Faint(
             "The first time, Windows may ask whether MxU Slides can use the network. Allow it on private networks: the backup "
-            + "connects to this computer's API port, and both computers find each other on the network (DNS-SD, as Bonjour on a Mac)."));
+            + "connects to this computer's API port, and both computers find each other on the network (DNS-SD, as Bonjour on a Mac).");
+        firewall.TextWrapping = TextWrapping.Wrap;
+        firewall.TextTrimming = TextTrimming.None;
+        steps.Children.Add(firewall);
         body.Children.Add(EditorKit.Card(steps));
 
         var become = EditorKit.Button("Make This the Backup…", () => PairBackupWindow.Open(Window.GetWindow(this)!, model));

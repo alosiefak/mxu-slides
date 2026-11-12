@@ -92,6 +92,29 @@ Settings. Copying only ever reads from the booth: its library is never changed.
 network. Allow it on private networks: the backup connects to the booth's API port. Settings ›
 Backup says so.
 
+## Trying it with a real Mac
+
+This has been tested between two copies of the Windows app on one PC, and against the Mac's own
+tests for the messages on the wire. It has **not** been run against a real Mac yet. To try it:
+
+1. Put the Mac and the PC on the same network (the same Wi-Fi or switch; guest networks often stop
+   computers seeing each other). Both run a version of MxU Slides with MxU PR #12 or later.
+2. Get the same items onto both: export the library's songs and presentations as `.mxuslides`
+   files from one and import them on the other. (Items aren't copied between a Mac and a PC yet.)
+3. On the one that will be the booth, turn the API on (on a PC: Settings › Network & API; the Mac
+   has the same switch in its Settings) and open Settings › Backup to see its four-digit code. On
+   a PC, allow MxU Slides through the Windows firewall on private networks when asked.
+4. On the other, Settings › Backup › Make This the Backup…, pick the booth from the list (or type
+   its address and API port, e.g. `192.168.1.20:6980`), type the code, and start.
+5. Check, in this order: the bar says *Backing up …* with a green dot; a slide clicked on the booth
+   shows on the backup; Clear All clears both; **Take Over** on the backup turns the booth's bar
+   orange; **Hand Back** returns it. Then quit the booth normally (nothing should take over), and
+   last, pull the booth's network cable (the backup should take over after three seconds).
+6. Do it once each way round: a PC backing up a Mac, and a Mac backing up a PC.
+
+If the booth isn't listed in step 4 but typing its address works, the two computers can talk but
+discovery (Bonjour / DNS-SD) is being blocked, usually by the firewall or the Wi-Fi router.
+
 ## Different from the Mac
 
 - **Items between a Mac and a PC aren't copied** (the library formats differ until Phase 10's
