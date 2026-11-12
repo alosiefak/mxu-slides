@@ -31,6 +31,35 @@ public class ClippedTextTests
         Assert.Equal(["big"], SlideSceneBuilder.ClippedTextObjectIds(slide, scene, RoughlyOverflows));
     }
 
+    // Windows: the warning is about words. A Quote slide made from notes carries the starter
+    // design's big quote mark (300 points in a box 280 high), which has none.
+    [Fact]
+    public void ABoxWithNoWordsIsNeverClipped()
+    {
+        Assert.False(SlideSceneBuilder.HasWords("“"));
+        Assert.False(SlideSceneBuilder.HasWords(" • • • "));
+        Assert.True(SlideSceneBuilder.HasWords("“Faith”"));
+        Assert.True(SlideSceneBuilder.HasWords("3"));
+
+        foreach (var pack in MxU.Slides.Core.Library.StarterPacks.All)
+        {
+            var theme = MxU.Slides.Core.Library.StarterPacks.MakeTheme(pack);
+            var quote = new MxU.Slides.Core.Notes.MarkedGroup("q", "“Faith is taking the first step.” — Martin Luther King Jr.", "quote");
+            var plan = new MxU.Slides.Core.Notes.DeterministicSlidePlanner().Plan([quote], theme, new Dictionary<string, MxU.Slides.Core.Notes.SlideRowOverride>());
+            var slide = MxU.Slides.Core.Notes.NoteSlideBuilder.Build(plan).Slides[0];
+            var scene = SlideSceneBuilder.Scene(slide, theme);
+            var mark = slide.Objects.FirstOrDefault(o => o.Name == "Quote Mark");
+            if (mark is not null)
+            {
+                // The mark's own line is taller than its box by the crude measure too…
+                var item = scene[LayerKind.Slide].Items.First(i => i.Id == mark.Id);
+                Assert.True(RoughlyOverflows(((ItemContent.Text)item.Content).Styled, new SceneSize(item.Frame.Width, item.Frame.Height)), $"{pack}: the mark measures as too tall");
+            }
+            // …yet the slide carries no warning for it.
+            Assert.DoesNotContain(mark?.Id, SlideSceneBuilder.ClippedTextObjectIds(slide, scene, RoughlyOverflows));
+        }
+    }
+
     [Fact]
     public void TextThatShowsAllItsWordsItsOwnWayIsNeverClipped()
     {

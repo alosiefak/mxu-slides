@@ -855,7 +855,7 @@ public sealed record DeterministicSlidePlanner(
     internal static bool IsDecoration(SlideObject box)
     {
         var sample = box.Text.TrimmingWhitespacesAndNewlines();
-        return sample.Length > 0 && !sample.Any(char.IsLetterOrDigit);
+        return sample.Length > 0 && !SlideSceneBuilder.HasWords(sample);
     }
 
     /// <summary>The box the words go in: one named for them, else the biggest.</summary>

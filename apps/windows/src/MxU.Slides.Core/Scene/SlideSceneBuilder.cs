@@ -301,6 +301,13 @@ public static partial class SlideSceneBuilder
     /// path, a ticker, a block scroll) never counts, and nor does the design's own text. A shape's text
     /// counts as the shape. Port of SlideSceneBuilder.clippedTextObjectIDs; <paramref name="overflows"/>
     /// is the renderer's measure (TextRasterizer.overflows on the Mac, TextLayout.OverflowsFrame here).
+    /// <para>
+    /// Windows: a box with no words in it (<see cref="HasWords"/>) never counts either. The warning
+    /// says words are cut off, and a glyph has none. The starter Quote design's big opening quote
+    /// mark is a 300-point glyph in a box 280 high: the font's line is taller than the box, so it
+    /// measures as "doesn't fit", and Make Slides copies that box onto every Quote slide. The Mac's
+    /// function has no rule for this (it measures the mark the same way).
+    /// </para>
     /// </summary>
     /// <param name="scene">The slide's scene, as <see cref="Scene"/> builds it (with a pager, text that pages shows its first page, which fits).</param>
     public static List<string> ClippedTextObjectIds(Slide slide, RenderScene scene, Func<StyledText, SceneSize, bool> overflows)
@@ -313,11 +320,17 @@ public static partial class SlideSceneBuilder
                 || styled.PathData is not null || styled.TickerSpeed != 0 || styled.Scroll is not null)
                 continue;
             var baseId = item.Id.EndsWith("::text", StringComparison.Ordinal) ? item.Id[..^"::text".Length] : item.Id;
-            if (!objectIds.Contains(baseId) || clipped.Contains(baseId)) continue;
+            if (!objectIds.Contains(baseId) || clipped.Contains(baseId) || !HasWords(styled.String)) continue;
             if (overflows(styled, new SceneSize(item.Frame.Width, item.Frame.Height))) clipped.Add(baseId);
         }
         return clipped;
     }
+
+    /// <summary>
+    /// True when the text has something to read: a letter or a digit. A big quote mark, a row of
+    /// dots or an ornament has none; it's decoration (Make Slides keeps such a box as the design has it).
+    /// </summary>
+    public static bool HasWords(string text) => text.Any(char.IsLetterOrDigit);
 
     /// <summary>Adds a slide's own objects, composed with its theme design, to the slide layer.</summary>
     public static void AddSlideObjects(

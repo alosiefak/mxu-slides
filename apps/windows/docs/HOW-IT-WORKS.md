@@ -719,7 +719,7 @@ Several things a Mac or ProPresenter document asks for were drawn wrongly, or no
 - **Tickers, and text on a path or a shape's edge** (`Core/Scene/PathTextLayout.cs`, `Rendering/PathTextRenderer.cs`).
 - **Live inputs and screen mirrors inside a shape**: a camera picture-in-picture on a slide. A placeholder shows while the input isn't there.
 - **Keystone on objects**, drawn by a small shader (`Rendering/KeystoneEffect.cs`).
-- **A warning triangle** on a slide tile whose text doesn't fit its box.
+- **A warning triangle** on a slide tile whose text doesn't fit its box. It is about words being cut off, so a box that holds no letters or digits (the Quote design's big “ mark) never raises it (`SlideSceneBuilder.HasWords`; a Windows rule, the Mac measures the mark like any text).
 
 The full walkthrough is [phase5/render.md](phase5/render.md).
 
