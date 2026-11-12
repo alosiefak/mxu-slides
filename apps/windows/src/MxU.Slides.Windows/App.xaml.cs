@@ -71,8 +71,13 @@ public partial class App : Application
             if (SelfTest.FolderFromArgs(e.Args) is { } testFolder)
             {
                 // Hooked before Show: a window raises Loaded during Show itself.
+                // Once only: WPF raises ContentRendered again whenever the window's Content is replaced
+                // (Volunteer mode swaps it), which used to start a second self-test on top of the first.
+                var started = false;
                 window.ContentRendered += async (_, _) =>
                 {
+                    if (started) return;
+                    started = true;
                     await new SelfTest(window, model, testFolder).RunAsync();
                     window.ForceClose();
                 };

@@ -189,36 +189,42 @@ public sealed class BonjourBrowser(string? ownStationHexId) : IDisposable
         }
     }
 
+    /// <summary>
+    /// Stops browsing. The cancels run after the lock is let go: Windows' cancel waits for a
+    /// callback that is already running, and the callbacks (OnBrowse, OnResolved) take this lock.
+    /// Cancelling while holding it froze the caller for good: the pairing sheet, closing on the UI thread.
+    /// </summary>
     public void Stop()
     {
-        lock (gate) StopLocked();
+        IntPtr browse;
+        List<IntPtr> resolves;
+        lock (gate)
+        {
+            browse = browseCancel;
+            resolves = [.. pending.Select(p => p.Cancel)];
+            StopLocked();
+        }
+        try
+        {
+            if (browse != IntPtr.Zero) DnsSd.DnsServiceBrowseCancel(browse);
+            foreach (var cancel in resolves) DnsSd.DnsServiceResolveCancel(cancel);
+        }
+        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException)
+        {
+        }
     }
 
     public void Dispose() => Stop();
 
+    /// <summary>Callbacks of stopped requests, kept alive: one may still be on its way from Windows.</summary>
+    private readonly List<Delegate> retired = [];
+
+    /// <summary>Forgets the requests and what they found (their cancels are <see cref="Stop"/>'s). From then on a late callback is ignored.</summary>
     private void StopLocked()
     {
-        if (browseCancel != IntPtr.Zero)
-        {
-            try
-            {
-                DnsSd.DnsServiceBrowseCancel(browseCancel);
-            }
-            catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException)
-            {
-            }
-        }
-        foreach (var (request, cancel, _) in pending)
-        {
-            try
-            {
-                DnsSd.DnsServiceResolveCancel(cancel);
-            }
-            catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException)
-            {
-            }
-        }
-        // The requests' memory stays until the process ends: a callback may still be on its way.
+        // The requests' memory stays until the process ends, and so do their callbacks.
+        retired.AddRange(pending.Select(p => p.Callback));
+        if (browseCallback is not null) retired.Add(browseCallback);
         pending.Clear();
         browseRequest = IntPtr.Zero;
         browseCancel = IntPtr.Zero;
@@ -241,7 +247,11 @@ public sealed class BonjourBrowser(string? ownStationHexId) : IDisposable
                 if (ttl == 0)
                 {
                     // A goodbye: that computer has gone.
-                    lock (gate) peers.Remove(InstanceLabel(name));
+                    lock (gate)
+                    {
+                        if (browseRequest == IntPtr.Zero) continue; // stopped: a late callback
+                        peers.Remove(InstanceLabel(name));
+                    }
                     Changed?.Invoke(Peers);
                     continue;
                 }
@@ -305,7 +315,11 @@ public sealed class BonjourBrowser(string? ownStationHexId) : IDisposable
             }
             host ??= Marshal.PtrToStringUni(info.HostName);
             if (host is null) return;
-            lock (gate) peers[label] = new Peer(label, candidate.StationHexId, candidate.StationName, host, info.Port);
+            lock (gate)
+            {
+                if (browseRequest == IntPtr.Zero) return; // stopped: a late callback
+                peers[label] = new Peer(label, candidate.StationHexId, candidate.StationName, host, info.Port);
+            }
             Changed?.Invoke(Peers);
         }
         finally

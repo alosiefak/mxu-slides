@@ -153,7 +153,8 @@ public sealed class MakeSlidesWindow : Window
             }, minWidth: 190);
         blanks.Margin = new Thickness(0, 0, 12, 6);
         panel.Children.Add(blanks);
-        var scale = EditorKit.Picker(Enum.GetValues<MediaScaleMode>().Select(m => new EditorChoice(m.ToString(), m == MediaScaleMode.ScaleAndBlur ? "Pictures: Scale and Blur" : $"Pictures: {m}")).ToList(),
+        // The same scales, names and order as a picture slide's own Scale menu (CueMediaEditing.ScaleChoices).
+        var scale = EditorKit.Picker(Core.Media.CueMediaEditing.ScaleChoices.Select(c => new EditorChoice(c.Mode.ToString(), $"Pictures: {c.Name}")).ToList(),
             map.Options.PictureScale.ToString(), id => Save(o => o with { PictureScale = Enum.Parse<MediaScaleMode>(id) }), minWidth: 170);
         scale.Margin = new Thickness(0, 0, 12, 6);
         panel.Children.Add(scale);
