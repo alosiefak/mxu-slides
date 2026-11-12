@@ -88,9 +88,6 @@ public static class LibrarySorts
     }
 }
 
-/// <summary>A folder and the folders inside it, for a folder picker ("Move to Folder ›").</summary>
-public sealed record FolderNode(string Name, string Path, IReadOnlyList<FolderNode> Children);
-
 /// <summary>Where a folder can move: <see cref="LibraryFolders.MoveTargets"/>.</summary>
 public sealed record FolderMoveTargets(bool TopLevel, string Current, IReadOnlyList<string> Folders)
 {
@@ -253,61 +250,5 @@ public sealed record FolderMove(IReadOnlyList<FolderMove.Refile> Refiles, IReadO
     public static FolderMove None { get; } = new([], [], false);
 }
 
-/// <summary>
-/// Clicking rows in a list that holds several selected: a plain click picks one, Ctrl+click adds or
-/// removes one, Shift+click takes everything from the anchor to the click. Port of the Mac's
-/// <c>ListMultiSelect</c> (⌘ is Ctrl here, ⇧ is Shift).
-/// </summary>
-public static class ListMultiSelect
-{
-    public enum Gesture
-    {
-        Replace,
-        Toggle,
-        Extend,
-    }
-
-    public sealed record State(IReadOnlySet<string> Selected, string? Anchor)
-    {
-        public static State Empty { get; } = new(new HashSet<string>(StringComparer.Ordinal), null);
-    }
-
-    public static State Click(string id, Gesture gesture, IReadOnlyList<string> order, State state)
-    {
-        switch (gesture)
-        {
-            case Gesture.Toggle:
-            {
-                var selected = new HashSet<string>(state.Selected, StringComparer.Ordinal);
-                if (!selected.Add(id)) selected.Remove(id);
-                return new State(selected, id);
-            }
-            case Gesture.Extend:
-            {
-                var clicked = IndexOf(order, id);
-                if (clicked < 0) return state;
-                var anchor = state.Anchor is { } a && IndexOf(order, a) is var at && at >= 0 ? at : clicked;
-                var selected = new HashSet<string>(state.Selected, StringComparer.Ordinal);
-                for (var i = Math.Min(anchor, clicked); i <= Math.Max(anchor, clicked); i++) selected.Add(order[i]);
-                // Shift never moves the anchor, so a second Shift+click spans from the same row.
-                return new State(selected, state.Anchor ?? id);
-            }
-            default:
-                return new State(new HashSet<string>([id], StringComparer.Ordinal), id);
-        }
-    }
-
-    /// <summary>
-    /// What a right-click acts on (the Finder's rule): the whole selection, in list order, when the
-    /// clicked row is part of a selection of several; otherwise just the clicked row.
-    /// </summary>
-    public static IReadOnlyList<string> Batch(string clicked, IReadOnlySet<string> selection, IReadOnlyList<string> order) =>
-        selection.Count > 1 && selection.Contains(clicked) ? order.Where(selection.Contains).ToList() : [clicked];
-
-    private static int IndexOf(IReadOnlyList<string> order, string id)
-    {
-        for (var i = 0; i < order.Count; i++)
-            if (order[i] == id) return i;
-        return -1;
-    }
-}
+// ListMultiSelect (clicking rows in a list that holds several selected) is in RunOrderSelection.cs;
+// FolderNode is in FolderTree.cs. Both are ports of one Mac type that two areas share.

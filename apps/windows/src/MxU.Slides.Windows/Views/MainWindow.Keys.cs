@@ -110,8 +110,7 @@ public partial class MainWindow
             case KeyCommand.NewService: model.NewServiceCommand.Execute(null); break;
             case KeyCommand.ImportFiles: Import_Click(this, new System.Windows.RoutedEventArgs()); break;
             case KeyCommand.FindInLibrary:
-                LibrarySearchBox.Focus();
-                LibrarySearchBox.SelectAll();
+                LibraryPanelView.FocusSearch();
                 break;
             case KeyCommand.OpenBible: model.OpenBibleCommand.Execute(null); break;
             case KeyCommand.ModePresent: model.IsEditing = false; break;

@@ -269,8 +269,8 @@ public sealed partial class SelfTest
         await Delay(300);
         var at = model.Live?.Occurrence;
         var steps = model.Show.SlideAnimationStep;
-        window.LibrarySearchBox.Focus();
-        if (Keyboard.FocusedElement != window.LibrarySearchBox) Skip("→ while typing in a box doesn't move the show", "the window doesn't have the keyboard");
+        window.LibraryPanelView.SearchBox.Focus();
+        if (Keyboard.FocusedElement != window.LibraryPanelView.SearchBox) Skip("→ while typing in a box doesn't move the show", "the window doesn't have the keyboard");
         else if (PresentationSource.FromVisual(window) is { } source)
         {
             window.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Right) { RoutedEvent = Keyboard.PreviewKeyDownEvent });

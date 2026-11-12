@@ -19,7 +19,7 @@ public partial class MainWindow
         // This window's saves are undone in the main scope; each editor window has its own.
         UndoWindows.AttachMain(this, model.UndoScope);
         // Drag and drop: slides, the bins, files from Explorer (Views/EditorDragDrop.cs).
-        EditorDragDrop.Attach(this, model, SlideGrid, Filmstrip, CanvasEditor, LibraryList, ImportFiles);
+        EditorDragDrop.Attach(this, model, SlideGrid, Filmstrip, CanvasEditor, LibraryPanelView.LibraryList, ImportFiles);
         ServiceList.DragLeave += (_, _) => EditorDragDrop.ServiceDragLeave(ServiceList);
     }
 
