@@ -4,6 +4,7 @@
         xmlns:vm="clr-namespace:MxU.Slides.Windows.ViewModels"
         xmlns:r="clr-namespace:MxU.Slides.Windows.Rendering"
         xmlns:v="clr-namespace:MxU.Slides.Windows.Views"
+        xmlns:n="clr-namespace:MxU.Slides.Windows.Views.Notes"
         Title="MxU Slides" Width="1440" Height="900" MinWidth="1100" MinHeight="680"
         Icon="/Assets/AppIcon.ico" WindowStartupLocation="CenterScreen">
     <Window.Resources>
@@ -26,6 +27,8 @@
                         <v:MediaBadge Compact="True" Text="{Binding MissingMedia}" Detail="{Binding MissingMedia}" />
                         <!-- What the slide does when it goes live; a pause over a badge names it (Views/TileActionBadges.cs) -->
                         <v:TileActionBadges Slide="{Binding Slide}" />
+                        <!-- Changes waiting from the note that made this slide (Views/Notes/NoteTileBadges.cs). -->
+                        <n:NoteTileBadges Update="{Binding NoteUpdate}" Adds="{Binding NoteAdds}" Clicked="NoteBadge_Click" />
                     </Grid>
                     <Grid Background="{Binding GroupBrush}" Height="22">
                         <Grid.ColumnDefinitions>
@@ -106,6 +109,9 @@
                         <TextBlock Text="Import" />
                     </StackPanel>
                 </Button>
+                <!-- Notes: a sermon outline pasted or imported, and Make Slides from it (Views/Notes). -->
+                <Button x:Name="NotesButton" DockPanel.Dock="Left" Content="Notes" Margin="0,0,6,0" Click="Notes_Click"
+                        ToolTip="Notes: paste or import a sermon outline and make slides from it" />
                 <Button DockPanel.Dock="Left" Command="{Binding OpenBibleCommand}" ToolTip="Bible: type a reference and put it on screen (Ctrl+B)" Margin="0,0,6,0">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock FontFamily="{StaticResource Icons}" Text="&#xE82D;" Margin="0,0,6,0" VerticalAlignment="Center" />
@@ -166,6 +172,7 @@
 
         <!-- Notices -->
         <StackPanel Grid.Row="1">
+            <f:FollowBanner xmlns:f="clr-namespace:MxU.Slides.Windows.Views.Follow" /><!-- Backing up another computer (Views/Follow) -->
             <Border Background="#1E3A5F" Padding="12,6" Visibility="{Binding Notice, Converter={StaticResource VisibleWhenSet}}">
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Command="{Binding DismissNoticeCommand}" Content="Dismiss" />

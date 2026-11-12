@@ -18,7 +18,8 @@ public sealed class ThisComputer
     public string Id { get; set; } = Guid.NewGuid().ToString("D").ToUpperInvariant();
 
     /// <summary>The name other computers see beside the version it runs ("Version 2 — BOOTH-PC").</summary>
-    public string Name => Environment.MachineName;
+    /// <remarks>MXU_SLIDES_COMPUTER_NAME names it otherwise (the self-test's second copy, a backup on the same PC).</remarks>
+    public string Name => Environment.GetEnvironmentVariable("MXU_SLIDES_COMPUTER_NAME") is { Length: > 0 } named ? named : Environment.MachineName;
 
     /// <summary>The name of the version picked last, so next week's service runs its "11am" too until another is picked.</summary>
     public string? RememberedVersionName { get; set; }

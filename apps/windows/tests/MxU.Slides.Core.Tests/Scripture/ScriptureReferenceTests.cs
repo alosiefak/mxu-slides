@@ -60,4 +60,26 @@ public class ScriptureReferenceTests
         Assert.Null(ScriptureReference.SplitText("We read Psalm 23 together"));
         Assert.Null(ScriptureReference.SplitText("Grace upon grace"));
     }
+
+    [Fact]
+    public void APassageCutsAtTheVerseNumbersItsReferenceNames()
+    {
+        Assert.Equal(("Hebrews 12", 27, 28), ScriptureReference.VersesOf("Hebrews 12:27–28 (WEB)"));
+        Assert.Equal(("1 John 4", 8, 8), ScriptureReference.VersesOf("1 John 4:8"));
+        Assert.True(ScriptureReference.VersesOf("Psalm 23") is null && ScriptureReference.VersesOf("Mark 5:3-6:1") is null);
+
+        var text = "He rose after 3 days. 2 Then he said\n3 Go.";
+        Assert.Equal([new ScriptureReference.Verse(null, "He rose after 3 days."), new ScriptureReference.Verse(2, "Then he said"), new ScriptureReference.Verse(3, "Go.")],
+            ScriptureReference.VersesIn(text, 1, 3));
+        Assert.Equal([new ScriptureReference.Verse(null, "No numbers here")], ScriptureReference.VersesIn("No numbers here", 4, 5));
+        Assert.Equal("This phrase\nTherefore 3 days", ScriptureReference.RemovingVerseNumbers("27 This phrase\n28 Therefore 3 days", 27, 28));
+        Assert.Equal("4 Rejoice", new ScriptureReference.Verse(4, "Rejoice").Numbered);
+    }
+
+    [Fact]
+    public void AReferenceThenASpacedDashLeadsTheVerseAndWEBIsATranslation()
+    {
+        Assert.Equal(new ScriptureReference.Split("God is our refuge", "Psalm 46:1"), ScriptureReference.SplitText("Psalm 46:1 – God is our refuge"));
+        Assert.True(ScriptureReference.IsReferenceLine("Hebrews 12:27–28 (WEB)"));
+    }
 }

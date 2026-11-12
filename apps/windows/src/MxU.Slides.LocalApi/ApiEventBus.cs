@@ -3,7 +3,8 @@ using System.Threading.Channels;
 namespace MxU.Slides.LocalApi;
 
 /// <summary>A WebSocket channel. Each pushes the same shape as its REST snapshot.</summary>
-public enum ApiTopic { Show, Timers, Audio, Transport, Outputs, Library, Scheduler, Timecode }
+/// <remarks>Fires (MxU PR #12) is no snapshot: one message per fire, for a backup computer to follow.</remarks>
+public enum ApiTopic { Show, Timers, Audio, Transport, Outputs, Library, Scheduler, Timecode, Fires }
 
 public static class ApiTopics
 {

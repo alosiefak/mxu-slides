@@ -57,7 +57,7 @@ internal sealed record RtfParagraphStyle(double FirstLineHeadIndent = 0, double 
 /// <summary>The attributes the mapper reads from <c>NSAttributedString(rtf:)</c>.</summary>
 internal sealed record RtfAttributes(
     string FontName, double FontSize, RtfColor? Foreground, RtfColor? Background,
-    double Kern, int Underline, int Strikethrough, RtfParagraphStyle Paragraph);
+    double Kern, int Underline, int Strikethrough, RtfParagraphStyle Paragraph, bool Bold = false, bool Italic = false);
 
 /// <summary>Plain text plus maximal runs of identical attributes, like an <c>NSAttributedString</c>.</summary>
 internal sealed class AttributedText(string text, IReadOnlyList<AttributedText.Run> runs)
@@ -73,7 +73,7 @@ internal sealed class AttributedText(string text, IReadOnlyList<AttributedText.R
 
     public IReadOnlyList<Run> Runs { get; } = runs;
 
-    public static AttributedText? FromRtf(ReadOnlySpan<byte> data) => RtfReader.Read(data);
+    public static AttributedText? FromRtf(ReadOnlySpan<byte> data, bool weights = false) => RtfReader.Read(data, weights);
 
     public RtfAttributes AttributesAt(int index)
     {

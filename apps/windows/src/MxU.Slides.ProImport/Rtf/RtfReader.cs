@@ -10,13 +10,15 @@ namespace MxU.Slides.ProImport.Rtf;
 /// </summary>
 internal static class RtfReader
 {
-    public static AttributedText? Read(ReadOnlySpan<byte> data)
+    /// <param name="weights">Also keep bold and italic (RTF's b and i words) on the runs, for notes read from Word's RTF.
+    /// Off for ProPresenter's text, whose weight is in its font names, so that stays as the Mac reads it.</param>
+    public static AttributedText? Read(ReadOnlySpan<byte> data, bool weights = false)
     {
         if (data.Length == 0) return null;
         var start = 0;
         while (start < data.Length && data[start] is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n') start++;
         if (!data[start..].StartsWith("{\\rtf"u8)) return null;
-        return new Parser(data[start..].ToArray()).Parse();
+        return new Parser(data[start..].ToArray(), weights).Parse();
     }
 
     private enum Destination { Text, Skip, FontTable, ColorTable, ExpandedColorTable }
@@ -37,12 +39,15 @@ internal static class RtfReader
         public double FirstIndent;
         public double RightIndent;
         public int UnicodeSkip;
+        public bool Bold;
+        public bool Italic;
     }
 
     private readonly record struct CharAttributes(
-        int Font, double FontSize, int Foreground, int Background, double Kern, int Underline, int Strikethrough);
+        int Font, double FontSize, int Foreground, int Background, double Kern, int Underline, int Strikethrough,
+        bool Bold = false, bool Italic = false);
 
-    private sealed class Parser(byte[] data)
+    private sealed class Parser(byte[] data, bool weights)
     {
         private readonly Stack<GroupState> stack = new();
         private GroupState state = new() { Destination = Destination.Text, Font = -1, FontSize = 12, UnicodeSkip = 1 };
@@ -278,6 +283,8 @@ internal static class RtfReader
                     break;
                 case "ulnone": state.Underline = 0; break;
                 case "strike" or "striked": state.Strikethrough = parameter == 0 ? 0 : 1; break;
+                case "b": state.Bold = weights && parameter != 0; break;
+                case "i": state.Italic = weights && parameter != 0; break;
                 case "plain":
                     state.Font = defaultFont;
                     state.FontSize = 12;
@@ -286,6 +293,8 @@ internal static class RtfReader
                     state.Kern = 0;
                     state.Underline = 0;
                     state.Strikethrough = 0;
+                    state.Bold = false;
+                    state.Italic = false;
                     break;
                 case "pard":
                     state.LeftIndent = 0;
@@ -397,7 +406,8 @@ internal static class RtfReader
             }
             if (value.Length == 0) return;
             var attributes = new CharAttributes(
-                state.Font, state.FontSize, state.Foreground, state.Background, state.Kern, state.Underline, state.Strikethrough);
+                state.Font, state.FontSize, state.Foreground, state.Background, state.Kern, state.Underline, state.Strikethrough,
+                state.Bold, state.Italic);
             var start = text.Length;
             text.Append(value);
             trailingIndents = (state.LeftIndent, state.FirstIndent, state.RightIndent);
@@ -448,7 +458,7 @@ internal static class RtfReader
                 var a = charRuns[charIndex].Attributes;
                 var attributes = new RtfAttributes(
                     FontName(a.Font), a.FontSize, Color(a.Foreground), Color(a.Background),
-                    a.Kern, a.Underline, a.Strikethrough, paragraphs[paragraphIndex].Style);
+                    a.Kern, a.Underline, a.Strikethrough, paragraphs[paragraphIndex].Style, a.Bold, a.Italic);
                 if (runs.Count > 0 && runs[^1].Attributes == attributes)
                     runs[^1] = runs[^1] with { Length = runs[^1].Length + end - at };
                 else

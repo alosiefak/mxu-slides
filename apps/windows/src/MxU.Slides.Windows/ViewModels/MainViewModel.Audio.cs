@@ -7,6 +7,7 @@ using MxU.Slides.Audio.Control;
 using MxU.Slides.Audio.Library;
 using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Model;
+using MxU.Slides.LocalApi;
 using MxU.Slides.Windows.Infrastructure;
 
 namespace MxU.Slides.Windows.ViewModels;
@@ -76,6 +77,7 @@ public sealed partial class MainViewModel
     /// <summary>Plays an audio file; <paramref name="repeatOverride"/> true repeats it.</summary>
     private void PlayAudio(AudioItem item, bool? repeatOverride)
     {
+        Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.AudioItem, Id = item.Id });
         try { Audio.Play(item, repeatOverride); }
         catch (AudioEngineException ex) { Problem = $"Couldn't play \"{item.Name}\": {ex.Message}"; }
         UpdateNowPlaying();
@@ -84,6 +86,7 @@ public sealed partial class MainViewModel
     /// <summary>Plays a playlist from an entry (null: its first).</summary>
     private void PlayAudioPlaylist(Playlist playlist, string? startAtEntryId, bool? repeatOverride)
     {
+        Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.AudioPlaylist, Id = playlist.Id, EntryId = startAtEntryId });
         try { Audio.Play(playlist, startAtEntryId, repeatOverride); }
         catch (AudioEngineException ex) { Problem = $"Couldn't play \"{playlist.Name}\": {ex.Message}"; }
         UpdateNowPlaying();
@@ -96,8 +99,8 @@ public sealed partial class MainViewModel
         if (tile is null) return;
         if (tile.IsPlaying)
         {
-            if (tile.Playlist is { } playing) Audio.StopPlaylist(playing.Id);
-            else if (tile.Item is { } item) Audio.StopAudioItem(item.Id);
+            if (tile.Playlist is { } playing) StopMusic(new ApiAudioStopCommand(PlaylistId: playing.Id));
+            else if (tile.Item is { } item) StopMusic(new ApiAudioStopCommand(AudioItemId: item.Id));
         }
         else if (tile.Playlist is { } playlist) PlayAudioPlaylist(playlist, null, null);
         else if (tile.Item is { } item) PlayAudio(item, null);
@@ -105,18 +108,33 @@ public sealed partial class MainViewModel
     }
 
     [RelayCommand]
-    private void MusicPlayPause() => Audio.Transport(AudioTransportAction.PlayPause);
+    private void MusicPlayPause() => MusicTransport(AudioTransportAction.PlayPause, "playPause");
 
     [RelayCommand]
-    private void MusicNext() => Audio.Transport(AudioTransportAction.Next);
+    private void MusicNext() => MusicTransport(AudioTransportAction.Next, "next");
 
     [RelayCommand]
-    private void MusicPrevious() => Audio.Transport(AudioTransportAction.Previous);
+    private void MusicPrevious() => MusicTransport(AudioTransportAction.Previous, "previous");
+
+    private void MusicTransport(AudioTransportAction action, string wire)
+    {
+        Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.AudioTransport, AudioTransport = new ApiAudioTransportCommand(wire) });
+        Audio.Transport(action);
+    }
+
+    /// <summary>Stops one playlist or song (or all music), told to a backup computer.</summary>
+    private void StopMusic(ApiAudioStopCommand command)
+    {
+        Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.StopAudio, AudioStop = command });
+        if (command.PlaylistId is { } playlist) Audio.StopPlaylist(playlist);
+        else if (command.AudioItemId is { } item) Audio.StopAudioItem(item);
+        else Audio.Stop();
+    }
 
     [RelayCommand]
     private void MusicStop()
     {
-        Audio.Stop();
+        StopMusic(new ApiAudioStopCommand());
         UpdateNowPlaying();
     }
 

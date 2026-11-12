@@ -1,3 +1,4 @@
+using MxU.Slides.LocalApi;
 using System.Globalization;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -274,8 +275,12 @@ public sealed partial class MainViewModel
     {
         if (transportTargetId is not { } id || LivePlayerKey(id) is not { } key || LiveTransport(id) is not { } state) return;
         if (state.IsFinished(DateTimeOffset.Now)) TransportSeek(0);
-        else if (state.IsPlaying) Media.Pause(key);
-        else Media.Play(key);
+        else
+        {
+            Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.MediaTransport, Id = id, MediaTransport = new ApiMediaTransportCommand(state.IsPlaying ? "pause" : "resume") });
+            if (state.IsPlaying) Media.Pause(key);
+            else Media.Play(key);
+        }
         RefreshTransport();
     }
 
@@ -295,6 +300,7 @@ public sealed partial class MainViewModel
     {
         if (transportTargetId is not { } id || LivePlayerKey(id) is not { } key || LiveTransport(id) is not { } state) return;
         var pass = Math.Clamp(seconds, 0, state.Duration);
+        Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.MediaTransport, Id = id, MediaTransport = new ApiMediaTransportCommand("seek", pass) });
         Media.Seek(key, TimeSpan.FromSeconds(pass));
         endedPlayers.Remove(key);
         RefreshTransport();

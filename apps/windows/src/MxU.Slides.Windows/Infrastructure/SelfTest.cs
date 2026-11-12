@@ -279,6 +279,8 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await Section("Editing", EditingCheck);
             await Section("LibraryDepth", LibraryDepthCheck);
             await Section("OperatorDepth", OperatorDepthCheck);
+            await Section("Notes", NotesCheck);
+            await Section("Backup", BackupCheck);
         }
         catch (Exception ex)
         {

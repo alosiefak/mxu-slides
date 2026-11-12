@@ -304,7 +304,8 @@ public sealed partial class MainViewModel : IApiBridge
     /// </summary>
     void IApiBridge.FireAlert(ApiFireAlertCommand command)
     {
-        if (command.PresetId is { } presetId)
+        // An alert a booth typed (not one of its presets) comes with its own id and its message: that fires as the message.
+        if (command.PresetId is { } presetId && (Library.Get<AlertPreset>(presetId) is not null || command.Message is not { Length: > 0 }))
         {
             var preset = Library.Get<AlertPreset>(presetId) ?? throw ApiError.NotFound($"No alert preset '{presetId}'.");
             ShowAlertPreset(preset, command.Tokens, command.Message);
@@ -313,7 +314,7 @@ public sealed partial class MainViewModel : IApiBridge
         if (command.Message is not { Length: > 0 } message) throw ApiError.BadRequest("Provide 'presetId' or 'message'.");
         var behavior = AlertBehaviorJsonConverter.TryParse(command.Behavior, out var b) ? b : AlertBehavior.Persist;
         var target = Core.Model.AlertTargetJsonConverter.TryParse(command.Target, out var t) ? t : Core.Model.AlertTarget.Confidence;
-        FireAlert(LibraryStore.NewId(), message, behavior, target, command.ThemeId);
+        FireAlert(command.PresetId ?? LibraryStore.NewId(), message, behavior, target, command.ThemeId);
     }
 
     void IApiBridge.DismissAlert() => ClearAlertsCommand.Execute(null);
@@ -360,6 +361,7 @@ public sealed partial class MainViewModel : IApiBridge
         var key = entry.Value is null ? null : $"live:live-media-{entry.Key.Raw()}:{id}";
         if (key is null || Media.Transport(key) is not { } transport)
             throw ApiError.NotFound($"No playing video '{id}'. GET /v1/transport lists them.");
+        Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.MediaTransport, Id = id, MediaTransport = command });
         switch (command.Action)
         {
             case "toggle": if (transport.Playing) Media.Pause(key); else Media.Play(key); break;
@@ -376,7 +378,7 @@ public sealed partial class MainViewModel : IApiBridge
     }
 
     ApiAudioStatus IApiBridge.AudioStatus() =>
-        new([.. Audio.Status().Select(b => new ApiAudioBus(b.PlaylistId, b.AudioItemId, b.TrackName, b.Playing, b.Position, b.Duration))]);
+        new([.. Audio.Status().Select(b => new ApiAudioBus(b.PlaylistId, b.AudioItemId, b.TrackName, b.Playing, b.Position, b.Duration, b.EntryId))]);
 
     void IApiBridge.FireAudioPlaylist(string id, string? startAtEntryId) =>
         PlayAudioPlaylist(Library.Get<Playlist>(ApiIds.Validated(id)) ?? throw ApiError.NotFound($"No playlist '{id}'."), startAtEntryId, null);
@@ -386,9 +388,7 @@ public sealed partial class MainViewModel : IApiBridge
 
     void IApiBridge.StopAudio(ApiAudioStopCommand command)
     {
-        if (command.PlaylistId is { } playlist) Audio.StopPlaylist(playlist);
-        else if (command.AudioItemId is { } item) Audio.StopAudioItem(item);
-        else Audio.Stop();
+        StopMusic(command);
         UpdateNowPlaying();
     }
 
@@ -396,6 +396,7 @@ public sealed partial class MainViewModel : IApiBridge
     {
         var action = AudioController.ParseTransportAction(command.Action)
             ?? throw ApiError.BadRequest($"Unknown action '{command.Action}'. Actions: playPause, next, previous, seek.");
+        Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.AudioTransport, AudioTransport = command });
         try { Audio.Transport(action, command.Position); }
         catch (InvalidOperationException ex) { throw ApiError.BadRequest(ex.Message); }
     }

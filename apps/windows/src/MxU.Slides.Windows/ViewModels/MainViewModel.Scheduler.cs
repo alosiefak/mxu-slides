@@ -71,10 +71,17 @@ public sealed partial class MainViewModel : ISchedulerHost
 
     TimerSnapshot? ISchedulerHost.Timer(string id) => Timers.Snapshot(id);
 
-    void ISchedulerHost.Run(IReadOnlyList<SlideAction> actions) => Actions.Execute(actions);
+    void ISchedulerHost.Run(IReadOnlyList<SlideAction> actions)
+    {
+        // A backup's triggers wait while it follows its booth (MainViewModel.Follow.cs).
+        if (!HeldWhileFollowing("a schedule trigger")) ApiFireSource.With(new ApiFireSource(ApiFireSource.Kinds.Scheduler), () => Actions.Execute(actions));
+    }
 
     // Naming the trigger lets its production steps (Windows only) run beside its actions.
-    void ISchedulerHost.Run(string triggerId, IReadOnlyList<SlideAction> actions) => Actions.Execute(triggerId, actions);
+    void ISchedulerHost.Run(string triggerId, IReadOnlyList<SlideAction> actions)
+    {
+        if (!HeldWhileFollowing($"trigger {triggerId}")) ApiFireSource.With(new ApiFireSource(ApiFireSource.Kinds.Scheduler), () => Actions.Execute(triggerId, actions));
+    }
 
     void ISchedulerHost.Archive(string triggerId)
     {

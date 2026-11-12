@@ -8,6 +8,7 @@ using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Outputs;
 using MxU.Slides.Core.Scene;
 using MxU.Slides.Core.Threading;
+using MxU.Slides.LocalApi;
 using MxU.Slides.Windows.Infrastructure;
 using MxU.Slides.Windows.Outputs;
 using MxU.Slides.Windows.Rendering;
@@ -66,12 +67,15 @@ public sealed partial class MainViewModel
     private bool fireSettled;
 
     /// <param name="runActions">False when a timeline jumps (lands on a slide without running its actions, as on the Mac).</param>
-    private void Fire(Presentation presentation, string? arrangementId, int occurrence, string? itemId, bool runActions = true)
+    /// <param name="landing">True when a slide that waited for a hand-off lands (a backup was told when it fired).</param>
+    private void Fire(Presentation presentation, string? arrangementId, int occurrence, string? itemId, bool runActions = true, bool landing = false)
     {
         SettlePending();
         var arranged = SlideSceneBuilder.ArrangedSlides(presentation, arrangementId);
         if (occurrence < 0 || occurrence >= arranged.Count) return;
         var slide = arranged[occurrence];
+        // For a backup computer: the slide, and everything its actions do as its effects (MainViewModel.Follow.cs).
+        using var effects = landing ? null : FiredSlide(presentation, slide, arrangementId, itemId, occurrence, fireSettled, runActions);
 
         // The hand-off, as on the Mac: a look that goes away with this slide (its preset drops it, the
         // slide needs another of its designs, or the slide is blank) plays its Outs first, while every
@@ -87,7 +91,7 @@ public sealed partial class MainViewModel
             Defer(handoff.Wait, () =>
             {
                 fireSettled = settled;
-                try { Fire(presentation, arrangementId, occurrence, itemId, runActions); }
+                try { Fire(presentation, arrangementId, occurrence, itemId, runActions, landing: true); }
                 finally { fireSettled = false; }
             });
             return;
@@ -174,6 +178,7 @@ public sealed partial class MainViewModel
     {
         if (!skipBuilds && (direction > 0 ? Show.AdvanceStep() : Show.UnadvanceStep()))
         {
+            Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.Step, Steps = direction > 0 ? 1 : -1 });
             RenderOutputs(SceneTransition.Cut, refreshOnly: true);
             UpdateBuildLabel();
             // A slide that advances by itself starts counting once its last build has played.
@@ -289,6 +294,7 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private void ClearAll()
     {
+        Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.ClearAll });
         Actions.CancelPendingDelayedActions();
         var swept = ClearAllScope.Swept(ClearAllSkips);
         // A timeline would put its next slide straight back up; music and stems only go when Music is ticked.
@@ -304,30 +310,32 @@ public sealed partial class MainViewModel
 
     // Slides and overlays with Out animations play them on the way off (Clear All always cuts).
     [RelayCommand]
-    private void ClearSlide() => Clear(() => Show.Clear(ShowFunction.Slides, ShowState.HostClock()));
+    private void ClearSlide() => Clear(() => Show.Clear(ShowFunction.Slides, ShowState.HostClock()), fired: "slides");
 
     [RelayCommand]
-    private void ClearMedia() => Clear(() => Show.Clear(ShowFunction.Media));
+    private void ClearMedia() => Clear(() => Show.Clear(ShowFunction.Media), fired: "media");
 
     [RelayCommand]
-    private void ClearOverlays() => Clear(() => Show.Clear(ShowFunction.Overlays, ShowState.HostClock()));
+    private void ClearOverlays() => Clear(() => Show.Clear(ShowFunction.Overlays, ShowState.HostClock()), fired: "overlays");
 
     [RelayCommand]
     private void ClearAudio()
     {
         timeline?.ClearTracks();
         audio?.Stop();
-        Clear(() => Show.Clear(ShowFunction.Audio));
+        Clear(() => Show.Clear(ShowFunction.Audio), fired: "audio");
         UpdateNowPlaying();
     }
 
     // A themed alert with Outs plays them on the way off, as on the Mac.
     [RelayCommand]
-    private void ClearAlerts() => Clear(() => Show.Clear(ShowFunction.Alerts, ShowState.HostClock()));
+    private void ClearAlerts() => Clear(() => Show.Clear(ShowFunction.Alerts, ShowState.HostClock()), fired: "alerts");
 
     /// <param name="settle">False for the ticker tidying up after Outs finish (that never cuts through a waiting hand-off).</param>
-    private void Clear(Action clear, bool settle = true)
+    /// <param name="fired">The function an operator cleared ("slides", "media"…), told to a backup computer.</param>
+    private void Clear(Action clear, bool settle = true, string? fired = null)
     {
+        if (fired is not null) Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.Clear, Clear = new ApiClearCommand(Function: fired) });
         // A clear cuts through a waiting hand-off, as on the Mac.
         if (settle) SettlePending();
         clear();
@@ -508,6 +516,7 @@ public sealed partial class MainViewModel
     public void ActivateOutputPreset(OutputPreset? preset)
     {
         if (Outputs is not { } outputs) return;
+        Fired(new ApiFireEvent { Kind = ApiFireEvent.Kinds.OutputPreset, Id = preset?.Id });
         SettlePending();
         void Activate()
         {

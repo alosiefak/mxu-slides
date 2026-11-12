@@ -99,7 +99,7 @@ public sealed class AudioPlayer
         PlaylistId is { } id ? library.Playlist(id)?.Name ?? "Playlist" : CurrentTrackName ?? "Music");
 
     /// <summary>The ApiAudioBus shape.</summary>
-    public AudioBusStatus Status => owner.Run(() => new AudioBusStatus(PlaylistId, SingleItemId, CurrentTrackName, IsPlaying, Elapsed, Duration));
+    public AudioBusStatus Status => owner.Run(() => new AudioBusStatus(PlaylistId, SingleItemId, CurrentTrackName, IsPlaying, Elapsed, Duration, PlaylistId is null ? null : CurrentEntryId));
 
     internal (string? PlaylistId, string? AudioItemId) Cue => (PlaylistId, SingleItemId);
 

@@ -320,6 +320,7 @@ public static partial class ApiRouteTable
             }, Ref("AddServiceItemCommand"));
 
         // Windows only (ApiRouteTable.Windows.cs): production control.
+        AddFollowRoutes(routes, bridge);
         AddWindowsRoutes(routes, bridge);
         return routes;
     }
