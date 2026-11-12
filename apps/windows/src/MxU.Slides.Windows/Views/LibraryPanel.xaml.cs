@@ -85,6 +85,8 @@ public partial class LibraryPanel : UserControl
             LibraryList.SelectedItems.Add(row);
         if (pickedIds.Count <= 1 && model.SelectedLibraryEntry is { } open && !LibraryList.SelectedItems.Contains(open))
             LibraryList.SelectedItems.Add(open);
+        // What's gone from the list (deleted, or out of this view) is no longer picked.
+        pickedIds = PickedPresentationIds().ToHashSet(StringComparer.Ordinal);
         restoring = false;
         ShowPicked();
     }
