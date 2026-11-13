@@ -504,7 +504,7 @@ public sealed partial class MainViewModel
             if (await done.Task is { } failed) throw new InvalidOperationException(failed);
             lock (heard) return [.. heard.OrderBy(h => h.At)];
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException or System.ComponentModel.Win32Exception)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException or System.ComponentModel.Win32Exception or ArgumentException or NotSupportedException or FormatException)
         {
             throw new InvalidOperationException($"That file's sound couldn't be read: {e.Message}", e);
         }

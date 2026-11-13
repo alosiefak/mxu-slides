@@ -393,14 +393,14 @@ summary is only as good as the transcript under it, so both need a person's read
 
 ## What was tested, and how
 
-- **Stage 2: 17 more unit tests** (`StageTwoTests.cs`, 100 in all) and **24 more self-test
+- **Stage 2: 17 more unit tests** (`StageTwoTests.cs`, 100 in all) and **23 more self-test
   checks** with pictures 151 to 163 (`SelfTest.AssistantTasks.cs`), again with the stand-in
   server. They cover: a typed request held ready, done on Enter, forgotten on Esc, and an
   invented id refused; a bulletin read with and without AI and saved as a service; the report
   made from real fires with no request sent; the checks finding and fixing the planted faults;
   the pictures really being in the second-look request and not in the log; the scripture slide
   never sent and never changed; captions heard from a synthetic voice and shown on the audience
-  scene; a recording transcribed through the real decoder and worker; a false quote dropped.
+  scene; a recording transcribed through the real decoder and worker; a false quote dropped. The full self-test passed with them: 1,073 checks, none failed or skipped.
 - **83 unit tests** in `tests/MxU.Slides.Assistant.Tests`, against the stand-in server: what a
   request carries; the key in a header and never in an address or the log; each failure's words;
   retries; cancel; no network; the schemas' values; a tampered verse; tampered lyrics;
