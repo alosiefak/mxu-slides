@@ -193,6 +193,21 @@ public sealed class OpenerVideoTests : IDisposable
         Assert.True(side is { R: > 40 and < 200, B: < 60 }, $"blurred backdrop {side}");
         var three = Draw(plan, Middle(2));
         Assert.True(At(three, 10, 10) is { G: > 120, R: < 80 }, $"clip corner {At(three, 10, 10)}");
+        // A full-size frame is drawn in bands on several threads: the bands meet without a seam (a
+        // flat blue photo is the same blue in every row, and the motion background has no step at a join).
+        using (var crew = new RenderCrew("Opener bands", 3))
+        using (var big = new LottieFrame(1280, 720))
+        {
+            using var renderer = new OpenerRenderer(plan, 1280, 720, crew, Fonts);
+            renderer.Render(Middle(0), big);
+            for (var y = 0; y < 720; y++)
+                Assert.True(big.Pixels[(y * 1280 + 100) * 4] > 200 && big.Pixels[(y * 1280 + 100) * 4 + 2] < 60, $"row {y} of the photo isn't blue");
+            using var bumper = new OpenerRenderer(OpenerPlan.For(OpenerRecipe.For(OpenerKind.Bumper) with { Title = "", Subtitle = "" }), 1280, 720, crew, Fonts);
+            bumper.Render(120, big);
+            for (var y = 1; y < 720; y++)
+                Assert.True(Math.Abs(big.Pixels[(y * 1280 + 100) * 4] - big.Pixels[((y - 1) * 1280 + 100) * 4]) < 24, $"the background steps at row {y}");
+        }
+
         // A missing picture doesn't stop the montage: its shot is simply black.
         var holed = OpenerPlan.For(recipe with { Shots = [Path.Combine(scratch, "gone.jpg")] });
         Assert.Equal(0, Brightest(Draw(holed, 45)));
@@ -279,6 +294,21 @@ public sealed class OpenerVideoTests : IDisposable
         }
         Save("bumper-logo", OpenerRecipe.For(OpenerKind.Bumper) with { Picture = photo }, 4);
         Save("bumper-logo-broadcast", OpenerRecipe.For(OpenerKind.Bumper) with { Look = "broadcast", Picture = photo }, 4);
+        // And how fast a real one is made on this PC: full size, each kind's own background.
+        var speeds = new List<string>();
+        foreach (var kind in new[] { OpenerKind.Bumper, OpenerKind.Countdown, OpenerKind.Announcements })
+        {
+            var recipe = OpenerRecipe.For(kind) with { Seconds = kind == OpenerKind.Countdown ? 10 : 8, EndTitle = "" };
+            var plan = OpenerPlan.For(recipe);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            OpenerVideoMaker.Render(plan, Path.Combine(folder, $"{kind}.mp4"), Fonts, cancellationToken: Ct);
+            speeds.Add($"{kind} ({plan.Background.Style}): {plan.FrameCount} frames in {clock.Elapsed.TotalSeconds:0.0} s = {plan.FrameCount / clock.Elapsed.TotalSeconds:0.0} fps");
+        }
+        var montagePlan = OpenerPlan.For(OpenerRecipe.For(OpenerKind.Montage) with { Shots = [photo, tall], Seconds = 10 }, new OpenerMusic(10, []));
+        var montageClock = System.Diagnostics.Stopwatch.StartNew();
+        OpenerVideoMaker.Render(montagePlan, Path.Combine(folder, "Montage.mp4"), Fonts, new Clicks(10), cancellationToken: Ct);
+        speeds.Add($"Montage with sound: {montagePlan.FrameCount} frames in {montageClock.Elapsed.TotalSeconds:0.0} s = {montagePlan.FrameCount / montageClock.Elapsed.TotalSeconds:0.0} fps");
+        File.WriteAllLines(Path.Combine(folder, "speeds.txt"), speeds);
         Save("montage", OpenerRecipe.For(OpenerKind.Montage) with { Title = "Summer Camp 2026", Subtitle = "A week to remember", EndTitle = "See you next year", Shots = [photo, tall] }, 2, 5.5, 7.5, 9.5, 12.5);
     }
 }

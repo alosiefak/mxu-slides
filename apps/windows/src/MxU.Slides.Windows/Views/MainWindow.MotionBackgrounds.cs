@@ -35,6 +35,7 @@ public partial class MainWindow
             at = at is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(at) : LogicalTreeHelper.GetParent(at);
         if (at is not FrameworkElement element) return;
         PrepareMotionMenu(element);
+        PrepareOpenerMenu(element);
         PrepareLayerMenu(element);
         PrepareVideoActionsMenu(element);
     }

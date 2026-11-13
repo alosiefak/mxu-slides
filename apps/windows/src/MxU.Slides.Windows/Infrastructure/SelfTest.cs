@@ -282,6 +282,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await Section("Notes", NotesCheck);
             await Section("Backup", BackupCheck);
             await Section("UpstreamCore", UpstreamCoreCheck);
+            await Section("Openers", OpenersCheck);
         }
         catch (Exception ex)
         {

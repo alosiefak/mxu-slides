@@ -76,6 +76,15 @@ public sealed class OpenerPlan
     /// <summary>How long each montage dissolve takes.</summary>
     public double Dissolve { get; }
 
+    /// <summary>A moment that shows the opener at its best, for a still picture of it: the words fully in.</summary>
+    public double HeroSeconds => Recipe.Kind switch
+    {
+        OpenerKind.Bumper => Seconds / 2,
+        OpenerKind.Countdown => Math.Min(3, Recipe.Seconds / 2),
+        OpenerKind.Montage => openCard > 0 ? openCard * 0.55 : Shots.Count > 0 ? (Shots[0].Start + Shots[0].End) / 2 : Seconds / 2,
+        _ => Recipe.CardSeconds * 0.4,
+    };
+
     /// <summary>The motion background's recipe (its loop length is this plan's turn).</summary>
     public MotionRecipe Background => Recipe.BackgroundRecipe(backgroundTurn);
 

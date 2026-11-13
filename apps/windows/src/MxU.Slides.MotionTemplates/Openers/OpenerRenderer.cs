@@ -29,12 +29,14 @@ namespace MxU.Slides.MotionTemplates.Openers;
 public sealed class OpenerRenderer : IDisposable
 {
     private const int KeptSprites = 96;
+    private const int Bands = 12;
 
     private readonly OpenerPlan plan;
     private readonly OpenerLook look;
     private readonly ILottieFonts? fonts;
     private readonly OpenerPictures pictures;
     private readonly bool ownsPictures;
+    private readonly RenderCrew crew;
     private readonly MotionRenderer background;
     private readonly byte[] backgroundPixels;
     private GCHandle backgroundPin;
@@ -52,6 +54,7 @@ public sealed class OpenerRenderer : IDisposable
         this.plan = plan;
         look = plan.Look;
         this.fonts = fonts;
+        this.crew = crew;
         Width = Math.Max(2, width & ~1);
         Height = Math.Max(2, height & ~1);
         this.pictures = pictures ?? new OpenerPictures(Width, Height);
@@ -98,14 +101,15 @@ public sealed class OpenerRenderer : IDisposable
             background.Render(frame.BackgroundPhase, ((grain % plan.FrameCount) + plan.FrameCount) % plan.FrameCount, MotionPixelFormat.Bgra32, backgroundPixels);
             backgroundBitmap.NotifyPixelsChanged();
             using var image = SKImage.FromBitmap(backgroundBitmap);
-            canvas.DrawImage(image, new SKRect(0, 0, Width, Height), new SKSamplingOptions(SKCubicResampler.Mitchell));
+            if (background.Width == Width) canvas.DrawImage(image, 0, 0);
+            else Banded(target, part => part.DrawImage(image, new SKRect(0, 0, Width, Height), new SKSamplingOptions(SKCubicResampler.Mitchell)));
         }
         else
         {
             canvas.Clear(SKColors.Black);
         }
 
-        foreach (var shot in frame.Shots) DrawShot(canvas, shot);
+        foreach (var shot in frame.Shots) DrawShot(target, shot);
         pictures.KeepOnlyClips(frame.Shots.Select(s => s.Path));
         foreach (var card in frame.Cards) DrawCard(canvas, card);
 
@@ -121,10 +125,9 @@ public sealed class OpenerRenderer : IDisposable
 
     private static readonly SKSamplingOptions Smooth = new(SKFilterMode.Linear, SKMipmapMode.None);
 
-    private void DrawShot(SKCanvas canvas, OpenerShot shot)
+    private void DrawShot(LottieFrame target, OpenerShot shot)
     {
         if (shot.Opacity <= 0) return;
-        using var paint = new SKPaint { Color = SKColors.White.WithAlpha(Alpha(shot.Opacity)) };
         if (OpenerPictures.IsVideo(shot.Path))
         {
             if (pictures.ClipFrame(shot.Path, shot.ClipSeconds, out var w, out var h) is not { } pixels) return;
@@ -133,7 +136,7 @@ public sealed class OpenerRenderer : IDisposable
             {
                 clipBitmap.InstallPixels(new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Opaque), handle.AddrOfPinnedObject(), w * 4);
                 using var frame = SKImage.FromBitmap(clipBitmap);
-                Fill(canvas, frame, null, shot, paint);
+                Banded(target, part => Fill(part, frame, null, shot));
             }
             finally
             {
@@ -141,7 +144,37 @@ public sealed class OpenerRenderer : IDisposable
             }
             return;
         }
-        if (pictures.Get(shot.Path) is { } picture) Fill(canvas, picture.Image, picture.Blurred, shot, paint);
+        if (pictures.Get(shot.Path) is { } picture) Banded(target, part => Fill(part, picture.Image, picture.Blurred, shot));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="draw"/> over the whole picture, shared out among the crew's threads.
+    /// Scaling a full-screen picture smoothly is the slow part of a frame on one thread, so a big
+    /// picture is cut into bands and each thread draws one: each band is a canvas of its own over
+    /// the same pixels (as the motion templates draw theirs), shifted so <paramref name="draw"/>
+    /// can draw as if on the whole picture. A small preview isn't worth the handing out.
+    /// </summary>
+    private void Banded(LottieFrame target, Action<SKCanvas> draw)
+    {
+        if (Height < 720)
+        {
+            draw(target.Canvas);
+            return;
+        }
+        target.Canvas.Flush();
+        var rows = (Height + Bands - 1) / Bands;
+        crew.For(Bands, (band, _) =>
+        {
+            var top = band * rows;
+            var height = Math.Min(rows, Height - top);
+            if (height <= 0) return;
+            var part = target.Band(top, height);
+            part.Save();
+            part.Translate(0, -top);
+            draw(part);
+            part.Restore();
+            part.Flush();
+        });
     }
 
     /// <summary>
@@ -150,8 +183,9 @@ public sealed class OpenerRenderer : IDisposable
     /// shown whole over <paramref name="blurred"/>, a blurred copy that fills the screen instead
     /// of black bars.
     /// </summary>
-    private void Fill(SKCanvas canvas, SKImage image, SKImage? blurred, OpenerShot shot, SKPaint paint)
+    private void Fill(SKCanvas canvas, SKImage image, SKImage? blurred, OpenerShot shot)
     {
+        using var paint = new SKPaint { Color = SKColors.White.WithAlpha(Alpha(shot.Opacity)) };
         var cover = Math.Max((double)Width / image.Width, (double)Height / image.Height);
         var contain = Math.Min((double)Width / image.Width, (double)Height / image.Height);
         var whole = contain / cover < 0.67;

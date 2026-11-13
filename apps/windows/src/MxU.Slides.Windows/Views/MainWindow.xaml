@@ -768,6 +768,7 @@
                         <TextBlock Text="Click to show · right-click for options · drop files here" Style="{StaticResource Muted}"
                                    VerticalAlignment="Center" Margin="0,0,12,0" FontSize="11" />
                         <Button Click="MotionBackground_Click" Loaded="MotionBackground_Loaded" Content="Motion background…" Margin="0,0,6,0" ToolTip="Make a seamless looping animated background: aurora, light rays, bokeh, smoke, waves…" />
+                        <Button Click="Opener_Click" Content="Make an opener…" Margin="0,0,6,0" ToolTip="Make a sermon-series bumper, a countdown, a photo montage cut to music or an announcement loop" />
                         <Button Click="VideoInputs_Click" Content="Video inputs…" Margin="0,0,6,0" ToolTip="Cameras, capture cards and NDI sources" />
                         <Button Command="{Binding ImportMediaCommand}" Content="+ Import images &amp; videos" />
                     </StackPanel>
