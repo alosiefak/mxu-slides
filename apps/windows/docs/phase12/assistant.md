@@ -188,9 +188,9 @@ Two things learnt the hard way, both found by the self-test and neither by the f
   busy and nothing was ever heard. The worker now makes the recognizer on a plain thread, which
   has no queue, and results arrive directly.
 
-**What it costs.** In the self-test, with the outputs running, recognition used 2.5 seconds of
-processor time over a 24-second sermon: about 11% of one core, under 1% of this 12-thread laptop.
-The strip in the Bible window shows the live figure both ways.
+**What it costs.** In the self-test, with the outputs running, recognition used 2.5 to 3.9
+seconds of processor time over a 24-second sermon in two runs: 11% to 16% of one core, about 1%
+of this 12-thread laptop. The strip in the Bible window shows the live figure both ways.
 
 **Two listeners on one sound.** Free dictation is weak at chapter and verse: it wrote "john 316"
 for "John three sixteen". So a second recognizer listens to the same sound with a small grammar
@@ -232,7 +232,7 @@ speakers.
   with the stand-in server, and plays the spoken sermon into the real speech process at the speed
   of speech. On this PC it spotted Romans 8:28, John 3:16 and 1 Corinthians 13:4–7, sent only
   "remember the story of the prodigal son" to the stand-in assistant, and showed John 3:16 on
-  Enter.
+  Enter. The full self-test passed with it: 1,050 checks, none failed or skipped.
 
 **What that does not cover.** A real microphone, a real preacher, a noisy hall, accents and music
 under speech were not tested: the only voice was a synthetic one, which is the easiest case.
