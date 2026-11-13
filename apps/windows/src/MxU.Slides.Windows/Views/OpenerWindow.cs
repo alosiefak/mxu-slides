@@ -494,6 +494,9 @@ internal sealed class OpenerWindow : Window
     /// <summary>A smaller picture than the recipe's, for the self-test's quick renders.</summary>
     internal (int Width, int Height)? SizeOverride { get; set; }
 
+    /// <summary>True while the window is warning that something is on the screens.</summary>
+    internal bool WarnsShowIsLive => liveWarning.Visibility == Visibility.Visible;
+
     /// <summary>True while a montage's music is being read for its beats.</summary>
     internal bool FindingBeats => analysing is not null;
 

@@ -178,6 +178,8 @@ Nothing new goes into a shared document (HOW-IT-WORKS section 41).
   never looks. It's saved with a fingerprint of the video file. If the file is later replaced by
   something else, the fingerprint no longer matches and the recipe is quietly forgotten, because
   it no longer describes the video.
+- A background left on "the look's own" is saved as just that (blank), so when you open the
+  opener again and change its look, the background follows.
 - Pictures, clips and music are named in the recipe by their full path on this PC. They aren't
   copied into the library. If one has moved when you make the opener again, the form says it can't
   be found and it's left out.

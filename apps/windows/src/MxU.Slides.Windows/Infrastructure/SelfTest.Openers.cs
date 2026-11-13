@@ -210,11 +210,12 @@ public sealed partial class SelfTest
             model.Media.Transport(key) is { Duration.TotalSeconds: > 4.9 and < 5.1 });
         await Delay(2200);
         if (model.Outputs?[Outputs.OutputRole.Audience] is { } audience) Save(audience, "op-21-bumper-audience-screen");
-        Check("with something on the screens, the window warns before making another", model.ShowIsLive);
-        editor.Activate();
-        await Delay(300);
+        for (var i = 0; i < 50 && !editor.WarnsShowIsLive; i++) await Delay(100);
+        Check("with something on the screens, the window warns before making another", model.ShowIsLive && editor.WarnsShowIsLive);
         Save(editor, "op-12-window-live-warning");
         model.ClearAllCommand.Execute(null);
+        for (var i = 0; i < 50 && editor.WarnsShowIsLive; i++) await Delay(100);
+        Check("…and stops warning once the screens are clear", !editor.WarnsShowIsLive);
 
         // 2. A countdown: ten seconds, then the Welcome card.
         editor.Pick(OpenerKind.Countdown);

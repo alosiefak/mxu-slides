@@ -344,13 +344,20 @@ public sealed class OpenerTests : IDisposable
     {
         var wild = new OpenerRecipe { Kind = OpenerKind.Bumper, Look = "lasers", Background = "nope", Palette = "Nope", Seconds = 99, Height = 720, FrameRate = 24, Name = "  " }.Normalized();
         var look = OpenerLooks.All[0];
-        Assert.Equal((look.Id, look.Background, look.Palette, 15.0, 1080, 1920, 30, null), (wild.Look, wild.Background, wild.Palette, wild.Seconds, wild.Height, wild.Width, wild.FrameRate, wild.Name));
+        Assert.Equal((look.Id, 15.0, 1080, 1920, 30, null), (wild.Look, wild.Seconds, wild.Height, wild.Width, wild.FrameRate, wild.Name));
+        // A background or palette that isn't known becomes "none chosen", which draws as the look's own.
+        Assert.Equal((null, null), (wild.Background, wild.Palette));
+        Assert.Equal((look.Background, look.Palette), wild.ResolvedBackground());
         Assert.Equal(10, (new OpenerRecipe { Kind = OpenerKind.Countdown, Seconds = 1 }).Normalized().Seconds);
         Assert.Equal(600, (new OpenerRecipe { Kind = OpenerKind.Countdown, Seconds = 5000 }).Normalized().Seconds);
         Assert.Equal(0, (new OpenerRecipe { Kind = OpenerKind.Montage, Seconds = double.NaN }).Normalized().Seconds);
         Assert.Equal((3, 30), ((new OpenerRecipe { CardSeconds = 0 }).Normalized().CardSeconds, (new OpenerRecipe { CardSeconds = 99 }).Normalized().CardSeconds));
         // A background picked without a palette comes in that background's own colours.
-        Assert.Equal("Northern Lights", (new OpenerRecipe { Background = "aurora" }).Normalized().Palette);
+        Assert.Equal(("aurora", "Northern Lights"), new OpenerRecipe { Background = "aurora" }.Normalized().ResolvedBackground());
+        // A palette picked without a background recolours the look's own background.
+        Assert.Equal((look.Background, "Advent"), new OpenerRecipe { Palette = "advent" }.Normalized().ResolvedBackground());
+        // "None chosen" survives being saved, so an opener opened again still follows its look.
+        Assert.Equal(("bokeh", "Rose Gold"), (new OpenerRecipe().Normalized() with { Look = "serif" }).ResolvedBackground());
     }
 
     [Fact]
@@ -365,6 +372,7 @@ public sealed class OpenerTests : IDisposable
         Assert.Equal("Announcements (2)", OpenerRecipe.For(OpenerKind.Announcements).SuggestedName());
         // Five looks, each with a background and palette that exist.
         Assert.Equal(5, OpenerLooks.All.Count);
-        Assert.All(OpenerLooks.All, l => Assert.Equal((l.Background, l.Palette), (new OpenerRecipe { Look = l.Id }.Normalized().Background, new OpenerRecipe { Look = l.Id }.Normalized().Palette)));
+        Assert.All(OpenerLooks.All, l => Assert.Equal((l.Background, l.Palette), new OpenerRecipe { Look = l.Id }.ResolvedBackground()));
+        Assert.All(OpenerLooks.All, l => Assert.Equal((l.Background, l.Palette), (OpenerPlan.For(new OpenerRecipe { Look = l.Id }).Background.Style, OpenerPlan.For(new OpenerRecipe { Look = l.Id }).Background.Palette)));
     }
 }

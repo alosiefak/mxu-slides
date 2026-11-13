@@ -122,20 +122,19 @@ public sealed record OpenerRecipe
 
     /// <summary>
     /// The recipe with everything in range, so a damaged or hand-edited one can't make a broken
-    /// video: a known look, background and palette; lengths within each kind's limits; 1080 or
-    /// 2160; 30 or 60 frames a second.
+    /// video: a known look; a known background and palette, or none (which stays none: "the
+    /// look's own", so it still follows the look when the opener is opened again and its look
+    /// changed); lengths within each kind's limits; 1080 or 2160; 30 or 60 frames a second.
     /// </summary>
     public OpenerRecipe Normalized()
     {
         var look = OpenerLooks.Find(Look) ?? OpenerLooks.All[0];
-        var background = MotionStyles.Find(Background)?.Id ?? look.Background;
-        var palette = MotionPalette.Find(Palette)?.Name ?? (Background is null || MotionStyles.Find(Background) is null ? look.Palette : MotionStyles.Find(background)!.DefaultPalette);
         var seconds = double.IsFinite(Seconds) ? Seconds : 0;
         return this with
         {
             Look = look.Id,
-            Background = background,
-            Palette = palette,
+            Background = MotionStyles.Find(Background)?.Id,
+            Palette = MotionPalette.Find(Palette)?.Name,
             Title = Title ?? "",
             Subtitle = Subtitle ?? "",
             EndTitle = EndTitle ?? "",
@@ -176,14 +175,27 @@ public sealed record OpenerRecipe
     [JsonIgnore]
     public MediaClassification Classification => Loops ? MediaClassification.Background : MediaClassification.Foreground;
 
+    /// <summary>
+    /// The background and palette actually drawn: the ones chosen, or where none was, the look's
+    /// own background (in the look's palette), or a chosen background in that background's own colours.
+    /// </summary>
+    public (string Style, string Palette) ResolvedBackground()
+    {
+        var look = OpenerLooks.Find(Look) ?? OpenerLooks.All[0];
+        var style = MotionStyles.Find(Background);
+        var palette = MotionPalette.Find(Palette)?.Name ?? (style is null ? look.Palette : style.DefaultPalette);
+        return (style?.Id ?? look.Background, palette);
+    }
+
     /// <summary>The motion background drawn behind it, as a recipe for <see cref="MotionRenderer"/>, looping every <paramref name="loopSeconds"/>.</summary>
     public MotionRecipe BackgroundRecipe(double loopSeconds = 20)
     {
         var normal = Normalized();
-        var palette = MotionPalette.Find(normal.Palette) ?? MotionPalette.Presets[0];
+        var (style, paletteName) = ResolvedBackground();
+        var palette = MotionPalette.Find(paletteName) ?? MotionPalette.Presets[0];
         return new MotionRecipe
         {
-            Style = normal.Background!, Palette = palette.Name, Colors = palette.Colors, Seconds = (int)Math.Round(loopSeconds),
+            Style = style, Palette = palette.Name, Colors = palette.Colors, Seconds = (int)Math.Round(loopSeconds),
             // A little calmer and dimmer than a background made for lyrics: here it sits behind big titles.
             Speed = 0.8, Intensity = 0.55, FrameRate = normal.FrameRate, Height = normal.Height,
         }.Normalized();
