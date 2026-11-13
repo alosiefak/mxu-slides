@@ -168,9 +168,9 @@ public static class MediaTranscoder
         return (Math.Max(2, (int)Math.Round(width * scale) & ~1), Math.Max(2, (int)Math.Round(height * scale) & ~1));
     }
 
-    private sealed record VideoFormat(int Width, int Height, int Pitch, int CropX, int CropY, int FullHeight);
+    internal sealed record VideoFormat(int Width, int Height, int Pitch, int CropX, int CropY, int FullHeight);
 
-    private static IMFSourceReader OpenVideo(string path, out VideoFormat format, out int frameRate, out double duration)
+    internal static IMFSourceReader OpenVideo(string path, out VideoFormat format, out int frameRate, out double duration)
     {
         var attributes = MediaFoundation.CreateAttributes(2);
         IMFSourceReader reader;
@@ -230,7 +230,7 @@ public static class MediaTranscoder
         }
     }
 
-    private static VideoFormat ReadVideoFormat(IMFSourceReader reader)
+    internal static VideoFormat ReadVideoFormat(IMFSourceReader reader)
     {
         MF.Check(reader.GetCurrentMediaType(MF.MF_SOURCE_READER_FIRST_VIDEO_STREAM, out var type), "video format");
         try
@@ -320,7 +320,7 @@ public static class MediaTranscoder
     }
 
     /// <summary>Copies a decoded picture out, top row first; false if its buffer can't be read.</summary>
-    private static unsafe bool CopyPicture(IMFSample sample, VideoFormat format, ref byte[] pixels)
+    internal static unsafe bool CopyPicture(IMFSample sample, VideoFormat format, ref byte[] pixels)
     {
         var rowBytes = format.Width * 4;
         var size = rowBytes * format.Height;

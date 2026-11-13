@@ -268,7 +268,7 @@ public sealed class OpenerPlan
         var lines = new List<(OpenerRole, string)>(2);
         if (!string.IsNullOrWhiteSpace(card.Title)) lines.Add((OpenerRole.Title, card.Title.Trim()));
         if (!string.IsNullOrWhiteSpace(card.Body)) lines.Add((OpenerRole.Body, card.Body.Trim()));
-        return Card(lines, card.Picture, enter, exit);
+        return Card(lines, card.Picture, enter, exit, beside: true);
     }
 
     private OpenerFrame Montage(double t, double phase)
@@ -330,7 +330,7 @@ public sealed class OpenerPlan
     /// <paramref name="exit"/> through leaving (each 0–1; outside that range is "not yet" or
     /// "done"). Lines follow one another a quarter of the move apart, in the look's own way.
     /// </summary>
-    private OpenerCard Card(IReadOnlyList<(OpenerRole Role, string Text)> lines, string? picture, double enter, double exit)
+    private OpenerCard Card(IReadOnlyList<(OpenerRole Role, string Text)> lines, string? picture, double enter, double exit, bool beside = false)
     {
         const double stagger = 0.25;
         var span = 1 + stagger * Math.Max(0, lines.Count - 1);
@@ -355,7 +355,7 @@ public sealed class OpenerPlan
             result.Add(new OpenerLine(lines[i].Role, lines[i].Text, p * (1 - q), rise, slide, scale));
         }
         var whole = EaseOut(Clamp01(enter)) * (1 - EaseIn(Clamp01(exit)));
-        return new OpenerCard(result, picture, picture is null ? 0 : whole, whole);
+        return new OpenerCard(result, picture, picture is null ? 0 : whole, whole, picture is not null && (beside || Look.Left));
     }
 
     private static double Clamp01(double x) => double.IsNaN(x) ? 0 : Math.Clamp(x, 0, 1);

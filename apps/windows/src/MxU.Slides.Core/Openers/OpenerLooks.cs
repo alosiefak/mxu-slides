@@ -29,8 +29,9 @@ public enum OpenerEntrance
 /// <param name="Caps">Titles are set in capitals.</param>
 /// <param name="TitleSize">The title's letter height, as a fraction of the picture's height.</param>
 /// <param name="TitleTracking">Extra space between a title's letters, in ems.</param>
+/// <param name="Rule">A short thin rule sits under the title (centred looks).</param>
 public sealed record OpenerLook(string Id, string Name, string Description, OpenerFont TitleFont, OpenerFont TextFont,
-    bool Left, bool Caps, double TitleSize, double TitleTracking, OpenerEntrance Entrance, string Background, string Palette);
+    bool Left, bool Caps, double TitleSize, double TitleTracking, bool Rule, OpenerEntrance Entrance, string Background, string Palette);
 
 /// <summary>The looks "Make an opener…" offers: a few good ones rather than a free-form editor.</summary>
 public static class OpenerLooks
@@ -39,19 +40,19 @@ public static class OpenerLooks
     [
         new("clean", "Clean", "Montserrat, centred, with a thin rule. Words rise into place.",
             new("Montserrat-SemiBold", "Montserrat", "SemiBold"), new("Montserrat-Regular", "Montserrat", "Regular"),
-            Left: false, Caps: false, TitleSize: 0.105, TitleTracking: -0.01, OpenerEntrance.Rise, "gradient-flow", "Midnight"),
+            Left: false, Caps: false, TitleSize: 0.105, TitleTracking: -0.01, Rule: true, OpenerEntrance.Rise, "gradient-flow", "Midnight"),
         new("bold", "Bold", "Tall Bebas Neue capitals that settle in from large. Good for countdowns.",
             new("BebasNeue-Regular", "Bebas Neue", "Regular"), new("Montserrat-Bold", "Montserrat", "Bold"),
-            Left: false, Caps: true, TitleSize: 0.17, TitleTracking: 0.03, OpenerEntrance.Zoom, "light-rays", "Golden Hour"),
+            Left: false, Caps: true, TitleSize: 0.17, TitleTracking: 0.03, Rule: false, OpenerEntrance.Zoom, "light-rays", "Golden Hour"),
         new("serif", "Serif", "DM Serif Display with an italic second line. A slow, quiet fade.",
             new("DMSerifDisplay-Regular", "DM Serif Display", "Regular"), new("DMSerifDisplay-Italic", "DM Serif Display", "Italic"),
-            Left: false, Caps: false, TitleSize: 0.12, TitleTracking: 0, OpenerEntrance.Fade, "bokeh", "Rose Gold"),
+            Left: false, Caps: false, TitleSize: 0.12, TitleTracking: 0, Rule: false, OpenerEntrance.Fade, "bokeh", "Rose Gold"),
         new("broadcast", "Broadcast", "Heavy Poppins set left beside an accent bar. Words slide in.",
             new("Poppins-ExtraBold", "Poppins", "ExtraBold"), new("Poppins-Medium", "Poppins", "Medium"),
-            Left: true, Caps: false, TitleSize: 0.11, TitleTracking: -0.015, OpenerEntrance.Slide, "waves", "Ocean"),
+            Left: true, Caps: false, TitleSize: 0.11, TitleTracking: -0.015, Rule: false, OpenerEntrance.Slide, "waves", "Ocean"),
         new("minimal", "Minimal", "Small, widely spaced Poppins capitals. Understated.",
             new("Poppins-Medium", "Poppins", "Medium"), new("Poppins-Regular", "Poppins", "Regular"),
-            Left: false, Caps: true, TitleSize: 0.066, TitleTracking: 0.32, OpenerEntrance.Fade, "smoke", "Silver"),
+            Left: false, Caps: true, TitleSize: 0.066, TitleTracking: 0.32, Rule: true, OpenerEntrance.Fade, "smoke", "Silver"),
     ];
 
     /// <summary>The look with this id, or null (a recipe from a newer version, say).</summary>

@@ -23,10 +23,12 @@ public enum OpenerRole
 public sealed record OpenerLine(OpenerRole Role, string Text, double Opacity = 1, double Rise = 0, double Slide = 0, double Scale = 1);
 
 /// <summary>
-/// A block of words (and perhaps a picture beside or above them) at one moment.
-/// <paramref name="Accent"/> is how far the look's rule or bar has drawn in (0–1).
+/// A block of words (and perhaps a picture) at one moment. <paramref name="Accent"/> is how far
+/// the look's rule or bar has drawn in (0–1). <paramref name="PictureBeside"/> puts the picture in
+/// a panel on the right with the words on the left (an announcement's photo); otherwise it sits
+/// above the words (a bumper's logo).
 /// </summary>
-public sealed record OpenerCard(IReadOnlyList<OpenerLine> Lines, string? Picture = null, double PictureOpacity = 0, double Accent = 0);
+public sealed record OpenerCard(IReadOnlyList<OpenerLine> Lines, string? Picture = null, double PictureOpacity = 0, double Accent = 0, bool PictureBeside = false);
 
 /// <summary>
 /// A montage picture or clip at one moment. <paramref name="Zoom"/> is 1 when it just fills the
