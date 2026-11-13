@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/MxU.Slides.Assistant/MxU.Slides.Assistant.csproj" />
     <Project Path="src/MxU.Slides.Audio/MxU.Slides.Audio.csproj" />
     <Project Path="src/MxU.Slides.Broadcast/MxU.Slides.Broadcast.csproj" />
     <Project Path="src/MxU.Slides.Core/MxU.Slides.Core.csproj" />
@@ -13,6 +14,7 @@
     <Project Path="src/MxU.Slides.Windows/MxU.Slides.Windows.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/MxU.Slides.Assistant.Tests/MxU.Slides.Assistant.Tests.csproj" />
     <Project Path="tests/MxU.Slides.Audio.Tests/MxU.Slides.Audio.Tests.csproj" />
     <Project Path="tests/MxU.Slides.Broadcast.Tests/MxU.Slides.Broadcast.Tests.csproj" />
     <Project Path="tests/MxU.Slides.Core.Tests/MxU.Slides.Core.Tests.csproj" />

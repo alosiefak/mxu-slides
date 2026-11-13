@@ -118,7 +118,23 @@ public static class OpenApiDocument
         catch (JsonException) { return null; }
     }
 
-    private static List<string> PathParameters(string template) =>
+    /// <summary>
+    /// The body one route takes, as a plain JSON Schema object with its reference followed
+    /// (<c>{"type":"object","properties":{…}}</c>); null when the route takes no body. The
+    /// assistant's typed requests build their tools from this (Windows only).
+    /// </summary>
+    public static JsonObject? RequestSchema(ApiRoute route)
+    {
+        const string prefix = "#/components/schemas/";
+        if (route.RequestSchema is not JsonObject schema) return null;
+        if (schema["$ref"]?.GetValue<string>() is not { } reference) return (JsonObject)schema.DeepClone();
+        return reference.StartsWith(prefix, StringComparison.Ordinal) && WireSchemas()[reference[prefix.Length..]] is JsonObject found
+            ? (JsonObject)found.DeepClone()
+            : null;
+    }
+
+    /// <summary>The names in braces in a route's path: "id" for <c>/v1/overlays/{id}/fire</c>.</summary>
+    public static List<string> PathParameters(string template) =>
         template.Split('/').Where(s => s.StartsWith('{') && s.EndsWith('}')).Select(s => s[1..^1]).ToList();
 
     private static JsonObject Response(string description, JsonNode schema) =>

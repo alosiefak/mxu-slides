@@ -18,6 +18,8 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // Started as the scripture spotter's speech recognizer (no window, no library): do that and go.
+        if (MxU.Slides.Assistant.Spotting.SpeechWorker.RunIfAsked(e.Args)) Environment.Exit(0);
         // A self-test runs only on a throwaway library (Infrastructure/AppStartup.cs).
         if (AppStartup.RefusesUnsafeSelfTest(e.Args))
         {
