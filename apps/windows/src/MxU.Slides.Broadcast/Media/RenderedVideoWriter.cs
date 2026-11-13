@@ -22,6 +22,12 @@ namespace MxU.Slides.Broadcast.Media;
 /// </list>
 /// Use from one thread.
 /// </para>
+/// <para>
+/// <b>Sound</b> (Phase 13's montages) is optional: give a sample rate and feed stereo sound with
+/// <see cref="WriteAudio"/> as the pictures go in. It's encoded to AAC by the recorder's own
+/// encoder and packed beside the pictures, each packet stamped by counting samples, so sound and
+/// picture can't drift apart.
+/// </para>
 /// </summary>
 public sealed class RenderedVideoWriter : IDisposable
 {
@@ -29,20 +35,79 @@ public sealed class RenderedVideoWriter : IDisposable
     private readonly int frameRate;
     private readonly Mp4Settings settings;
     private readonly H264Encoder encoder;
+    private const int AudioChannels = 2;
+    private const int AudioKbps = 192;
+
     private Mp4SinkWriter? writer;
     private bool finished;
+    private readonly AacEncoder? audio;
+    private Interop.IMFMediaType? audioType;
+    private readonly int audioRate;
+    private readonly List<byte[]> pendingAudio = [];
+    private long audioFramesIn;
+    private long audioPackets;
 
     /// <param name="path">The MP4 to write (replaced if it exists).</param>
     /// <param name="bitrate">Bits a second (see <see cref="LoopTiming.Bitrate"/>).</param>
-    public RenderedVideoWriter(string path, int width, int height, int frameRate, int bitrate)
+    /// <param name="audioSampleRate">The rate of the stereo sound that will be given to <see cref="WriteAudio"/>; null for a silent video.</param>
+    public RenderedVideoWriter(string path, int width, int height, int frameRate, int bitrate, int? audioSampleRate = null)
     {
         this.path = path;
         this.frameRate = frameRate;
         MediaFoundation.EnsureStarted();
+        if (audioSampleRate is { } rate)
+        {
+            // AAC here is 44.1 or 48 kHz; sound at another rate is converted on the way in.
+            (audioRate, _) = AacEncoder.SupportedOutput(rate, AudioChannels);
+            audio = AacEncoder.Create(rate, AudioChannels, audioRate, AudioChannels, AudioKbps);
+            audioType = audio.CopyOutputType();
+        }
         // A keyframe each second: a player looping back to the start, or someone scrubbing, never waits long.
-        settings = new Mp4Settings(width, height, frameRate, bitrate, GopFrames: frameRate, AudioSampleRate: null, AudioChannels: 0, AudioBitrateKbps: 0);
-        encoder = H264Encoder.Create(new H264Settings(width, height, frameRate, Math.Max(100, bitrate / 1000), KeyframeIntervalSeconds: 1),
-            EncoderPreference.Software);
+        settings = new Mp4Settings(width, height, frameRate, bitrate, GopFrames: frameRate, AudioSampleRate: audio is null ? null : audioRate,
+            AudioChannels: audio is null ? 0 : AudioChannels, AudioBitrateKbps: audio is null ? 0 : AudioKbps);
+        try
+        {
+            encoder = H264Encoder.Create(new H264Settings(width, height, frameRate, Math.Max(100, bitrate / 1000), KeyframeIntervalSeconds: 1),
+                EncoderPreference.Software);
+        }
+        catch
+        {
+            audio?.Dispose();
+            MediaFoundation.Release(audioType);
+            throw;
+        }
+    }
+
+    /// <summary>True when the file gets a sound track.</summary>
+    public bool HasAudio => audio is not null;
+
+    /// <summary>
+    /// The next piece of the sound: stereo, left and right in turn, at the rate given when the
+    /// writer was made. Feed it in step with the pictures (a frame's worth after each frame), so
+    /// the two sit side by side in the file. Does nothing in a silent video.
+    /// </summary>
+    public void WriteAudio(ReadOnlySpan<float> interleavedStereo)
+    {
+        ObjectDisposedException.ThrowIf(finished, this);
+        if (audio is null || interleavedStereo.Length == 0) return;
+        var packets = audio.Encode(interleavedStereo, audioFramesIn / (double)audio.SampleRate);
+        audioFramesIn += interleavedStereo.Length / AudioChannels;
+        foreach (var packet in packets) PackAudio(packet.Data);
+    }
+
+    private void PackAudio(byte[] data)
+    {
+        // The file can't be opened until the first picture is out of the encoder (see Pack); sound that arrives before waits.
+        if (writer is null)
+        {
+            pendingAudio.Add(data);
+            return;
+        }
+        // An AAC packet is always 1024 samples, so its time is just its number: nothing to drift.
+        var time = audioPackets * (long)AacPacketClock.PacketFrames * LoopTiming.TicksPerSecond / audioRate;
+        var next = (audioPackets + 1) * (long)AacPacketClock.PacketFrames * LoopTiming.TicksPerSecond / audioRate;
+        audioPackets++;
+        writer.WriteEncodedAudio(data, time, next - time);
     }
 
     /// <summary>Frames written into the file so far.</summary>
@@ -65,7 +130,12 @@ public sealed class RenderedVideoWriter : IDisposable
         // A plain MP4, not the recorder's crash-safe fragments: its header then gives the exact length,
         // which players that loop by the stated length (the Mac's) rely on. The file is only used once
         // it's finished, so crash safety buys nothing here.
-        writer ??= Mp4SinkWriter.CreateForEncoded(path, settings, encoded.ParameterSets, null, crashSafe: false);
+        if (writer is null)
+        {
+            writer = Mp4SinkWriter.CreateForEncoded(path, settings, encoded.ParameterSets, audioType, crashSafe: false);
+            foreach (var waiting in pendingAudio) PackAudio(waiting);
+            pendingAudio.Clear();
+        }
         var frame = (long)Math.Round(encoded.PresentationTime * frameRate);
         writer.WriteEncodedVideo(encoded, LoopTiming.TimeHns(frame, frameRate), LoopTiming.DurationHns(frame, frameRate));
         FramesWritten++;
@@ -76,11 +146,14 @@ public sealed class RenderedVideoWriter : IDisposable
     {
         if (finished) return;
         foreach (var encoded in encoder.Drain()) Pack(encoded);
+        if (audio is not null && writer is not null)
+            foreach (var packet in audio.Drain()) PackAudio(packet.Data);
         finished = true;
         var file = writer ?? throw new InvalidOperationException("No frames were written");
         writer = null;
         file.Finish();
         encoder.Dispose();
+        audio?.Dispose();
     }
 
     /// <summary>Stops without finishing (cancelled or failed); the caller deletes the file.</summary>
@@ -90,5 +163,8 @@ public sealed class RenderedVideoWriter : IDisposable
         writer?.Dispose();
         writer = null;
         encoder.Dispose();
+        audio?.Dispose();
+        MediaFoundation.Release(audioType);
+        audioType = null;
     }
 }
