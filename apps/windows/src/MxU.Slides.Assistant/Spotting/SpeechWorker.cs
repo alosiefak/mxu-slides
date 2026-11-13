@@ -35,6 +35,9 @@ public static class SpeechWorker
 {
     public const string Switch = "--speech-worker";
 
+    /// <summary>After <see cref="Switch"/>: transcribe this .wav file (16 kHz, 16-bit, one channel) instead of listening to the pipe.</summary>
+    public const string WavSwitch = "--wav";
+
     public static readonly SpeechAudioFormatInfo Format = new(16000, AudioBitsPerSample.Sixteen, AudioChannel.Mono);
 
     /// <summary>
@@ -51,7 +54,11 @@ public static class SpeechWorker
         // the thread that made it through that thread's message queue when it has one, and the
         // UI thread's would never be read here (it is waiting for this to finish): nothing
         // would ever be heard. A plain thread has no queue, so results arrive directly.
-        var worker = new Thread(() => Run(null, Console.OpenStandardInput(), output, CancellationToken.None)) { Name = "Speech recognizer" };
+        // A recording to transcribe (the sermon summary): dictation only, since nobody is waiting
+        // for references, and it halves the work.
+        var at = Array.IndexOf(args, WavSwitch);
+        var wav = at >= 0 && at + 1 < args.Length ? args[at + 1] : null;
+        var worker = new Thread(() => Run(wav, wav is null ? Console.OpenStandardInput() : null, output, CancellationToken.None, referencesToo: wav is null)) { Name = "Speech recognizer" };
         worker.Start();
         worker.Join();
         return true;
@@ -70,13 +77,14 @@ public static class SpeechWorker
     /// Listens until the sound ends (a file's end, the pipe closing) or <paramref name="cancel"/>.
     /// </summary>
     /// <param name="wav">A .wav file to listen to; null to listen to <paramref name="input"/>.</param>
-    public static void Run(string? wav, Stream? input, TextWriter output, CancellationToken cancel)
+    /// <param name="referencesToo">False to run free dictation alone (a transcript), without the second, references-only listener.</param>
+    public static void Run(string? wav, Stream? input, TextWriter output, CancellationToken cancel, bool referencesToo = true)
     {
         var gate = new Lock();
         // A file is read by each recognizer as fast as it can, so one finishes the whole file
         // before the other starts speaking up. What they heard is held and written in the order
         // it was said, as it would have arrived live.
-        var held = wav is null ? null : new List<(double At, string Line)>();
+        var held = wav is null || !referencesToo ? null : new List<(double At, string Line)>();
         void Say(object line, double? at = null)
         {
             var json = JsonSerializer.Serialize(line);
@@ -101,7 +109,7 @@ public static class SpeechWorker
             // A preacher pauses mid-sentence: wait a little longer than the default before closing one.
             dictation.EndSilenceTimeoutAmbiguous = TimeSpan.FromMilliseconds(700);
 
-            using var ended = new CountdownEvent(2);
+            using var ended = new CountdownEvent(referencesToo ? 2 : 1);
             void Wire(SpeechRecognitionEngine engine, string source)
             {
                 engine.SpeechRecognized += (_, e) =>
@@ -116,13 +124,13 @@ public static class SpeechWorker
                 };
             }
             Wire(dictation, "dictation");
-            Wire(references, "refs");
+            if (referencesToo) Wire(references, "refs");
 
             Thread? pump = null;
             if (wav is not null)
             {
                 dictation.SetInputToWaveFile(wav);
-                references.SetInputToWaveFile(wav);
+                if (referencesToo) references.SetInputToWaveFile(wav);
             }
             else
             {
@@ -149,13 +157,13 @@ public static class SpeechWorker
             }
             Say(new { t = "ready", recognizer = recognizer.Culture.Name });
             dictation.RecognizeAsync(RecognizeMode.Multiple);
-            references.RecognizeAsync(RecognizeMode.Multiple);
+            if (referencesToo) references.RecognizeAsync(RecognizeMode.Multiple);
             pump?.Start();
             try { ended.Wait(cancel); }
             catch (OperationCanceledException)
             {
                 dictation.RecognizeAsyncCancel();
-                references.RecognizeAsyncCancel();
+                if (referencesToo) references.RecognizeAsyncCancel();
             }
             if (held is not null)
             {

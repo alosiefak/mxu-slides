@@ -47,6 +47,12 @@ public sealed record AssistantRequest
 
     public IReadOnlyList<AssistantTool> Tools { get; init; } = [];
 
+    /// <summary>
+    /// Pictures the model should look at (PNG files, as bytes): rendered slides, for the slide
+    /// checks. They go before the words. The log records how many were sent, not the pictures.
+    /// </summary>
+    public IReadOnlyList<byte[]> Pictures { get; init; } = [];
+
     /// <summary>The whole job's time limit, look-ups and retries included.</summary>
     public TimeSpan Limit { get; init; } = TimeSpan.FromMinutes(2);
 }
@@ -125,7 +131,19 @@ public sealed class AssistantClient(AssistantLog log, Uri? baseUrl = null)
                 Description = tool.Description,
                 InputSchema = new() { Properties = tool.Properties.ToDictionary(p => p.Key, p => p.Value), Required = [.. tool.Required] },
             })];
-            List<MessageParam> messages = [new UserMessageParam { Content = request.Ask }];
+            List<MessageParam> messages = [request.Pictures.Count == 0
+                ? new UserMessageParam { Content = request.Ask }
+                : new UserMessageParam
+                {
+                    Content = new List<ContentBlockParam>(
+                    [
+                        .. request.Pictures.Select(png => (ContentBlockParam)new ImageBlockParam
+                        {
+                            Source = new Base64ImageSource { Data = Convert.ToBase64String(png), MediaType = MediaType.ImagePng },
+                        }),
+                        new TextBlockParam { Text = request.Ask },
+                    ]),
+                }];
 
             return await Guarded(request.Limit, cancel, async token =>
             {
@@ -210,7 +228,7 @@ public sealed class AssistantClient(AssistantLog log, Uri? baseUrl = null)
         {
             log.Add(new AssistantLogEntry(
                 DateTimeOffset.Now, request.Feature, model.Id,
-                $"INSTRUCTIONS\n{request.Instructions}\n\nREQUEST\n{request.Ask}", lookups, received, usage, usage.Cost(model), problem));
+                $"INSTRUCTIONS\n{request.Instructions}\n\nREQUEST\n{(request.Pictures.Count > 0 ? $"({request.Pictures.Count} picture(s) of slides were sent too; they are not kept in this log)\n" : "")}{request.Ask}", lookups, received, usage, usage.Cost(model), problem));
         }
     }
 

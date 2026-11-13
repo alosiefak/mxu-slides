@@ -51,7 +51,8 @@ public sealed class SpeechListener : IDisposable
     public TimeSpan CpuTotal { get; private set; }
 
     /// <summary>Starts the worker, which then listens to whatever <see cref="Feed"/> is given.</summary>
-    public void Start()
+    /// <param name="wav">A sound file (16 kHz, 16-bit, one channel) to transcribe instead; <see cref="Ended"/> is raised when it has been read through.</param>
+    public void Start(string? wav = null)
     {
         var start = new ProcessStartInfo(exe)
         {
@@ -59,6 +60,11 @@ public sealed class SpeechListener : IDisposable
             RedirectStandardInput = true, RedirectStandardOutput = true,
         };
         start.ArgumentList.Add(SpeechWorker.Switch);
+        if (wav is not null)
+        {
+            start.ArgumentList.Add(SpeechWorker.WavSwitch);
+            start.ArgumentList.Add(wav);
+        }
         process = Process.Start(start) ?? throw new InvalidOperationException("The speech recognizer didn't start.");
         // Below normal: when the PC is busy, the outputs' threads get the processor first.
         try { process.PriorityClass = ProcessPriorityClass.BelowNormal; }
