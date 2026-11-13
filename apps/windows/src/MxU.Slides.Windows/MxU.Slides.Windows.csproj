@@ -13,6 +13,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Assistant\MxU.Slides.Assistant.csproj" />
     <ProjectReference Include="..\MxU.Slides.Audio\MxU.Slides.Audio.csproj" />
     <ProjectReference Include="..\MxU.Slides.Broadcast\MxU.Slides.Broadcast.csproj" />
     <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />

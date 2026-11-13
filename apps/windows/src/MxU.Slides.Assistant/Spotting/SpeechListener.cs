@@ -20,7 +20,9 @@ namespace MxU.Slides.Assistant.Spotting;
 public sealed class SpeechListener : IDisposable
 {
     private readonly string exe;
-    private readonly BlockingCollection<byte[]> sound = new(boundedCapacity: 100); // about ten seconds
+    // Blocks waiting to go down the pipe: about ten seconds' worth at a sound card's usual 20 ms a
+    // block, which covers the second or two the worker takes to start.
+    private readonly BlockingCollection<byte[]> sound = new(boundedCapacity: 500);
     private Process? process;
     private Thread? writer;
     private TimeSpan cpuAt;
@@ -40,7 +42,7 @@ public sealed class SpeechListener : IDisposable
     /// <summary>The recognizer couldn't start or stopped (words for the operator).</summary>
     public event Action<string>? Failed;
 
-    /// <summary>The sound ended (a file's end) or the worker went away.</summary>
+    /// <summary>The worker went away.</summary>
     public event Action? Ended;
 
     public bool IsRunning => process is { HasExited: false };
@@ -48,8 +50,8 @@ public sealed class SpeechListener : IDisposable
     /// <summary>All the processor time recognition has used since it started.</summary>
     public TimeSpan CpuTotal { get; private set; }
 
-    /// <summary>Starts the worker. With <paramref name="wav"/> it listens to that file (tests); otherwise to <see cref="Feed"/>.</summary>
-    public void Start(string? wav = null)
+    /// <summary>Starts the worker, which then listens to whatever <see cref="Feed"/> is given.</summary>
+    public void Start()
     {
         var start = new ProcessStartInfo(exe)
         {
@@ -57,11 +59,6 @@ public sealed class SpeechListener : IDisposable
             RedirectStandardInput = true, RedirectStandardOutput = true,
         };
         start.ArgumentList.Add(SpeechWorker.Switch);
-        if (wav is not null)
-        {
-            start.ArgumentList.Add("--wav");
-            start.ArgumentList.Add(wav);
-        }
         process = Process.Start(start) ?? throw new InvalidOperationException("The speech recognizer didn't start.");
         // Below normal: when the PC is busy, the outputs' threads get the processor first.
         try { process.PriorityClass = ProcessPriorityClass.BelowNormal; }
@@ -69,11 +66,8 @@ public sealed class SpeechListener : IDisposable
         cpuWhen = Stopwatch.GetTimestamp();
         var reader = new Thread(Read) { IsBackground = true, Name = "Speech heard" };
         reader.Start();
-        if (wav is null)
-        {
-            writer = new Thread(Write) { IsBackground = true, Name = "Speech sound out", Priority = ThreadPriority.BelowNormal };
-            writer.Start();
-        }
+        writer = new Thread(Write) { IsBackground = true, Name = "Speech sound out", Priority = ThreadPriority.BelowNormal };
+        writer.Start();
     }
 
     /// <summary>

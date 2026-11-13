@@ -38,8 +38,8 @@ public sealed class AssistantService : IDisposable
 
     public AssistantModels.Info Model => AssistantModels.Find(model());
 
-    /// <summary>Why the assistant can't be used right now (off, or no key); null when it can.</summary>
-    public AssistantProblem? Unavailable => !enabled() ? AssistantProblem.Off : !Vault.HasKey ? AssistantProblem.NoKey : null;
+    /// <summary>Why the assistant can't be used right now (no key, or switched off); null when it can.</summary>
+    public AssistantProblem? Unavailable => !Vault.HasKey ? AssistantProblem.NoKey : !enabled() ? AssistantProblem.Off : null;
 
     public bool IsReady => Unavailable is null;
 

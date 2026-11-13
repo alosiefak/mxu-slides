@@ -151,6 +151,8 @@ public sealed class BibleWindow : Window
         header.Children.Add(top);
         header.Children.Add(suggestions);
         header.Children.Add(status);
+        // Phase 12: the scripture spotter. It only ever fills the box above; Enter is still the operator's.
+        header.Children.Add(new Assistant.SpotterStrip(main));
         DockPanel.SetDock(header, Dock.Top);
         root.Children.Add(header);
 

@@ -46,9 +46,14 @@ public static class SpeechWorker
         if (!args.Contains(Switch)) return false;
         try { Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.BelowNormal; }
         catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }
-        var wav = Array.IndexOf(args, "--wav") is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null;
         var output = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
-        Run(wav, wav is null ? Console.OpenStandardInput() : null, output, CancellationToken.None);
+        // On a thread of its own, not the app's UI thread. The recognizer hands its results to
+        // the thread that made it through that thread's message queue when it has one, and the
+        // UI thread's would never be read here (it is waiting for this to finish): nothing
+        // would ever be heard. A plain thread has no queue, so results arrive directly.
+        var worker = new Thread(() => Run(null, Console.OpenStandardInput(), output, CancellationToken.None)) { Name = "Speech recognizer" };
+        worker.Start();
+        worker.Join();
         return true;
     }
 
@@ -241,16 +246,26 @@ public static class SpeechWorker
         private int offset;
         private long position;
         private bool complete;
+        private long waiting;
+
+        private const long MostWaiting = 60 * 32000; // a minute of 16 kHz, 16-bit sound
 
         public override bool CanRead => true;
         public override bool CanSeek => false;
         public override bool CanWrite => true;
-        public override long Length => long.MaxValue;
+        public override long Length => -1;
         public override long Position { get => position; set { } }
 
         public override void Write(byte[] buffer, int from, int count)
         {
-            lock (gate) blocks.Enqueue(buffer.AsSpan(from, count).ToArray());
+            lock (gate)
+            {
+                blocks.Enqueue(buffer.AsSpan(from, count).ToArray());
+                waiting += count;
+                // A recognizer starved of processor time must not pile sound up for ever: past a
+                // minute behind, the oldest goes.
+                while (waiting > MostWaiting && blocks.TryDequeue(out var dropped)) waiting -= dropped.Length;
+            }
             ready.Release();
         }
 
@@ -260,29 +275,35 @@ public static class SpeechWorker
             ready.Release();
         }
 
+        // The recognizer takes a short read to mean the sound has ended, so this waits until it
+        // can hand over everything asked for (or the sound really has ended).
         public override int Read(byte[] buffer, int at, int count)
         {
-            while (true)
+            var filled = 0;
+            while (filled < count)
             {
                 if (current is not null && offset < current.Length)
                 {
-                    var take = Math.Min(count, current.Length - offset);
-                    Array.Copy(current, offset, buffer, at, take);
+                    var take = Math.Min(count - filled, current.Length - offset);
+                    Array.Copy(current, offset, buffer, at + filled, take);
                     offset += take;
-                    position += take;
-                    return take;
+                    filled += take;
+                    continue;
                 }
                 lock (gate)
                 {
                     if (blocks.TryDequeue(out current))
                     {
                         offset = 0;
+                        waiting -= current.Length;
                         continue;
                     }
-                    if (complete) return 0;
+                    if (complete) break;
                 }
                 ready.Wait();
             }
+            position += filled;
+            return filled;
         }
 
         public override void Flush() { }

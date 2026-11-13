@@ -301,6 +301,51 @@ public sealed class SpottingTests
         }
     }
 
+    [Fact]
+    public void SoundArrivingDownThePipeIsHeardTheSameAsAFile()
+    {
+        // A live microphone has no file: its sound arrives in small blocks down a pipe, and both
+        // recognizers read the same blocks. Here the pipe is fed a spoken sentence, then closed.
+        if (SpeechWorker.Recognizer() is null) Assert.Skip("This PC has no English speech pack, so Windows' offline recognizer can't run.");
+        using var sound = new MemoryStream();
+        using (var voice = new SpeechSynthesizer())
+        {
+            if (voice.GetInstalledVoices().Count == 0) Assert.Skip("This PC has no text-to-speech voice to make the test sermon with.");
+            voice.Rate = -1;
+            voice.SetOutputToAudioStream(sound, SpeechWorker.Format);
+            voice.Speak("Then first Corinthians thirteen, verses four through seven. Remember the story of the prodigal son.");
+            voice.SetOutputToNull();
+        }
+        // Two seconds of quiet at the end, as after a real sentence.
+        sound.Write(new byte[64000]);
+        sound.Position = 0;
+        var lines = new StringWriter();
+
+        SpeechWorker.Run(null, new SmallReads(sound), lines, TestContext.Current.CancellationToken);
+
+        var heard = lines.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(l => JsonDocument.Parse(l).RootElement).ToList();
+        TestContext.Current.TestOutputHelper?.WriteLine(lines.ToString());
+        Assert.Equal("ready", heard[0].GetProperty("t").GetString());
+        Assert.Equal("end", heard[^1].GetProperty("t").GetString());
+        Assert.Contains(heard, h => h.GetProperty("t").GetString() == "heard" && h.GetProperty("src").GetString() == "refs" && h.GetProperty("text").GetString() == "1 Corinthians 13:4-7");
+        Assert.Contains(heard, h => h.GetProperty("t").GetString() == "heard" && h.GetProperty("src").GetString() == "dictation" && h.GetProperty("text").GetString()!.Contains("prodigal", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // A stream that hands over at most 700 bytes a read, as a pipe from another process does.
+    private sealed class SmallReads(Stream inner) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, Math.Min(count, 700));
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     internal const string Sermon =
         "Good morning church. Turn with me to Romans chapter eight verse twenty eight. "
         + "And we know that all things work together for good. Later we will read John three sixteen. "

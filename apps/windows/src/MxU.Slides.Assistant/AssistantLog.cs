@@ -62,12 +62,12 @@ public sealed partial class AssistantLog(string path)
     }
 
     /// <summary>The tokens and dollars of every job since <paramref name="since"/>.</summary>
-    public (AssistantUsage Usage, decimal Cost, int Jobs) Total(DateTimeOffset since)
+    public (AssistantUsage Usage, decimal Cost) Total(DateTimeOffset since)
     {
         lock (gate)
         {
             var recent = Loaded().Where(e => e.At >= since).ToList();
-            return (recent.Aggregate(AssistantUsage.None, (sum, e) => sum.Plus(e.Usage)), recent.Sum(e => e.Cost), recent.Count);
+            return (recent.Aggregate(AssistantUsage.None, (sum, e) => sum.Plus(e.Usage)), recent.Sum(e => e.Cost));
         }
     }
 

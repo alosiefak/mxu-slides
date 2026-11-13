@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using MxU.Slides.Assistant;
 using MxU.Slides.Core.Automation;
 using MxU.Slides.Core.Library;
 using MxU.Slides.Core.Model;
@@ -32,6 +33,11 @@ public sealed class MakeSlidesWindow : Window
     private readonly TextBlock footer = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };
     private readonly Button make;
 
+    // Suggest with AI (Phase 12): the button, the line under it, and the job in flight (the button then reads Cancel).
+    private readonly Button suggest;
+    private readonly TextBlock aiLine = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+    private CancellationTokenSource? asking;
+
     private MakeSlidesWindow(Window owner, MainViewModel model, NoteDocument note)
     {
         this.model = model;
@@ -53,8 +59,16 @@ public sealed class MakeSlidesWindow : Window
         themeId = model.DeckOf(note)?.ThemeId ?? model.NotesThemeId;
         body = Marked();
         make = EditorKit.Button("Make Slides", Make, "Make the slides", accent: true);
+        suggest = EditorKit.Button("Suggest with AI", async () => await SuggestNow());
         Content = Layout();
         Redraw();
+        DrawAi();
+        model.AssistantChanged += DrawAi;
+        Closed += (_, _) =>
+        {
+            model.AssistantChanged -= DrawAi;
+            asking?.Cancel();
+        };
     }
 
     public static MakeSlidesWindow Open(Window owner, MainViewModel model, NoteDocument note)
@@ -81,7 +95,13 @@ public sealed class MakeSlidesWindow : Window
                 excluded.Clear();
                 overrides.Clear();
                 Redraw();
+                DrawAi();
             })));
+        var aiRow = new DockPanel();
+        DockPanel.SetDock(suggest, Dock.Left);
+        aiRow.Children.Add(suggest);
+        aiRow.Children.Add(aiLine);
+        top.Children.Add(EditorKit.Row("", aiRow));
         var themes = model.Library.All<Theme>().Select(t => new EditorChoice(t.Id, t.Name)).Prepend(new EditorChoice("", "No theme")).ToList();
         top.Children.Add(EditorKit.Row("Theme", EditorKit.Picker(themes, themeId, id =>
         {
@@ -258,6 +278,72 @@ public sealed class MakeSlidesWindow : Window
     }
 
     private static string Label(SlideKind kind) => kind == SlideKind.Body ? "Statement" : kind.ToString();
+
+    // MARK: Suggest with AI
+
+    private void DrawAi()
+    {
+        suggest.Content = asking is null ? "Suggest with AI" : "Cancel";
+        suggest.IsEnabled = asking is not null || model.AssistantUnavailable is null;
+        suggest.ToolTip = model.AssistantUnavailable
+            ?? "The assistant reads the note and suggests which lines are slides, as Pick for me does. Verse words come from the Bible in this app. You still choose what is made.";
+        if (asking is null && aiLine.Tag is null)
+            aiLine.Text = model.AssistantUnavailable is null ? $"Sends this note to Anthropic: {model.SuggestCostEstimate(basis)}." : "";
+    }
+
+    /// <summary>
+    /// What the Suggest with AI button does (the self-test's way in). The assistant's answer
+    /// replaces the rows above exactly as a different "Pick" choice would: each is still a row to
+    /// untick or change, and nothing is made until Make Slides.
+    /// </summary>
+    public async Task SuggestNow()
+    {
+        if (asking is not null)
+        {
+            asking.Cancel();
+            return;
+        }
+        asking = new CancellationTokenSource();
+        aiLine.Foreground = EditorKit.Res<Brush>("MutedText");
+        aiLine.Text = "Asking the assistant… the rows stay as they are until it answers.";
+        DrawAi();
+        try
+        {
+            var result = await model.SuggestNoteSlidesAsync(basis, asking.Token);
+            if (result.Applied.Passages == 0)
+            {
+                aiLine.Text = $"The assistant found nothing to suggest, so the rows are unchanged. ({result.CostLine})";
+            }
+            else
+            {
+                body = result.Applied.Body;
+                excluded.Clear();
+                overrides.Clear();
+                Redraw();
+                var filled = result.Applied.VersesFilled;
+                aiLine.Text = string.Join(" ", new[]
+                {
+                    $"The assistant suggested {result.Applied.Passages} passage{(result.Applied.Passages == 1 ? "" : "s")}.",
+                    filled > 0 ? $"{filled} verse{(filled == 1 ? " was" : "s were")} filled in from the Bible in this app ({result.Translation})." : null,
+                    result.PrivacyWarning,
+                    string.Join(" ", result.Applied.Notes),
+                    $"({result.CostLine})",
+                }.Where(part => !string.IsNullOrEmpty(part)));
+            }
+            aiLine.Tag = "answered";
+        }
+        catch (AssistantException failure)
+        {
+            aiLine.Foreground = EditorKit.Res<Brush>(failure.IsQuiet ? "MutedText" : "Warn");
+            aiLine.Text = failure.Problem == AssistantProblem.Cancelled ? "Cancelled; the rows are unchanged." : $"{failure.Message} The rows are unchanged.";
+            aiLine.Tag = "answered";
+        }
+        finally
+        {
+            asking = null;
+            DrawAi();
+        }
+    }
 
     /// <summary>The note as made: passages left out are declined (a suggestion) or unmarked (marked by hand).</summary>
     private NoteBody Chosen()
