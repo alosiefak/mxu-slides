@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The service assistant (Windows only, Phase 12): everything that talks to Claude, and the
+       scripture spotter that listens to the sermon with Windows' own offline speech recognition.
+       The app works exactly as before without it: no key, no internet or the switch off, and
+       every feature here goes quiet. The Mac app has no twin. No WPF. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>MxU.Slides.Assistant</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Apache-2.0. Anthropic's official C# SDK: the calls to Claude. -->
+    <PackageReference Include="Anthropic" Version="13.8.0" />
+    <!-- MIT. DPAPI, to keep the church's API key encrypted for the Windows user (as stream keys are). -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.13" />
+    <!-- MIT. Windows' desktop speech recognizer (SAPI), which works with no internet. -->
+    <PackageReference Include="System.Speech" Version="10.0.15" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MxU.Slides.Assistant.Tests" />
+  </ItemGroup>
+</Project>
