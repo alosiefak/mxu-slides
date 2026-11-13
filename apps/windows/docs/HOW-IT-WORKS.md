@@ -31,7 +31,8 @@ The code is split into projects:
 - **`src/MxU.Slides.Broadcast`** records the program to MP4 and streams it over RTMP/RTMPS or HLS (section 25).
 - **`src/MxU.Slides.Production`** talks to switchers, OBS, vMix and lights (section 46).
 - **`src/MxU.Slides.Sync`** shares the library with a Mac through a folder, using Automerge (section 52). The Rust code behind its `automerge.dll` is in `native/automerge-ffi`.
-- **`src/MxU.Slides.MotionTemplates`** draws Lottie animations and talks to After Effects (section 53).
+- **`src/MxU.Slides.MotionTemplates`** draws Lottie animations and talks to After Effects (section 53). It also draws openers and montages and writes their videos (section 61).
+- **`src/MxU.Slides.Assistant`** is the optional AI assistant: jobs sent to Claude, the scripture spotter and the speech worker (sections 57 to 60). The rest of the app works without it.
 
 Each has its own test project under `tests/`. The Core/app split is the most important design decision. The Mac app has the same shape: its `PresenterCore` and `SlideScene` packages are the "core", and its SwiftUI/Metal code is the "app".
 
@@ -1000,6 +1001,112 @@ The shared schema was already up to date, so Windows could *read* Mac documents 
 
 The full walkthrough is [upstream-2026-11/engine.md](upstream-2026-11/engine.md).
 
+## 57. The service assistant: its foundation and three rules (Phase 12)
+
+Phase 12 adds an optional AI helper for the person running slides. It uses Claude, a model made by Anthropic, over the internet. The church pastes its own Anthropic API key in **Settings › Assistant**, and each job costs a little money on the church's Anthropic account. With no key, the assistant's buttons are grey and everything else in the app works as before. The Mac has none of this, so it's all Windows-only code, and it writes nothing new into shared documents.
+
+> **Not verified against the real API.** Every test talks to a stand-in server on this PC (`MxU.Slides.Assistant/Testing/FakeAnthropicServer.cs`) that gives scripted answers. No call was ever made to Anthropic. So the tests prove what the app sends and what it does with each kind of answer. They can't prove that the real model answers well, or that the real API accepts every request exactly as sent. The first real use needs a person watching the log.
+
+Everything that talks to Claude or listens to speech is in a new project, `src/MxU.Slides.Assistant`. The app's side is `ViewModels/MainViewModel.Assistant.cs`, `MainViewModel.AssistantTasks.cs` and `Views/Assistant/`.
+
+**Three rules the code keeps:**
+
+1. **The AI suggests, a person decides.** A suggestion lands in a window: as rows in Make Slides, as text in the song editor, as a reference in the Bible window's box. It reaches a screen only on a click or the Enter key. There is one exception, translated live captions (section 60).
+2. **The show never needs the internet.** With no key, no network or the switch off, a job fails at once with calm words and nothing else changes. Every job runs on the assistant's own thread, never the UI thread.
+3. **Scripture and lyrics come from the church's own files.** The model's answers have no field for verse text. Verses are read from the Bible built into the app (section 44). Lyrics are the words you pasted, checked word by word.
+
+The foundation, file by file:
+
+- **The key** (`AssistantKeyVault.cs`). Windows' DPAPI encrypts data so only the same Windows user on the same PC can read it back. The key is kept that way in `Assistant\key.bin` in the app's *local* data folder. It is never in `settings.json`, the library, a backup or the log. It travels only in a request header, never in a web address. **Check and save** first tests the key with a call that costs nothing.
+- **The switch** (`Infrastructure/AppSettings.Assistant.cs`). `AssistantEnabled` is this PC's on/off switch and `AssistantModel` is the chosen model. `AssistantService.Unavailable` answers "may a job go at all?". Windows use the same answer to grey their buttons and say why.
+- **One job** (`AssistantClient.cs`). A job is an `AssistantRequest`: instructions that never change, the part that does (this note, these lyrics), and a JSON Schema the answer must fit. It is sent with Anthropic's own C# package. The schema lists the real values and nothing else, so an invented slide type can't come back. The code that reads a reply checks again anyway.
+- **Look-ups.** The model can ask the app to check something, for up to six rounds. `look_up_passage` says whether a Bible reference exists. It does not return the verse. `LibraryFacts.cs` adds `search_library`, `read_current_service` and `list_themes`. They answer from a **snapshot** of names and ids taken just before the job, so the model never touches the live library, and an id it makes up matches nothing.
+- **When it fails** (`AssistantModels.cs`). Every failure becomes an `AssistantException` with plain words for the operator, such as "The assistant can't reach the internet. Everything else works as usual." A busy or broken server is tried twice more. Each job has a time limit, and **Cancel** stops it.
+- **Off the UI thread** (`AssistantService.cs`). Jobs run one at a time on a `WorkQueue` named "Assistant" (section 26), below normal priority.
+- **The log** (`AssistantLog.cs`). Every job is written to `Assistant\log.jsonl` in the local data folder: the words sent, each look-up and its answer, the words received, the tokens and the cost. **Settings › Assistant › What was sent and received…** shows it. Anything shaped like an API key is blanked before it's written.
+- **Privacy** (`PrayerPrivacy.cs`). Notes often hold a list such as "Prayer requests: Mary Okafor, surgery Tuesday". Before a note is sent, those lines are replaced by `(private: not sent)`, and the window says how many were held back. It errs towards holding back too much. Sound never leaves the PC at all (section 59).
+- **Cost.** The API reports the tokens each job used. (A token is about three-quarters of a word.) The app multiplies them by the list prices in `AssistantModels.cs` and shows the result after every job, and the month's total in Settings. Before a big job it shows a guess. These are estimates. The real bill is on the church's Anthropic account.
+
+The full walkthrough for sections 57 to 60 is [phase12/assistant.md](phase12/assistant.md).
+
+## 58. Suggest with AI and lyrics clean-up (Phase 12)
+
+These are the two "before Sunday" jobs. Both hand their result to code that was already there.
+
+**Suggest with AI** (`NoteSuggester.cs`; **Notes › Make Slides… › Suggest with AI**) is built on Make Slides (section 54), not beside it. *Pick for me* works by marking passages in a note as "suggested", and the planner turns marked passages into slides. Suggest with AI does only the marking. From there the same planner, the same builder and the same window run. So what's saved is an ordinary note.
+
+1. `Prepare` numbers the note's blocks and writes them out, with prayer-request lines held back.
+2. The model answers with passages: first block, last block, a kind (`title`, `scripture`, `points`, `quote` or `body`), and for scripture a reference.
+3. `Read` keeps only what is safe: block numbers inside the note, a kind from the list, no overlaps.
+4. `Apply` marks the passages. A passage that is only a reference ("John 3:16") gets its verse from the built-in Bible. The reference is read from the note by the app's own parser. The model's reference is used only when the note's can't be read.
+
+One test gives the reply a wrong verse and a wrong reference on purpose. The slide still holds the King James words for the reference in the note.
+
+**Clean up with AI** (`LyricsCleanup.cs`; in the song editor) sorts lyrics pasted from a website into Verse, Chorus and Bridge. The model returns sections and the order they're sung in. The code turns that into the labelled text `Reflow` has always read (section 3).
+
+**The words can't change.** `Read` walks the answer's words through the pasted words in order. If a word of the answer isn't found, it was changed, added or moved, and the whole reply is thrown away with a message naming the word. The model may leave words out (a website's "Lyrics provided by…"), and those lines are listed for you to check. **Put my text back** undoes the clean-up.
+
+## 59. The scripture spotter and the speech worker (Phase 12)
+
+In the Bible window (Ctrl+B), **Listen for scripture** listens to the preacher. Each passage it hears named becomes a button, and the newest is put in the reference box with an amber flash. **Enter shows it.** It is never shown by itself.
+
+- **Listening stays on the PC.** Speech becomes text in Windows' desktop speech recognizer (Microsoft's `System.Speech` package), using the speech pack Windows already has. Nothing is downloaded and no sound leaves the machine.
+- **Its own process** (`Spotting/SpeechWorker.cs`, `SpeechListener.cs`). The recognizer runs in a second copy of the app, started as `MxUSlides.exe --speech-worker`, with no window and no library. That copy runs below normal priority, so the show gets the processor first. And if the recognizer hangs or crashes, the show is untouched. The app sends it sound down a pipe and reads back one line of JSON for each thing heard. If the recognizer falls behind, old sound is dropped.
+- **Two listeners on one sound.** Free dictation is weak at numbers: it wrote "john 316" for "John three sixteen". So a second recognizer listens with a small grammar that knows only "book, chapter, verse". The grammar gets the numbers right but sometimes the wrong book. Dictation gets the book right but muddles the numbers. `ScriptureSpotter` keeps the grammar's numbers when both agree on the book, and dictation's book when they don't.
+- **Finding the reference** (`SpokenScripture.cs`). No AI is used here. Spoken words are rewritten into what the Bible window's parser reads: "first Corinthians" becomes "1 Corinthians", and "316" after John becomes 3:16 because John has no chapter 316. Only a book's full name followed by a number counts, since "John", "Mark" and "Acts" are everyday words in a sermon. The result is checked against the Bible.
+- **Only vague phrases go to Claude.** A sentence with no reference is sent only if it sounds like an allusion ("the story of the prodigal son"). It goes alone, at most once every eight seconds, and never if it names someone to pray for. The answer is checked against the Bible and shown with a question mark, as a guess. With the assistant off, the spotter carries on with what it hears itself.
+- **What you see** (`Views/Assistant/SpotterStrip.cs`): the Listen switch, the sound input, the last sentence heard, the processor use, and a button for each passage. There is a flash and no chime, because a sound from this PC could come out of the hall's speakers.
+
+Two bugs here were found by the self-test and not by the unit tests. Both are worth reading in `SpeechWorker.cs`. A pipe often hands over less sound than was asked for, and the recognizer took a short read as the end of the sound, so `SoundPipe.Read` now waits for all of it. And the recognizer hands results to the thread that made it. In the worker that thread was busy waiting, so nothing was ever heard. It is now made on a plain thread.
+
+**The speech has only been tested with Windows' own synthetic voice.** A real microphone, a real preacher, a noisy hall and accents were never tried. Expect a real sermon to be heard less well. The speech worker was also not run from the published single-file build (`scripts/publish.ps1`), only from the ordinary build.
+
+## 60. The Assistant window (Phase 12)
+
+The **Assistant** button in the toolbar opens a window with seven pages (`Views/Assistant/AssistantWindow.cs`). The window only draws. The app's side of each job is in `ViewModels/MainViewModel.AssistantTasks.cs`. Each job's thinking is one file in `MxU.Slides.Assistant` with no screen code in it, so it can be tested alone. Four pages do their main job with no AI at all.
+
+- **Ask** (`TypedRequests.cs`). You type "next song". The Local API's routes that *control the show* (section 15) are offered to the model as tools. Routes that create, change or delete documents are left out. When the model calls a tool, the tool does **nothing**: it checks the call and keeps it as a `ReadyAction`. The window shows it on a blue card with the exact route and inputs. **Enter** runs it as a remote control would. **Esc** forgets it. An Enter within six tenths of a second of the card appearing is ignored, so a double press can't run something nobody has read.
+- **Order of service** (`ServicePlanReader.cs`). Paste a bulletin. **Read it** needs no AI: one line is one row. **Read with AI** handles prose and untidy layouts. Either way, songs are matched to the library with the Planning Center import's matcher (`PlanSongMatcher`, section 45). A song you don't have is listed, never made. **Add as a service** saves an ordinary service. Nothing is saved before that.
+- **Slide checks** (`SlideChecks.cs`). Plain arithmetic on each slide finds weak contrast, a busy background behind words, too much text, words cut off, a box off the slide and small text. Two findings have a safe **Fix**: shrink to fit, and move onto the slide. **Ask the assistant to look too** sends pictures of up to eight slides for a second opinion. It changes nothing.
+- **Translate** (`SlideTranslator.cs`). Makes a *copy* of an announcements deck in another language, named as an AI translation to check, with the original words kept in each slide's notes. Scripture slides are never sent and stay as they are. Songs are refused, because lyrics are licensed language by language.
+- **Live captions** (`Captions.cs`). Each sentence the speech worker hears goes up as a live alert (the channel the stage message uses), on the stage screens, the audience screens or both. An alert is written into no document. Captions *as heard* use no AI.
+- **Service report** (`ServiceReport.cs`). Service tracking (section 36) knows when each row was first fired. Those moments are now written to `Assistant\service-runs.jsonl` in the local data folder. The report is arithmetic on that file: what ran when, and what went over. "Notes for next week" is the only AI part.
+- **Sermon summary** (`SermonSummary.cs`, `Infrastructure/SermonSound.cs`). A recording is turned into text on this PC by the speech worker (`--speech-worker --wav <file>`). Only if you press **Summarise with AI** is the transcript's *text* sent. Each quote that comes back is looked for in the transcript, word for word. A quote that isn't there is thrown away.
+
+**Where the first rule bends.** With translation switched on, each caption sentence is sent to Claude and the translation goes to the screen a second or two later. The operator's switch covers every sentence after it. Nobody reads each one first. The page says so in words and suggests the stage screens first.
+
+Know the limits before a Sunday. Captions and the transcript were tried only with a synthetic voice, for about ten seconds. Windows' recognizer heard that voice say "Grace is not something you earn" as "Greece is not something you learn", so a transcript and its summary both need a person's read. Whisper, a more accurate recognizer, is not built. The slide checks' thresholds were set by reasoning, not in a real room.
+
+## 61. Openers and montages (Phase 13)
+
+Most churches open a service with short videos: a countdown, an announcement loop, a bumper for the sermon series, a photo montage. **Media › Make an opener…** makes them in the app. Pick one of four kinds and one of five looks (Clean, Bold, Serif, Broadcast, Minimal), fill in a short form, watch the preview and press **Make**. An ordinary MP4 lands in the Media bin's **Openers** folder. The Mac has nothing like it, so this is Windows-only code.
+
+The code is in three layers, and only the last one touches pixels:
+
+| Step | What it is | Where |
+|---|---|---|
+| **Recipe** | What you filled in: the kind, the look, the words, the files | `Core/Openers/OpenerRecipe.cs`, `OpenerLooks.cs` |
+| **Plan** | The recipe laid out in time | `Core/Openers/OpenerPlan.cs`, `OpenerFrame.cs` |
+| **Picture** | One moment drawn | `MotionTemplates/Openers/OpenerRenderer.cs` |
+
+- **`OpenerPlan.FrameAt(seconds)` is a pure function**, like the animation engine (section 14) and the motion backgrounds (section 47). Given a time, it returns an `OpenerFrame`: where the background is in its loop, which shots show, where each line of words sits, and how much black is on top. It reads no clock and remembers nothing. So a slow PC makes exactly the same video, just more slowly. The preview and the final video ask the same function, so the preview can't lie. And the tests can check "the clock reads 0:08 at 2.5 seconds" without drawing anything.
+- **The countdown rounds up**, as a kitchen timer does. "5:00" shows for the whole first second, so the count reaches zero exactly when the time is up.
+- **A loop with no seam.** In an announcement loop, each card changes at the *end* of its time, and the background makes a whole number of turns. So the frame after the last is the first. The tests check this in the description and in the pixels.
+- **Finding the beat** (`Core/Openers/BeatDetector.cs`). A montage cuts its pictures on the beats of a music track. The detector measures loudness every 5 ms. It keeps the sudden *rises*, which is where drum hits are. Then it looks for the spacing at which the rises line up with themselves, between 60 and 180 beats a minute. How well they line up is the *confidence*. A held organ note or speech lines up with nothing, so the montage cuts evenly instead. `OpenerPlan.PlanShots` moves each cut to the nearest beat that doesn't make a shot too short.
+- **Drawing** (`MotionTemplates/Openers/`). It lives in the motion templates' project because Skia is already there (section 53). `OpenerRenderer` draws the motion background, then the pictures (`OpenerPictures.cs`), then the words, then the black. Each line of words is drawn once into a small picture of its own and then just placed, faded and moved frame by frame. A big picture is cut into twelve bands, and the crew's threads draw one band each.
+- **Writing the video** (`OpenerVideoMaker.cs`). It uses the motion backgrounds' H.264 writer, `RenderedVideoWriter`. The one new thing is **sound**: the writer can now take stereo sound, encoded to AAC. Sound and picture are both timed by counting samples and frames, never by a clock, so they can't drift apart. The music is read by `Audio/Decoding/MusicFileReader.cs`.
+- **What a Mac sees.** An ordinary video. The recipe is a Windows extra (`opener`, section 41), saved with a fingerprint of the video file. **Edit opener…** (right-click the tile) opens the recipe again, so next week's series title is one box to retype.
+- **The window** is `Views/OpenerWindow.cs`. The job is in `ViewModels/MainViewModel.Openers.cs`, and the preview in `Rendering/OpenerPreviewer.cs`.
+
+What to know before relying on it:
+
+- The beat detector has only heard click tracks the tests make themselves. It has never been tried on a recording of a band, and nobody has listened to a finished montage. The preview is silent.
+- Photos, clips and music are named in the recipe by their full path on this PC. They are **not copied into the library**. If one has moved when you edit the opener, the form says it can't be found and leaves it out.
+- **HEIC photos** (an iPhone's default) can't be read. Export them as JPEG first.
+- The window always makes 1080p at 30 frames a second.
+
+The full walkthrough is [phase13/openers.md](phase13/openers.md).
+
 ## Things to try, to learn by doing
 
 1. **Add a section name.** Make "Spontaneous" a recognised label. In `Lyrics/Reflow.cs`, add it to the list of names just above `LabelPattern`, then add a test in `ReflowTests.cs` and run `dotnet test`.
@@ -1018,3 +1125,8 @@ The full walkthrough is [upstream-2026-11/engine.md](upstream-2026-11/engine.md)
 14. **Read a one-line rule.** `ScheduledBackup.Due` in `Core/Library/BackupFiles.cs` is the whole "once after each 3 AM, catching up a missed night" rule (section 50).
 15. **See what a Mac gets from a motion template.** Add a lower third from **Overlays › Motion templates…**, then open its overlay's JSON in your *test* library: one media object pointing at a PNG. The rest is in `Windows extras/motion template uses/` (section 53).
 16. **Follow a video mark.** Open `VideoMarksTests.cs` and find a test where a seek fires nothing. Then read `VideoMarks.Crossed` (section 56).
+17. **See the assistant refuse a changed word.** Open `tests/MxU.Slides.Assistant.Tests/BeforeSundayTests.cs` and find `AReplyThatChangesAddsOrMovesAWordIsRejected`. Then read `LyricsCleanup.Read` (section 58). No API key is needed: the tests use the stand-in server.
+18. **Teach the spotter a phrase.** Read `SpottingTests.cs` beside `Spotting/SpokenScripture.cs`. Its first test has a list of `[InlineData(...)]` lines: what was said, and the reference expected. Add a line for a reference said a new way, such as "Psalm twenty three verse one", and see whether it passes (section 59).
+19. **Read a bulletin with no AI.** Open **Assistant › Order of service**, paste five lines with a time on each, and press **Read it**. Then find the rules in `ServicePlanReader.cs` (section 60).
+20. **Make a countdown.** **Media › Make an opener…**, Countdown, look Bold. Drag the preview's slider to the end. Then read `CountdownText` in `Core/Openers/OpenerPlan.cs` and find out why it rounds up (section 61).
+21. **Watch the seam.** Read the test `AnAnnouncementLoopHasNoSeam` in `tests/MxU.Slides.Core.Tests/Openers/OpenerTests.cs`. Then add a look: add a line to `OpenerLooks.All`, and the tests that run over every look check yours too.

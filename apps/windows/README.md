@@ -66,6 +66,11 @@ GitHub Actions (`.github/workflows/windows.yml`) runs all of this on every push,
 | Change a song's order | **Edit lyrics** › *Play order*, e.g. `V1, C, V2, C, B, C x2`. Or use the arrangement chip above the slides to make named arrangements and drag their blocks |
 | Chords | Right-click a slide › **Chords…**. The key chip beside the title transposes, and sets a capo for the stage display |
 | Make slides from sermon notes | **Notes** in the library: paste or import Word, PDF, RTF, ODT, PowerPoint or text, then **Make Slides…** |
+| Turn on the AI assistant (optional) | **Settings › Assistant**: paste the church's own Anthropic API key and press **Check and save**. Each job costs a little money on that account; the app shows a guess before and the cost after. Everything else works without it |
+| Let the assistant suggest slides or tidy lyrics | **Make Slides… › Suggest with AI**; in the song editor, **Clean up with AI** (**Put my text back** undoes it). You review everything before it's used |
+| Have scripture ready as the preacher names it | Bible window (Ctrl+B) › **Listen for scripture**. Each passage heard becomes a button; **Enter** shows it. It is never shown by itself, and the sound never leaves the PC |
+| Ask, read a bulletin, check slides, captions, reports | **Assistant** in the toolbar: Ask, Order of service, Slide checks, Translate, Live captions, Service report and Sermon summary. Read it, Check the slides, captions as heard and the report need no AI |
+| Make a countdown, bumper, montage or announcement loop | **Media › Make an opener…**: pick a kind and a look, fill in the form, press **Make**. The video goes in the Media bin's **Openers** folder; right-click it › **Edit opener…** to change it |
 | See the whole service at once | The **Grid / Continuous** switch under the slides |
 | Hand the show to a volunteer | **Screens & Settings › Present › Volunteer Mode**, then the **Volunteer** button: a locked layout that can run the service but not edit. A PIN is optional |
 | Jump to a section of the live song | Group keys like ProPresenter: **A S D F** = Verse 1–4, **C** = Chorus (**X** Chorus 2), **B** Bridge, **P** Pre-Chorus, **T** Tag, **I** Intro, **E** Ending, **O** Outro. Press again for the next repeat |
@@ -208,7 +213,11 @@ From MxU's autumn 2026 Mac updates:
 - video marks ("Video Actions"), photo spots, Scale and Blur for tall pictures, video end fades, dissolves that fade a whole layer as one picture, the Screen Map and custom layers;
 - streams that reconnect after a stalled upload and can lower their bitrate on a slow network.
 
-Not yet tried with the real thing: library sync and the backup computer with a real Mac, the After Effects bridge with a real After Effects, and Planning Center with a real token. They're tested with stand-ins. [docs/PORTING.md](docs/PORTING.md) has the full list of what isn't done or isn't verified.
+Phase 12 adds the service assistant, an optional AI helper. It suggests slides from sermon notes, tidies pasted lyrics, listens for scripture references, and has a window for typed requests, orders of service, slide checks, translation, live captions, a service report and a sermon summary. It suggests and a person decides; the one exception is translated live captions, which go to the screen without the operator reading each one. **It needs the church's own Anthropic API key and costs money per use.** Everything else in the app works without a key and without the internet. Nothing in it has been run against the real Anthropic API yet, and the listening parts have only heard Windows' synthetic voice.
+
+Phase 13 adds the opener and montage maker: sermon-series bumpers, countdowns, announcement loops and photo montages cut to the beat of a music track, in five looks, made into ordinary MP4s. It needs no key and no internet. The montage's beat detection has only been tried on test click tracks, and a montage's photos, clips and music are used from where they are on the PC, not copied into the library.
+
+Not yet tried with the real thing: library sync and the backup computer with a real Mac, the After Effects bridge with a real After Effects, Planning Center with a real token, the assistant with the real Anthropic API, and the speech features with a real microphone. They're tested with stand-ins. [docs/PORTING.md](docs/PORTING.md) has the full list of what isn't done or isn't verified.
 
 See [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) to learn the code, and [docs/PORTING.md](docs/PORTING.md) for which Swift file each C# file comes from.
 

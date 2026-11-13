@@ -413,6 +413,23 @@ The Mac's tests for the files in these four tables are ported with them. Each ph
   - **Notes:** `ProImport/Rtf/RtfNoteLines.cs` (and `RtfReader`'s opt-in `weights`), `Core/Notes/NoteTextEditing.cs` (Edit Text), `Core/Notes/NoteModels.cs` (copy and value equality for the generated note classes), `Views/Notes/NoteTileBadges.cs`, `AppSettings.Notes.cs`, `Infrastructure/SelfTest.Notes.cs`.
   - **Backup computer:** `Core/Follow/FollowCopy.cs` (copying a Windows booth's JSON items to a Windows backup); hooks in ported classes (`ActionRouter.Holds`, `TimerController.Acted`, `AudioBusStatus.EntryId`); `ThisComputer.Name`'s override (`MXU_SLIDES_COMPUTER_NAME`); `Infrastructure/SelfTest.Backup.cs`.
   - **Engine:** photo designs in the worship looks (`StarterPacks.Worship.cs` → `PhotoDesigns`), the seeder's gentle repair (`LibrarySeeder.RepairGently`), `MediaLooks.Spread` (the blurred copy grown so WPF's faded rim falls outside the frame), the Screen Map saved in `settings.json` (`AppSettings.ScreenMap`), `Broadcast/Rtmp/LoopbackRtmpServer.cs`, `Infrastructure/SelfTest.UpstreamCore.cs`, `SelfTest.UpstreamStreams.cs`.
+- **Phase 12, the service assistant** (sections 57 to 60; the Mac has no assistant, so nothing here needs porting when upstream changes):
+  - **Jobs to Claude:** `MxU.Slides.Assistant/AssistantClient.cs`, `AssistantService.cs`, `AssistantModels.cs`: a job sent through Anthropic's C# package with a fixed JSON shape, look-ups, retries, a time limit and costs; one job at a time on its own thread.
+  - **Key, log, privacy:** `AssistantKeyVault.cs` (the API key under DPAPI), `AssistantLog.cs` (what was sent and received), `PrayerPrivacy.cs` (prayer-request lines held back).
+  - **Before Sunday:** `NoteSuggester.cs` (Suggest with AI: passages marked "suggested" for the existing planner), `LyricsCleanup.cs` (pasted lyrics labelled, with a word-by-word check).
+  - **The scripture spotter:** `Spotting/*` (`SpokenScripture`, `ScriptureSpotter`, `SpeechWorker`, `SpeechListener`): spoken references, the two-recognizer rule, the speech process (`MxUSlides.exe --speech-worker`) and its pipe.
+  - **The Assistant window's jobs:** `LibraryFacts.cs` (the snapshot the model may look things up in), `TypedRequests.cs` (Ask), `ServicePlanReader.cs` (Order of service), `SlideChecks.cs`, `SlideTranslator.cs`, `Captions.cs`, `ServiceReport.cs` (with the local file `Assistant\service-runs.jsonl`), `SermonSummary.cs` and `Infrastructure/SermonSound.cs`.
+  - **The app:** `Views/Assistant/*` (`AssistantWindow`, `AssistantSettingsSection`, `SpotterStrip`), `ViewModels/MainViewModel.Assistant.cs`, `MainViewModel.AssistantTasks.cs`, `Infrastructure/AppSettings.Assistant.cs`.
+  - **Tests:** `MxU.Slides.Assistant/Testing/FakeAnthropicServer.cs` (the stand-in for Anthropic's API), `tests/MxU.Slides.Assistant.Tests`, `Infrastructure/SelfTest.Assistant.cs`, `SelfTest.AssistantTasks.cs`.
+  - One change to a ported file: `LocalApi/OpenApiDocument.cs` (`RequestSchema` and `PathParameters` made public, so Ask can describe each route to the model).
+  - Nothing is stored in the library or in Windows extras. The key, the log and the service-run record are in the app's local data folder.
+- **Phase 13, the opener and montage maker** (section 61; the Mac has no twin):
+  - `MxU.Slides.Core/Openers/*` (`OpenerRecipe`, `OpenerLooks`, `OpenerPlan`, `OpenerFrame`, `BeatDetector`): recipes, the five looks, what is on screen at any moment, the montage's shot plan, the countdown clock, beat detection.
+  - `MxU.Slides.MotionTemplates/Openers/*` (`OpenerRenderer`, `OpenerPictures`, `OpenerVideoMaker`): drawing the frames with Skia over a motion background; an H.264 MP4 with AAC sound; filing it into the library.
+  - `Broadcast/Media/VideoClipReader.cs` (a clip's pictures read in order, not in real time) and `Audio/Decoding/MusicFileReader.cs` (a music file as plain stereo samples).
+  - `Views/OpenerWindow.cs`, `Views/MainWindow.Openers.cs`, `ViewModels/MainViewModel.Openers.cs`, `Rendering/OpenerPreviewer.cs`, `Infrastructure/SelfTest.Openers.cs`.
+  - The recipe is a Windows extra (`opener`).
+  - Changes to files already listed: `Broadcast/Media/RenderedVideoWriter.cs` can take an AAC sound track (`audioSampleRate`, `WriteAudio`); silent videos are written as before. In the ported `Broadcast/Media/MediaTranscoder.cs`, `OpenVideo`, `ReadVideoFormat`, `CopyPicture` and `VideoFormat` went from private to internal so `VideoClipReader` can share them; no behaviour changed. `Views/MainWindow.MotionBackgrounds.cs` got one line, so a media tile's menu also offers "Edit opener…".
 
 ## Not ported yet, not done, not verified
 
@@ -424,6 +441,9 @@ These work in the unit tests and the self-test, which use stand-ins. Nobody has 
 - **Library sync with a real Mac.** Tested against `MacSimulator` (documents written the way the Mac's code writes them) and the Mac's own fixtures. The steps are in [phase10/sync.md](phase10/sync.md), section 6.
 - **The After Effects bridge with a real After Effects.** Tested with `tests/MxU.Slides.FakeAfterEffects`. The steps are in [phase11/motion.md](phase11/motion.md), section 10.
 - **Planning Center with a real token.** The import (Phase 6) has only been run against made-up answers.
+- **The service assistant with the real Anthropic API** (Phase 12). Every test talks to a stand-in server, `FakeAnthropicServer`. No call was ever made to Anthropic. See "Phase 12" below.
+- **Anything that listens, with a real voice** (Phase 12): the scripture spotter, live captions and the sermon transcript were tried only with Windows' synthetic voice.
+- **A montage with real music and photos** (Phase 13). The tests make their own click tracks and coloured pictures. See "Phase 13" below.
 
 ### Skipped on purpose
 
@@ -559,3 +579,50 @@ These work in the unit tests and the self-test, which use stand-ins. Nobody has 
 - **Screen Map:** the shared-outputs page ("Share it / Take it over"), `networkCarryFeed`, `restoreDisplayClaim`, the full output picture (Windows shows the screen's frame, rulers and placed layers, not its live picture), thumbnail chips, and dragging or resizing one placement by hand.
 - **Dissolves:** Windows fades the two stacks as containers; the Mac mixes them in a shader, so with two opaque stacks the middle is slightly darker here.
 - **Media engine:** the live-input dropout note and the still-image tally; the sRGB encode pass of `OutputMirror` (Metal-only).
+### Phase 12: the service assistant
+
+Read this group before trusting the assistant on a Sunday. The walkthrough is [phase12/assistant.md](phase12/assistant.md).
+
+Never verified:
+
+- **Nothing in Phase 12 was verified against the real Anthropic API.** Every test uses a stand-in server on the PC (`FakeAnthropicServer`). There was no key on the build PC, and calls cost money. So nobody knows yet whether the real API accepts every request exactly as sent (the key's header, the picture blocks, the tool definitions), or how well the real model reads a bulletin, picks an action, translates, summarises or judges a slide from a picture.
+- **The scripture spotter, live captions and the sermon transcript were tried only with Windows' synthetic voice**, never with a real microphone or a real preacher. A noisy hall, accents and music under speech were not tried. Captions and the transcript had about ten seconds of that voice from a `.wav` file. A long recording and a video file (`.mp4`) were not tried. The sound-card path into the spotter was not run with a device.
+- **The published single-file build's speech worker was not run.** `scripts/publish.ps1` makes one `.exe`, and the app starts a second copy of itself as `--speech-worker`. That was only run from the ordinary build.
+- **The slide checks' thresholds in a real room.** They were set by reasoning and four planted slides, not with a projector.
+- Processor use was measured with the self-test's outputs running, not with a real projector, stream and NDI together.
+
+Known behaviour to be aware of:
+
+- **Translated live captions reach the screen without the operator reading each one.** The operator's switch covers every sentence after it. This bends the rule "the AI suggests, a person decides". Captions as heard use no AI.
+- Windows' recognizer is weak on real speech. Even the synthetic voice's "Grace is not something you earn" was heard as "Greece is not something you learn". A transcript, and any summary made from it, needs a person's read.
+- Captions and the spotter each start their own speech process if both are on, so the processor cost is doubled.
+- A background picture that hasn't finished loading when a slide is checked reads as black.
+- A slide check's **Fix** has no Undo entry. Undo it by hand in the editor.
+
+Not built:
+
+- **Whisper** as a more accurate recognizer (it needs a model download, which needs the user's yes).
+- Translated scripture: no non-English Bible is built in, so scripture slides are left as they are.
+- Captions burned into the stream only; a caption box in a stage layout (a new box kind can't be written into a shared layout).
+- A keyboard shortcut for the Ask box; requests that need two actions.
+- A chart in the service report, or emailing it.
+- Reading the pictures in a scanned bulletin (a PDF or Word file is read as text).
+- The spotter backing off when the outputs' frame timing slips (it runs below normal priority and shows its processor use).
+- The spotter in other languages: its grammar and number words are English.
+- Suggest with AI choosing a design or lower third per passage (the church's design map chooses, as for Pick for me).
+- A fallback model when Claude declines a request (a decline is reported and nothing changes).
+
+### Phase 13: the opener and montage maker
+
+The walkthrough is [phase13/openers.md](phase13/openers.md).
+
+- **The montage's beat detection has only seen synthesized click tracks.** The tests make their own music and coloured pictures. No real song and no real photos were used, and the detector has not been tried on a recording of a band.
+- **Nobody has listened to a finished montage.** The tests check that the file has a sound track of the right length, not how it sounds.
+- **Opener sources are referenced by absolute path, not copied into the library.** Pictures, clips and music are named in the recipe by their full path on this PC. If one has moved when the opener is made again, it's left out. Because they aren't in the library, a library backup doesn't hold them.
+- **HEIC photos** (an iPhone's default) are unreadable: Skia can't decode them, and they show as missing. Export them as JPEG first.
+- The preview is silent. You hear the music only in the finished video.
+- Words are set simply: left to right, one glyph per letter, no kerning pairs. Arabic, Hebrew and Indic scripts won't join or order correctly.
+- A clip's own sound isn't used. A clip longer than its shot is cut off, and a shorter one holds its last picture.
+- 4K and 60 fps are in the recipe and the renderer but not in the window: it always makes 1080p at 30.
+- A motion background and an opener can be made at once if the background is started second. Both finish; both are slower.
+- No free-form editor, by design: you choose among looks.
