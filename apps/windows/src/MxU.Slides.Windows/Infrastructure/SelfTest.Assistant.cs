@@ -73,6 +73,7 @@ public sealed partial class SelfTest
             (note, deck) = await AssistantSuggestsSlides(server, windows);
             await AssistantCleansLyrics(server, windows);
             await AssistantOfflineAndOff(server, windows, note);
+            await AssistantStageTwo(server, windows); // SelfTest.AssistantTasks.cs
             wav = await SpotterHearsASermon(server, windows);
         }
         finally

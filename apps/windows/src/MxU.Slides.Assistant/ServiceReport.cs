@@ -131,8 +131,12 @@ public static class ServiceReport
         string? section = null;
         foreach (var line in report.Lines)
         {
-            if (line.Section != section && line.Section is { Length: > 0 }) text.Append(CultureInfo.InvariantCulture, $"{line.Section.ToUpperInvariant()}\n");
-            section = line.Section;
+            // A header is printed when the service moves into a different named part.
+            if (line.Section is { Length: > 0 } part && part != section)
+            {
+                text.Append(CultureInfo.InvariantCulture, $"{part.ToUpperInvariant()}\n");
+                section = part;
+            }
             text.Append(CultureInfo.CurrentCulture, $"  {line.Started:t}  {line.Name}");
             text.Append(CultureInfo.InvariantCulture, $"  ·  ran {(line.Ran is { } r ? Clock(r) : "(still running)")}");
             if (line.Planned is { } plan) text.Append(CultureInfo.InvariantCulture, $", planned {Clock(plan)}");

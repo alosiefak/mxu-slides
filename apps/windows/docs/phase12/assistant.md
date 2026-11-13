@@ -1,7 +1,7 @@
-# The service assistant (Phase 12, stage 1)
+# The service assistant (Phase 12)
 
-An optional AI helper for the person running slides. This stage builds the foundation and three
-features:
+An optional AI helper for the person running slides. It was built in two stages. Stage 1 made
+the foundation and three features:
 
 - **Suggest with AI** in Make Slides: the assistant reads a pastor's notes and says which lines
   are slides.
@@ -9,6 +9,19 @@ features:
   Chorus, Bridge.
 - **The scripture spotter** in the Bible window: it listens to the preacher and has each passage
   named waiting for you.
+
+Stage 2 added the **Assistant window** (the Assistant button in the toolbar), with seven pages.
+Four of them do their main job with no AI at all:
+
+| Page | What it does | Needs the AI? |
+|---|---|---|
+| Ask | You type "next song"; it holds the matching action ready; Enter does it | Yes |
+| Order of service | A bulletin or email becomes the rows of a service | No (*Read it*); yes for *Read with AI* |
+| Slide checks | Finds slides that are hard to read; fixes two kinds safely | No; a second opinion from pictures is optional |
+| Translate | A marked second-language copy of an announcements deck | Yes |
+| Live captions | What is said, as a line of text on the stage or audience screens | No; translation is optional |
+| Service report | What ran when, and what went over | No; "notes for next week" are optional |
+| Sermon summary | A recording becomes a transcript on this PC, then a summary | No for the transcript; yes for the summary |
 
 The Mac app has none of this. It is Windows only, and it writes nothing new into shared
 documents: a note or song made with the assistant's help is an ordinary note or song.
@@ -47,6 +60,16 @@ documents: a note or song made with the assistant's help is an ordinary note or 
 4. **Bible window (Ctrl+B) › Listen for scripture.** Pick the sound input the preacher's
    microphone is on. Each passage heard appears as a button and the newest is put in the box, with
    an amber flash. **Enter shows it.** It is never shown by itself.
+
+5. **Assistant (toolbar) › Order of service.** Paste a bulletin and press **Read it**. Each line
+   becomes a row; a song in your library gets a green "in your library", one that isn't is
+   listed. **Add as a service** saves it. Nothing is saved before that.
+6. **Assistant › Slide checks.** Open a presentation, press **Check the slides**. Where a row has
+   a **Fix** button, the fix is safe (see below).
+7. **Assistant › Service report.** Run a service (fire its rows), press Clear in the Service
+   Tracking panel at the end, then open this page.
+8. **Assistant › Ask.** Type `next song` and press Enter. Read the blue card. Enter again does
+   it; Esc forgets it.
 
 ## How it works, piece by piece
 
@@ -219,8 +242,165 @@ passage. The newest is put in the Bible window's box unless you are typing somet
 there. There is a flash and no chime, because a sound from this PC could come out of the hall's
 speakers.
 
+## Stage 2: the Assistant window
+
+The window is `Views/Assistant/AssistantWindow.cs`. It only draws. The app's side of each job is
+in `ViewModels/MainViewModel.AssistantTasks.cs`, and each job's thinking is one file in
+`MxU.Slides.Assistant`, with no screen code in it, so it can be tested alone.
+
+### What the assistant may look up (`LibraryFacts.cs`)
+
+Stage 1 gave the model one look-up. Stage 2 adds three, shared by the jobs that need them:
+`search_library`, `read_current_service` and `list_themes`.
+
+Just before a job, the app takes a **snapshot** on the UI thread: the names and ids of what is in
+the library, the open service's rows, and the timers. It reads them through the Local API's own
+bridge (HOW-IT-WORKS section 15), so the assistant sees what a remote control sees. The look-ups
+then run on the assistant's thread against the snapshot and never touch the live library.
+
+Two things follow. The model can only name a song or lower third that a look-up returned. And
+the code that reads its answer checks every id against the same snapshot, so a made-up id goes
+nowhere. Names and ids leave the PC when a look-up is answered; slide words, lyrics and files
+do not.
+
+### Ask: typed requests (`TypedRequests.cs`)
+
+The Local API has a table of routes: `fireOverlay`, `advance`, `clearAll`, `fireSlide`, and so
+on. The app turns every route that *controls the show* (31 of them on this build, plus the two look-ups) into a tool the
+model can call. Routes that create, change or delete documents are left out.
+
+The important part is what a tool does when the model calls it: **nothing**. It checks the
+call, keeps it as a `ReadyAction`, and tells the model "held ready, nothing has happened yet".
+The window shows the action on a blue card with the model's one-sentence summary and, under it,
+the exact route and inputs. Then:
+
+- **Enter** calls the route's own handler, exactly as a remote control would, with the
+  "control" permission and no more.
+- **Esc** forgets it.
+- A second Enter within six tenths of a second of the card appearing is ignored, so a double
+  press can't run something nobody has read.
+- Only one action is held for one request.
+
+### Order of service (`ServicePlanReader.cs`)
+
+Two readers give the same result, a `Plan`.
+
+*Read it* needs no AI. One line is one row. A line in capitals or ending in a colon is a header.
+A line that is a Bible reference is a reading. A line whose title is a song in your library (or
+that starts "Song:" or "Hymn:") is a song. A start time (`10:05`) or a length (`5 min`) gives the
+row its planned length.
+
+*Read with AI* sends the text (prayer-request lines held back first) and gets rows back in a
+fixed shape: a kind from `header`, `song`, `scripture`, `item`, a title, and for a reading a
+reference. There is no field for lyrics or verse text.
+
+Either way the app then does the same three things:
+
+1. **Songs are matched to the library** with the matcher the Planning Center import already
+   uses (`PlanSongMatcher`). A song that isn't there, or that the library has two of, is listed
+   under "Songs to add or link". No song is ever made.
+2. **A reading is named by the app's own parser** ("Jn 3:16-18" becomes "John 3:16–18"). The
+   verses come from the Bible window on the day.
+3. **Add as a service** saves an ordinary service: headers, rows that play your songs, and plain
+   rows for everything else. A Mac opens it like any other service.
+
+### Service report (`ServiceReport.cs`)
+
+Service tracking (HOW-IT-WORKS section 36) already knows the moment each row is first fired, but
+forgets it when the service ends. Stage 2 writes each of those moments to a small file,
+`Assistant\service-runs.jsonl`, in the app's *local* data folder. It is not in the library, so
+nothing new is shared with a Mac.
+
+The report is arithmetic on that file: a row ran from its fire until the next row's fire; "over"
+is how far that is past the row's planned length, once it is more than 30 seconds. Rows that
+were planned and never fired are listed. Pressing **Clear** in the Service Tracking panel marks
+the end. If nobody presses it, the last row has no length, and the report says so rather than
+guess.
+
+**Notes for next week** is the only AI part. It sends the report's text (row names and times)
+and shows up to five notes underneath, labelled as the assistant's suggestions.
+
+### Slide checks (`SlideChecks.cs`)
+
+For each slide the app builds its picture twice: once as data (which text boxes, where, what
+colour, what size), and once drawn small *without its words*, to measure what is behind each
+box. Then plain arithmetic decides:
+
+| Finding | How it is decided | Fix offered? |
+|---|---|---|
+| Hard to read | The web's contrast ratio between the text colour and the average colour behind it is under 3 (under 1.6 if the text has a shadow, outline or band) | No. Colour is the designer's choice |
+| Busy background | Brightness behind the box varies a lot, and the words have no shadow, outline or band | No |
+| A lot to read | More than 45 words or 8 lines in one box | No. Wording is the pastor's |
+| Cut off | The words don't fit the box (the same test as the slide grid's warning badge) | **Shrink to fit**, if the box has its own text style |
+| Off the slide | The box hangs over the slide's edge | **Move onto the slide**, if the box's place is the slide's own |
+| Small text | Under about 36 points on a 1080-high slide | No |
+
+The two fixes change one existing setting each and save the deck. There is no Undo entry for
+them: to go back, move the box or untick shrink-to-fit in the editor.
+
+**Ask the assistant to look too** is optional. It sends pictures of up to eight slides (those
+with findings first) and shows the notes that come back as an opinion. It changes nothing.
+
+### Translate (`SlideTranslator.cs`)
+
+Each text box goes out numbered and comes back by number, so an answer can only fill a box that
+was sent. The result is a **copy**, named "… (Spanish · AI translation: check before use)", filed
+under "Translations", with the original words kept in each slide's notes for a bilingual reader
+to check against.
+
+- **Scripture is never sent.** A slide that holds a Bible passage or reference is held back
+  whole and stays as it is in the copy. The Bibles built into the app are English (KJV, ASV,
+  WEB), so there is no real translation to take another language's verses from. The window says
+  which slides were left, before and after.
+- **Songs are refused** before anything is sent. Lyrics are licensed language by language.
+- A prayer request on a slide is not sent; that box stays in the original.
+
+### Live captions (`Captions.cs`)
+
+Captions use the same speech process as the scripture spotter. Each sentence it hears goes up as
+a **live alert** (the channel the stage message uses), on the stage screens, the audience
+screens or both. An alert is on screen now and is written into no document, so captions add
+nothing to the shared library. If another alert is up (a nursery call), captions leave it alone.
+
+Translation is optional: each finished sentence is sent alone and shown a second or two later.
+A sentence that names someone to pray for is shown as heard and not sent. If the assistant
+falls three sentences behind, or there is no internet, sentences go up as heard.
+
+> **A judgement call to know about.** The first rule says nothing the AI makes reaches a screen
+> without a keypress. Translated captions bend it: the operator's switch covers every sentence
+> after it, and nobody reads each one first. The page says so in words, and suggests the stage
+> screens first. Captions *as heard* involve no AI.
+
+Captions and the spotter each start their own speech process if both are on, so the processor
+cost is doubled (about a tenth of one core each, measured with a synthetic voice).
+
+### Sermon summary (`SermonSummary.cs`, `Infrastructure/SermonSound.cs`)
+
+1. Windows' own decoders (Media Foundation, through the NAudio package the app already uses)
+   turn the recording into a temporary 16 kHz sound file.
+2. The speech worker reads that file through (`MxUSlides.exe --speech-worker --wav <file>`), with
+   free dictation only, and reports each sentence with its time.
+3. Only then, and only if you press **Summarise with AI**, the transcript's *text* is sent.
+
+**Quotes are checked.** The model gives each quote with the transcript line it starts on. The
+app looks for the quote's words, in order, around that line. A quote that isn't there word for
+word is thrown away (the window says how many were), and the time shown is the transcript's
+own. Punctuation and capitals may be added; a word may not change.
+
+Windows' recognizer is weak on real preaching. In the self-test, Windows' own synthetic voice
+saying "Grace is not something you earn" was heard as "Greece is not something you learn". A
+summary is only as good as the transcript under it, so both need a person's read.
+
 ## What was tested, and how
 
+- **Stage 2: 17 more unit tests** (`StageTwoTests.cs`, 100 in all) and **24 more self-test
+  checks** with pictures 151 to 163 (`SelfTest.AssistantTasks.cs`), again with the stand-in
+  server. They cover: a typed request held ready, done on Enter, forgotten on Esc, and an
+  invented id refused; a bulletin read with and without AI and saved as a service; the report
+  made from real fires with no request sent; the checks finding and fixing the planted faults;
+  the pictures really being in the second-look request and not in the log; the scripture slide
+  never sent and never changed; captions heard from a synthetic voice and shown on the audience
+  scene; a recording transcribed through the real decoder and worker; a false quote dropped.
 - **83 unit tests** in `tests/MxU.Slides.Assistant.Tests`, against the stand-in server: what a
   request carries; the key in a header and never in an address or the log; each failure's words;
   retries; cancel; no network; the schemas' values; a tampered verse; tampered lyrics;
@@ -240,19 +420,28 @@ Expect a real sermon to be heard less well. The sound-card path (`AudioInputSour
 spotter) was not run with a device. Processor use was measured with the self-test's outputs
 running, not with a real projector, stream and NDI together.
 
+**What stage 2's tests do not cover.** Nothing was sent to the real API, so how well Claude
+reads a real bulletin, picks an action, translates or summarises is unknown; so is whether the
+real API accepts the picture blocks and the 33 tool definitions exactly as sent. Captions and
+the transcript were tried only with Windows' synthetic voice, for about ten seconds; a
+forty-minute recording, a video file (.mp4) and a real voice were not tried. The slide checks'
+thresholds were set by reasoning and four planted slides, not by a room and a projector. A
+background picture that has not finished loading when a slide is measured reads as black.
+
 ## Not built yet
 
 | Piece of the plan | State |
 |---|---|
-| Order of service from a bulletin or email | Not built |
-| Slide checks from pictures of slides (vision) | Not built |
-| Translation of announcement and point slides | Not built |
-| Live captions | Not built |
-| Typed requests ("put up the giving lower third") | Not built |
-| The after-service report and the sermon summary | Not built |
+| Order of service from a bulletin or email | Built in stage 2. A PDF or Word file is read as text (pictures in a scanned bulletin are not read) |
+| Slide checks | Built in stage 2: local checks, two safe fixes, and an optional look at pictures |
+| Translation of announcement and point slides | Built in stage 2. Scripture is left untranslated because no non-English Bible is built in |
+| Live captions | Built in stage 2 as a live alert. Not built: captions burned into the stream only, a caption box in a stage layout (a new box kind can't be written into a shared layout), sharing one speech process with the spotter |
+| Typed requests ("put up the giving lower third") | Built in stage 2. Not built: a keyboard shortcut for the Ask box; requests that need two actions |
+| The after-service report and the sermon summary | Built in stage 2. The report has no chart and is not emailed |
+| Undo for a slide check's Fix | Not built; undo it by hand in the editor |
 | Whisper as a more accurate recognizer | Not built (it needs a model download, which needs the user's yes) |
 | The spotter backing off when the outputs' frame timing slips | Not built; it runs at below-normal priority and shows its processor use |
-| Tools for the library, themes and the current service | Not built; stage 1's jobs don't need them |
+| Tools for the library, themes and the current service | Built in stage 2 (`LibraryFacts.cs`) |
 | Suggest with AI choosing a design or lower third per passage | Not built; the church's design map chooses, as for Pick for me |
 | Opening a `.docx` or PDF straight into Suggest with AI | Already works: import the file as a note first (section 54) |
 | The spotter in French, Spanish, German or Italian | Not built; the grammar and the number words are English |
@@ -273,6 +462,16 @@ Windows-only:
 | `MxU.Slides.Assistant/Spotting/*` | The scripture spotter: spoken references, the two-recognizer rule, the speech process and its pipe |
 | `MxU.Slides.Assistant/Testing/FakeAnthropicServer.cs` | The stand-in for Anthropic's API that the tests and the self-test use |
 | `Views/Assistant/*`, `ViewModels/MainViewModel.Assistant.cs`, `Infrastructure/AppSettings.Assistant.cs`, `Infrastructure/SelfTest.Assistant.cs` | Settings › Assistant, the log window, the Bible window's spotter strip, and the self-test section |
+| `MxU.Slides.Assistant/LibraryFacts.cs` | The snapshot of library names and ids the model may look up: `search_library`, `read_current_service`, `list_themes` |
+| `MxU.Slides.Assistant/TypedRequests.cs` | Typed requests: the Local API's control routes as tools that hold an action ready instead of running it |
+| `MxU.Slides.Assistant/ServicePlanReader.cs` | Order of service from pasted text or a file, with and without AI; songs matched with `PlanSongMatcher` |
+| `MxU.Slides.Assistant/ServiceReport.cs` | The running record of fires (`Assistant\service-runs.jsonl`, local) and the report made from it; optional notes |
+| `MxU.Slides.Assistant/SlideChecks.cs` | Readability checks by arithmetic (contrast, busy background, amount of text, cut off, off the slide), two safe fixes, optional vision pass |
+| `MxU.Slides.Assistant/SlideTranslator.cs` | A marked second-language copy of a deck; scripture and songs never sent |
+| `MxU.Slides.Assistant/Captions.cs` | Live captions as a live alert; optional sentence-by-sentence translation |
+| `MxU.Slides.Assistant/SermonSummary.cs`, `Infrastructure/SermonSound.cs` | A recording transcribed on the PC (`--speech-worker --wav`), then summary, checked quotes and post drafts |
+| `Views/Assistant/AssistantWindow.cs`, `ViewModels/MainViewModel.AssistantTasks.cs`, `Infrastructure/SelfTest.AssistantTasks.cs` | The Assistant window's seven pages, the app's side of each job, and their self-test |
+| `LocalApi/OpenApiDocument.cs` (`RequestSchema`, `PathParameters` made public) | A route's body shape with its reference followed, for the typed-request tools |
 
 Not ported yet, not done, not verified (add to that list):
 
@@ -280,6 +479,10 @@ Not ported yet, not done, not verified (add to that list):
 |---|---|
 | Any call to the real Anthropic API | No key on the build PC, and calls cost money; every test uses a stand-in server |
 | The spotter with a real microphone and a real sermon | Only Windows' synthetic voice was used |
-| The rest of Phase 12 (order of service, slide checks, translation, captions, typed requests, the report and summary) | Stage 2 |
+| How well the real model does stage 2's jobs (reading a bulletin, choosing an action, translating, summarising, judging slides from pictures) | Never run against the real API |
+| Captions and the sermon transcript with a real voice, a long recording or a video file | Only a ten-second synthetic voice in a .wav was used |
+| The slide checks' thresholds in a real room | Set by reasoning and four planted slides |
+| Translated scripture | No non-English Bible is built in; scripture slides are left as they are |
+| Whisper; a caption box in stage layouts; Undo for a slide Fix; a shortcut for the Ask box | Not built |
 
 *See also [HOW-IT-WORKS.md](../HOW-IT-WORKS.md) sections 26, 44 and 54, and [upstream-2026-11/notes.md](../upstream-2026-11/notes.md).*

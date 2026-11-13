@@ -32,7 +32,9 @@ public sealed partial class MainViewModel
         if (itemId is null || SelectedService is not { } service || !service.Items.Any(i => i.Id == itemId)) return;
         var now = DateTimeOffset.Now;
         ArmLocalTimingEnd(RunOfShow(service), itemId, now);
-        if (ServiceTiming.NoteItemFired(itemId, now)) RefreshServiceTracking(force: true);
+        if (!ServiceTiming.NoteItemFired(itemId, now)) return;
+        RecordServiceFire(service, itemId, now); // the running record the service report is made from (Phase 12)
+        RefreshServiceTracking(force: true);
     }
 
     /// <summary>
@@ -48,6 +50,7 @@ public sealed partial class MainViewModel
         {
             if (!ServiceTiming.IsTiming(SelectedService)) return;
             Log.Info($"Service tracking: local timing ended ({endsAt:t})");
+            ForgetServiceRun(); // the clock gave up, not the operator: the report has no true end time
             ClearServiceTracking();
         }), null, TimeSpan.FromSeconds(Math.Max(0, (endsAt - now).TotalSeconds)), Timeout.InfiniteTimeSpan);
     }
@@ -58,6 +61,7 @@ public sealed partial class MainViewModel
     {
         localTimingWake?.Dispose();
         localTimingWake = null;
+        RecordServiceEnd(DateTimeOffset.Now);
         ServiceTiming.Clear();
         RefreshServiceTracking(force: true);
     }

@@ -83,7 +83,8 @@ public static class SlideTranslator
 
     public static Prepared Prepare(Presentation deck, string language)
     {
-        if (deck.PresentationKind == PresentationKind.Song || deck.Ccli is not null)
+        // A song by any of the app's signs: it says so, it has sections (verse, chorus), or it carries a CCLI licence.
+        if (deck.PresentationKind == PresentationKind.Song || deck.Sections is { Count: > 0 } || deck.Ccli is not null)
             return new Prepared(null, [], [], null, "Songs aren't translated here: lyrics are licensed in each language. Add the published translation as its own song.");
 
         var pieces = new List<Piece>();

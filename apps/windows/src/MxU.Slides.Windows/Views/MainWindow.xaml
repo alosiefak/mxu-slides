@@ -118,6 +118,8 @@
                         <TextBlock Text="Bible" />
                     </StackPanel>
                 </Button>
+                <Button x:Name="AssistantButton" DockPanel.Dock="Left" Content="Assistant" Margin="0,0,6,0" Click="Assistant_Click"
+                        ToolTip="Assistant: type a request, read a bulletin into a service, check slides, translate, captions, the service report" />
 
                 <!-- Help: the welcome guide, keys, diagnostics, Check this PC, report a problem (Views/HelpMenu.cs). -->
                 <Button x:Name="HelpButton" DockPanel.Dock="Right" Click="Help_Click" ToolTip="The welcome guide, keys, diagnostics and Report a Problem" Margin="6,0,0,0">

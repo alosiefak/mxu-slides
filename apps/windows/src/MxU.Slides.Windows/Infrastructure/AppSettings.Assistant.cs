@@ -15,4 +15,13 @@ public sealed partial class AppSettings
 
     /// <summary>The sound input the scripture spotter listens to (the device's id); null = the first one found.</summary>
     public string? SpotterInputUid { get; set; }
+
+    /// <summary>Where live captions show: "stage" (the stage screens), "audience" or "both". Null = stage.</summary>
+    public string? CaptionsTarget { get; set; }
+
+    /// <summary>The language captions are translated into by the assistant ("Spanish"); null = shown as heard.</summary>
+    public string? CaptionsLanguage { get; set; }
+
+    /// <summary>The language last chosen for translating a deck.</summary>
+    public string? TranslateLanguage { get; set; }
 }

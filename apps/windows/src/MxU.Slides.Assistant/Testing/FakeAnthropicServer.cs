@@ -57,6 +57,12 @@ public sealed class FakeAnthropicServer : IDisposable
         return this;
     }
 
+    /// <summary>Forgets answers scripted and not yet used (a test that scripted more than were asked for).</summary>
+    public void ClearScript()
+    {
+        lock (gate) script.Clear();
+    }
+
     /// <summary>Answers with the model's final words: JSON in the asked-for shape.</summary>
     public FakeAnthropicServer ThenText(string text, int inputTokens = 900, int outputTokens = 120) =>
         Then(_ => Message("[{\"type\":\"text\",\"text\":" + JsonSerializer.Serialize(text) + "}]", "end_turn", inputTokens, outputTokens));
