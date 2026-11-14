@@ -90,6 +90,7 @@ GitHub Actions (`.github/workflows/windows.yml`) checks the models, builds the a
 | Slides that change by themselves | Open a song › **Timeline** › **Record**, click each slide as the song plays, **Finish**. ▶ plays it back. **⋯** adds the song's music or follows timecode |
 | Timecode | **Screens & Settings › Timecode in**: LTC from a sound input or MTC from MIDI |
 | A different look on each screen | **Screens & Settings › More screens…**, pick a screen, then **Look**: e.g. the stream shows the lyric as a lower third while the projector shows it full screen |
+| Lyrics over live camera (ATEM or another video switcher) | **Screens & Settings › More screens…**, pick the screen that goes to the switcher, then **Key feed**: *Over black* for a luma key or *Over green* for a chroma key. That screen shows only words and overlays. Read [docs/phase14/atem-key-feed.md](docs/phase14/atem-key-feed.md): it hasn't been tried on a real ATEM yet |
 | Design overlays | Bottom bin › **Overlays › Edit…**: make lower thirds and plates, their fields, masks and animations |
 | Animated templates from After Effects | **Overlays › Motion templates…**: import a Lottie file (`.json`, `.lottie`), type its words, choose its colours, and put it up as a lower third or a background |
 | Edit a theme | Right-click a presentation › **Edit Theme…**; **Theme Designs…** shows every design as a picture |

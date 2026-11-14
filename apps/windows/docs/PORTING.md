@@ -430,6 +430,11 @@ The Mac's tests for the files in these four tables are ported with them. Each ph
   - `Views/OpenerWindow.cs`, `Views/MainWindow.Openers.cs`, `ViewModels/MainViewModel.Openers.cs`, `Rendering/OpenerPreviewer.cs`, `Infrastructure/SelfTest.Openers.cs`.
   - The recipe is a Windows extra (`opener`).
   - Changes to files already listed: `Broadcast/Media/RenderedVideoWriter.cs` can take an AAC sound track (`audioSampleRate`, `WriteAudio`); silent videos are written as before. In the ported `Broadcast/Media/MediaTranscoder.cs`, `OpenVideo`, `ReadVideoFormat`, `CopyPicture` and `VideoFormat` went from private to internal so `VideoClipReader` can share them; no behaviour changed. `Views/MainWindow.MotionBackgrounds.cs` got one line, so a media tile's menu also offers "Edit opener…".
+- **Phase 14, the key feed for a video switcher** (section 62). A Windows-only addition: the Mac makes a similar picture with an output preset (its "Broadcast Feed" template: Slide and Overlays only, always over black, the slide's backdrop kept).
+  - `Core/Outputs/KeyFeed.cs` (`KeyFeedMode`, `KeyFeeds`: the layers kept, the fill, what counts as a background, which transitions become a dissolve) and `Core/Outputs/OutputConfiguration.KeyFeed.cs` (the per-screen setting, `KeyedProgram`).
+  - `Infrastructure/SelfTest.KeyFeed.cs`, `tests/MxU.Slides.Core.Tests/Outputs/KeyFeedTests.cs`.
+  - Saved as `keyFeed` on the screen in this PC's `settings.json`, beside the screen's look. Nothing is stored in the library or in Windows extras.
+  - Changes to files already listed: `Core/Outputs/ScreenSetup.cs` (the `keyFeed` field, saved and restored), `OutputConfiguration.cs` (removing a screen forgets its key feed) and `OutputConfiguration.Feeds.cs` (`PreviewProvider` calls `KeyedProgram`; one line). `Outputs/OutputManager.cs`, `OutputWindow.cs` and `SliceView.cs` got the backdrop colour and the transition swap; `Rendering/SceneView.cs`'s `Letterbox` redraws when it changes; `Views/ScreensWindow.xaml(.cs)` got the drop-down and the KEY chip; `Views/Operator/ScreensPanel.cs` and `ScreenRow` say "KEY".
 
 ## Not ported yet, not done, not verified
 
@@ -444,6 +449,7 @@ These work in the unit tests and the self-test, which use stand-ins. Nobody has 
 - **The service assistant with the real Anthropic API** (Phase 12). Every test talks to a stand-in server, `FakeAnthropicServer`. No call was ever made to Anthropic. See "Phase 12" below.
 - **Anything that listens, with a real voice** (Phase 12): the scripture spotter, live captions and the sermon transcript were tried only with Windows' synthetic voice.
 - **A montage with real music and photos** (Phase 13). The tests make their own click tracks and coloured pictures. See "Phase 13" below.
+- **The key feed never tried on a real ATEM** (Phase 14). The pictures the app sends were checked pixel by pixel, on stand-in network outputs. No switcher has keyed them, and it was not seen on a real second HDMI display. See "Phase 14" below, and [phase14/atem-key-feed.md](phase14/atem-key-feed.md).
 
 ### Skipped on purpose
 
@@ -626,3 +632,16 @@ The walkthrough is [phase13/openers.md](phase13/openers.md).
 - 4K and 60 fps are in the recipe and the renderer but not in the window: it always makes 1080p at 30.
 - A motion background and an opener can be made at once if the background is started second. Both finish; both are slower.
 - No free-form editor, by design: you choose among looks.
+
+### Phase 14: the key feed
+
+The walkthrough is [phase14/atem-key-feed.md](phase14/atem-key-feed.md).
+
+- **Never tried on a real ATEM.** The ATEM set-up steps in the walkthrough were written from how Blackmagic's keyers work in general, not from a session with the switcher.
+- **Not seen on a real HDMI display.** The self-test's pictures come from stand-in NDI outputs, which draw with the same `SliceView` as a display window. The display window's own backdrop (`OutputWindow.SetBackdrop`) and the letterbox bars on a display whose shape differs from the screen's have no picture.
+- **A soft edge over green keys with a fringe.** Glows, shadows and the smooth edges of letters are blended with the green, as any green-screen picture is. The app does not send a separate key signal over HDMI.
+- A slide's full-screen picture counts as a background, so a photo slide shows nothing on a key feed.
+- An overlay or alert moved to a media layer is hidden on a key feed.
+- Masks, keystone, colour correction and edge blending are left as they are on a key feed screen, though they make no sense there. Nothing switches them off or warns.
+- On a key feed, blur dissolve, film burn, the fades through a colour and the picture transitions all play as a plain dissolve.
+- The key colour can't be changed (black, or pure green), and there is no blue.

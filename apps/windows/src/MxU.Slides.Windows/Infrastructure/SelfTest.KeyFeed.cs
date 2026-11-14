@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using MxU.Slides.Core.Json;
 using MxU.Slides.Core.Model;
 using MxU.Slides.Core.Outputs;
 using MxU.Slides.Core.Scene;
@@ -16,12 +15,15 @@ namespace MxU.Slides.Windows.Infrastructure;
 // Phase 14, the key feed: a screen that shows only words and overlays over black or green, so a
 // video switcher (a Blackmagic ATEM) can lay them over the camera. Three screens on stand-in
 // network outputs show the same moment: an ordinary one, a key feed over black and one over
-// green. A song with a theme colour and a media background is live with a lower third up, and
-// the pictures the outputs really sent are checked pixel by pixel (pictures 70-keyfeed-…).
+// green. A song over a media background is live with a lower third up, then a slide with a
+// background fill of its own, and the pictures the outputs really sent are checked pixel by pixel
+// (pictures 70-keyfeed-…).
+//
+// The live program never paints a theme's background colour (only slide thumbnails do: see
+// SlideSceneBuilder.Scene and ShowState.AnimatedScene), so on an output a "theme background" is
+// always one of the two things checked here: a media background, or a fill on the Slide layer.
 public sealed partial class SelfTest
 {
-    private const string KeyFeedThemeId = "selftest-keyfeed-theme";
-
     /// <summary>One picture an output sent: its pixels (blue, green, red, alpha) and size.</summary>
     private sealed record KeyFrame(byte[] Pixels, int Width, int Height, bool FromOutput)
     {
@@ -62,18 +64,12 @@ public sealed partial class SelfTest
     {
         if (model.Outputs is not { } outputs) return;
         var config = outputs.Config;
-        var starter = model.Library.All<Theme>().FirstOrDefault(t =>
+        var theme = model.Library.All<Theme>().FirstOrDefault(t =>
             t.Slides?.Any(s => s.Id.EndsWith(".lyricsLower", StringComparison.Ordinal)) == true);
         var namePlate = model.Overlays.FirstOrDefault(o => o.Name == "Name + Title");
-        Check("a starter theme with a lower-third design and the Name + Title lower third are there", starter is not null && namePlate is not null);
-        if (starter is null || namePlate is null) return;
+        Check("a starter theme with a lower-third design and the Name + Title lower third are there", theme is not null && namePlate is not null);
+        if (theme is null || namePlate is null) return;
 
-        // A theme with a background colour of its own (deep violet), so the Slide layer's scene has one to drop.
-        var theme = MxuJson.Clone(starter);
-        theme.Id = KeyFeedThemeId;
-        theme.Name = "Self-test key feed";
-        theme.BackgroundColorHex = "#5B21B6";
-        model.Library.Save(theme);
         var (worship, _) = await LooksBackdrops();
 
         Slide Lyric(string id, string text) => new()
@@ -134,7 +130,7 @@ public sealed partial class SelfTest
             Save(screens, "70-keyfeed-screens-window");
             screens.Close();
 
-            // The moment: a media background, the song's first verse on the violet theme, and a lower third.
+            // The moment: a media background, the song's first verse, and a lower third.
             model.FireMedia(worship);
             FireSlide(song, 0);
             model.ToggleOverlayCommand.Execute(namePlate);
@@ -149,10 +145,9 @@ public sealed partial class SelfTest
             var shownGreen = outputs.ShownScene(green.Id);
             static IEnumerable<string> Visible(AnimatedScene? scene, Func<Core.Animation.AnimatedLayer, bool> which) =>
                 scene?.Layers.Where(l => !l.IsHidden && which(l)).SelectMany(l => l.Items).Select(i => i.Id) ?? [];
-            Check("the ordinary screen still has its media background and the theme's colour",
-                Visible(shownOrdinary, l => l.Kind == LayerKind.LoopingVideos).Any() && shownOrdinary?.Background == ColorHex.Color("#5B21B6"));
+            Check("the ordinary screen still has its media background", Visible(shownOrdinary, l => l.Kind == LayerKind.LoopingVideos).Any());
             Check("the key feeds have no media layer showing", !Visible(shownBlack, l => !KeyFeeds.Shows(l.Kind)).Any() && !Visible(shownGreen, l => !KeyFeeds.Shows(l.Kind)).Any());
-            Check("the key feeds sit on black and on pure green, not the theme's colour",
+            Check("the key feeds sit on black and on pure green",
                 shownBlack?.Background == SceneColor.Black && shownGreen?.Background == new SceneColor(0, 1, 0));
             Check("the key feeds keep the lyric and the lower third",
                 LyricFrame(shownBlack, "Amazing grace") is not null && LyricFrame(shownGreen, "Amazing grace") is not null
@@ -190,7 +185,7 @@ public sealed partial class SelfTest
                 Math.Abs(corner.R - 0x0F) < 6 && Math.Abs(corner.G - 0x76) < 6 && Math.Abs(corner.B - 0x6E) < 6);
             Check("and is dropped from the key feeds: the lyric sits straight on the key colour",
                 b.CornersAre(0, 0, 0) && c.CornersAre(0, 255, 0) && b.Count(new SceneRect(0, 0, 1, 1), IsWhite) > 500 && c.Count(new SceneRect(0, 0, 1, 1), IsWhite) > 500
-                && shownBlack is not null && !Visible(outputs.ShownScene(black.Id), _ => true).Any(id => id.EndsWith("-backdrop", StringComparison.Ordinal)));
+                && !Visible(outputs.ShownScene(black.Id), _ => true).Any(id => id.EndsWith("-backdrop", StringComparison.Ordinal)));
 
             // A fade through white: the ordinary screen goes white, the key feed's corner never leaves green.
             var changedAt = ShowState.HostClock();
@@ -220,7 +215,7 @@ public sealed partial class SelfTest
             await Delay(600);
 
             // With the screen's Look: the luma feed shows the lyric as a lower third, still over black.
-            config.SetScreenLook(black.Id, new SlideThemeLook(starter.Id, null, starter.Slides!.First(s => s.Id.EndsWith(".lyricsLower", StringComparison.Ordinal)).Id));
+            config.SetScreenLook(black.Id, new SlideThemeLook(theme.Id, null, theme.Slides!.First(s => s.Id.EndsWith(".lyricsLower", StringComparison.Ordinal)).Id));
             await Delay(800);
             FireSlide(song, 0);
             await Delay(2000);
@@ -230,7 +225,8 @@ public sealed partial class SelfTest
             Check("a key feed works with the screen's Look: the lyric is a lower third there, full screen on the ordinary screen",
                 LyricFrame(looked, "Amazing grace") is { } low && looked is not null && low.Y / looked.CanvasSize.Height > 0.6
                 && LyricFrame(outputs.ShownScene(ordinary.Id), "Amazing grace") is { } whole && whole.Y / 1080 < 0.5);
-            Check("and it is still over black, edge to edge at the top", b.CornersAre(0, 0, 0) && b.Count(new SceneRect(0, 0, 1, 0.5), NotKey) == 0);
+            // (The design's own soft shade behind the words stays along the bottom: it is part of the look, not a full-screen background.)
+            Check("and it is still over black: every pixel of the top third is exactly black", b.Count(new SceneRect(0, 0, 1, 0.33), p => p != (0, 0, 0)) == 0);
             config.SetScreenLook(black.Id, null);
 
             // Off again: the backgrounds are back.
@@ -242,8 +238,7 @@ public sealed partial class SelfTest
             c = await KeyFeedFrame(outputs, green.Id, sinks[2], "70-keyfeed-4-off-was-green");
             Check("switched off, the screens show their backgrounds again",
                 Visible(outputs.ShownScene(black.Id), l => l.Kind == LayerKind.LoopingVideos).Any()
-                && Visible(outputs.ShownScene(green.Id), l => l.Kind == LayerKind.LoopingVideos).Any()
-                && outputs.ShownScene(green.Id)?.Background == ColorHex.Color("#5B21B6"));
+                && Visible(outputs.ShownScene(green.Id), l => l.Kind == LayerKind.LoopingVideos).Any());
             Check($"and their pictures match the ordinary screen's ({a.Drawn:P0}, {b.Drawn:P0}, {c.Drawn:P0} drawn)",
                 b.Drawn > 0.6 && c.Drawn > 0.6 && !c.CornersAre(0, 255, 0) && b.At(8, 8) == a.At(8, 8) && c.At(8, 8) == a.At(8, 8));
             Check("and the setting is gone from the saved screens", model.Settings.Screens?.All(s => s.KeyFeed is null) == true);
@@ -261,7 +256,6 @@ public sealed partial class SelfTest
             config.RemoveScreen(green.Id);
             outputs.Apply();
             outputs.DeviceSinkFactory = factory;
-            model.Library.Delete<Theme>(KeyFeedThemeId);
         }
     }
 
