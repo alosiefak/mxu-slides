@@ -37,12 +37,17 @@ jobs:
       - name: Unit tests
         run: dotnet test --solution MxUSlides.slnx -c Release --no-build --max-parallel-test-modules 2
 
+      # The self-test is NOT run on every push. It has over 1,100 checks now, and GitHub's machine has
+      # no graphics card, so it can't finish inside the 45-minute limit and its timing checks fail.
+      # Run it on a real PC before a release (scripts/self-test.ps1). It still runs here when this
+      # workflow is started by hand ("Run workflow" on GitHub), for anyone who wants to try.
       - name: Self-test (drives the real app and saves pictures)
+        if: github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: ./scripts/self-test.ps1 -Out "${{ runner.temp }}/self-test"
 
       - name: Upload self-test pictures
-        if: always()
+        if: always() && github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: self-test

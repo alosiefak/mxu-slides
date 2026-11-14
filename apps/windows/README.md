@@ -47,7 +47,7 @@ The self-test uses a throwaway library, and refuses to run on a real one. Its re
 
 The display demo also uses a throwaway library. With a projector or TV connected as an extended screen (Windows key + P, Extend), it puts the audience output there and steps through a song, a background and an alert. It saves what the screen showed to `%TEMP%\MxU Slides display demo`. It only takes a picture while MxU Slides covers that screen, so nothing else of yours is captured.
 
-GitHub Actions (`.github/workflows/windows.yml`) runs all of this on every push, including the daily merge from MxU's repository.
+GitHub Actions (`.github/workflows/windows.yml`) checks the models, builds the app, runs the unit tests and publishes it on every push, including the daily merge from MxU's repository. It does not run the self-test on a push: GitHub's test machine has no graphics card and can't finish the 1,100 checks in time. Run the self-test on a real PC before a release. (It still runs on GitHub if you start the workflow by hand with **Run workflow**.)
 
 ## Using it
 
