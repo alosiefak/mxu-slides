@@ -1107,6 +1107,41 @@ What to know before relying on it:
 
 The full walkthrough is [phase13/openers.md](phase13/openers.md).
 
+## 62. A key feed for a video switcher (Phase 14)
+
+A church that streams often has a video switcher, such as a Blackmagic ATEM Mini Pro. The switcher can lay the lyrics over the live camera, but only if the laptop sends it a picture made for that: the words and overlays, and one flat colour everywhere else. The switcher's *keyer* makes that colour see-through. This picture is called a **key feed**. Black is the colour for a *luma key* (it reads brightness) and pure green for a *chroma key* (it reads colour).
+
+Any screen can be a key feed: **Screens & Settings › More screens…**, pick the screen, then **Key feed**: Off, Over black or Over green. The other screens are not changed. The Mac has no twin for this. It gets a similar picture from an output preset made with its "Broadcast Feed" template, which is always over black and keeps a slide's backdrop.
+
+**The rules** are four small pure functions in `Core/Outputs/KeyFeed.cs` (the class is `KeyFeeds`). "Pure" means each one only looks at what it is given and returns an answer, so a test can check it with no app running.
+
+- `Shows(layer)`: a key feed keeps three layers: Slide, Overlays and Alerts. The others are media layers (backgrounds, videos, live inputs), and on a key feed that is the camera's job. Alerts are kept on purpose: only an alert aimed at the audience is ever in the program, and a message that interrupts the room should reach the stream too.
+- `Fill(mode)`: black, or green with red 0, green 255, blue 0.
+- `IsBackground(item, canvas)`: the Slide layer holds more than words. A song's or slide's own background fill is added to it as a piece whose id ends in `-backdrop`, and a theme design or an imported PowerPoint slide can have a shape or picture that covers the whole slide. Both are backgrounds, so they are dropped. Text never is. A lower third's bar is not, because it doesn't cover the slide.
+- `Transition(t)`: a cut or a dissolve only fades the words, so it stays. Anything else (fade through white, film burn, a wipe) would put a colour across the whole picture, and the switcher would lay that over the camera as a flash. It becomes a dissolve of the same length.
+
+`Apply(scene, mode)` puts the first three together. It returns a *copy* of the scene over the key colour, with the media layers hidden and the backgrounds taken out. It must be a copy: the same scene object is what the projector shows.
+
+**One thing learned by checking.** A theme has a background colour (`BackgroundColorHex`), but the live program never paints it. Only slide thumbnails do. So on an output, a "theme background" is always a media background or one of the two Slide-layer pieces above. The key feed sets the scene's background colour anyway, because that colour is also what shows in the bars beside a 4:3 slide.
+
+**Where the setting lives.** A screen's Look is saved with the screen (`PlaceholderScreenConfig` in `Core/Outputs/ScreenSetup.cs`), in this PC's `settings.json`. Screens are set up per PC, so the key feed is saved the same way, right beside it, as `keyFeed`: `"black"`, `"green"`, or left out. Nothing is written to a shared library document, so a Mac never sees it. In memory it is a small dictionary in `Core/Outputs/OutputConfiguration.KeyFeed.cs`.
+
+**Where it is applied.** `OutputConfiguration.KeyedProgram` wraps the existing `Program` (reshape the scene for the screen, then layer routing). It takes the backgrounds out *before* the reshape, because a background is recognised by covering the slide's own canvas, and a 4:3 slide no longer covers a 16:9 screen once it has been centred on it. It applies the rules once more afterwards, in case the Screen Map brought a layer in from another look. The screen's **Look** is chosen before any of this, so a look and a key feed work together: lyrics as a lower third, over black.
+
+**The WPF side is thin** (`Windows/Outputs/OutputManager.cs`):
+
+- `SceneFor` calls `KeyedProgram` instead of `Program`.
+- `Backdrop(screen)` is the brush for everything the scene doesn't cover. `SliceView.SetBackdrop` uses it behind the scene and for the letterbox bars (`SceneView.Letterbox`), and it is what shows when nothing is live at all. `OutputWindow.SetBackdrop` covers any part of the display no slice covers. Before this, all of these were always black.
+- `TransitionFor(screen, transition)` passes each layer's transition through `KeyFeeds.Transition` for a key feed screen only.
+
+The Screens window's part is `ShowKeyFeed` and `KeyFeed_Changed` in `Views/ScreensWindow.xaml.cs`, and the **KEY** chip in its list. Changing the drop-down calls `Config.SetKeyFeed`; the outputs redraw themselves because `OutputManager` already listens for changes to the setup.
+
+**What is left as it is.** Slices, masks, keystone, colour correction and edge blending still apply to a key feed screen. They make no sense on one (a mask paints black, which a chroma key shows as a black patch), so leave them off there. A stage screen and the test pictures are never keyed. NDI and DeckLink outputs get the setting too, because they draw with the same `SliceView`, but they can carry real see-through pixels, which is better.
+
+**Tests.** `tests/MxU.Slides.Core.Tests/Outputs/KeyFeedTests.cs` checks the rules. The self-test section `KeyFeed` (`Infrastructure/SelfTest.KeyFeed.cs`) puts three screens on stand-in outputs, an ordinary one, one over black and one over green, and checks the pictures they send: corners exactly the key colour, letters drawn, the ordinary screen's background still there, and green corners all the way through a Fade White.
+
+**Not tried on a real ATEM.** The pictures are right; whether an ATEM Mini Pro keys them well has not been seen. The set-up steps, luma against chroma and "pre multiplied key" are in [phase14/atem-key-feed.md](phase14/atem-key-feed.md).
+
 ## Things to try, to learn by doing
 
 1. **Add a section name.** Make "Spontaneous" a recognised label. In `Lyrics/Reflow.cs`, add it to the list of names just above `LabelPattern`, then add a test in `ReflowTests.cs` and run `dotnet test`.
@@ -1130,3 +1165,4 @@ The full walkthrough is [phase13/openers.md](phase13/openers.md).
 19. **Read a bulletin with no AI.** Open **Assistant › Order of service**, paste five lines with a time on each, and press **Read it**. Then find the rules in `ServicePlanReader.cs` (section 60).
 20. **Make a countdown.** **Media › Make an opener…**, Countdown, look Bold. Drag the preview's slider to the end. Then read `CountdownText` in `Core/Openers/OpenerPlan.cs` and find out why it rounds up (section 61).
 21. **Watch the seam.** Read the test `AnAnnouncementLoopHasNoSeam` in `tests/MxU.Slides.Core.Tests/Openers/OpenerTests.cs`. Then add a look: add a line to `OpenerLooks.All`, and the tests that run over every look check yours too.
+22. **Call something a background.** Read `BackgroundsAreTheBackdropAndAnythingCoveringTheCanvas` in `tests/MxU.Slides.Core.Tests/Outputs/KeyFeedTests.cs`, then `KeyFeeds.IsBackground`. Would a box covering the left half of the slide be dropped from a key feed? Add an `Assert` line that says what you expect and run the test (section 62).

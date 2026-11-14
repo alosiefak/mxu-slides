@@ -50,6 +50,16 @@ public sealed class SliceView : Canvas
 
     private SceneRect sourceRect = OutputPass.FullSourceRect;
 
+    /// <summary>
+    /// The colour wherever the scene draws nothing: behind it, in its letterbox bars, and when
+    /// nothing is showing at all. Black, or a key feed's key colour (<see cref="KeyFeeds.Fill"/>).
+    /// </summary>
+    public void SetBackdrop(Brush brush)
+    {
+        Background = brush;
+        View.Letterbox = brush;
+    }
+
     protected override Size ArrangeOverride(Size arrangeSize)
     {
         var w = sourceRect.Width > 0 ? arrangeSize.Width / sourceRect.Width : arrangeSize.Width;

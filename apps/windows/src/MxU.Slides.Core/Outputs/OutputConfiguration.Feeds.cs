@@ -185,7 +185,8 @@ public sealed partial class OutputConfiguration
         var scene = feed.SlideThemeKey is { } look && VariantSceneProvider?.Invoke(look) is { } variant
             ? variant
             : SceneProvider?.Invoke() ?? new RenderScene(SceneSize.Hd);
-        return Program(feed, scene);
+        // Windows: a key feed's preview shows what its screen sends (words and overlays over the key colour).
+        return KeyedProgram(feed, scene);
     };
 
     /// <summary>The metronome picture: the sync-test video fitted to the canvas over near-black.</summary>

@@ -284,6 +284,7 @@ public sealed partial class SelfTest(MainWindow window, MainViewModel model, str
             await Section("UpstreamCore", UpstreamCoreCheck);
             await Section("Assistant", AssistantCheck);
             await Section("Openers", OpenersCheck);
+            await Section("KeyFeed", KeyFeedCheck);
         }
         catch (Exception ex)
         {

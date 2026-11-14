@@ -126,7 +126,20 @@ public sealed class OutputManager
             stage = scene;
             stageScreens = new Dictionary<Guid, AnimatedScene>();
         }
-        foreach (var target in Targets(role)) target.Present(scene is null || IsOff(target.ScreenId) ? null : SceneFor(target.ScreenId), transition);
+        foreach (var target in Targets(role))
+            target.Present(scene is null || IsOff(target.ScreenId) ? null : SceneFor(target.ScreenId), TransitionFor(target.ScreenId, transition));
+    }
+
+    /// <summary>
+    /// The transition one screen plays. A key feed swaps any transition that would put a colour or an
+    /// effect across the whole picture for a dissolve (<see cref="KeyFeeds.Transition"/>): the switcher
+    /// would lay a fade through white over the camera as a solid white flash.
+    /// </summary>
+    private SceneTransition TransitionFor(Guid screenId, SceneTransition transition)
+    {
+        if (Config.KeyFeed(screenId) == KeyFeedMode.Off) return transition;
+        if (transition.Style == TransitionStyle.FadeThroughColor) return new SceneTransition(TransitionStyle.Dissolve, transition.Seconds);
+        return transition.Layers is { } layers ? transition with { Layers = layer => KeyFeeds.Transition(layers(layer)) } : transition;
     }
 
     /// <summary>
@@ -201,7 +214,7 @@ public sealed class OutputManager
             // Each confidence screen shows its own stage layout (ConfidenceMonitorController on the Mac).
             OutputFeedKind.Confidence => stageScreens.TryGetValue(screenId, out var own) ? own : stage,
             _ => (feed.SlideThemeKey is { } look && looks.TryGetValue(look, out var variant) ? variant : audience) is { } program
-                ? Config.Program(feed, program, key => looks.GetValueOrDefault(key))
+                ? Config.KeyedProgram(feed, program, key => looks.GetValueOrDefault(key))
                 : null,
         };
     }
@@ -277,7 +290,11 @@ public sealed class OutputManager
     /// <summary>Audience screens share the "live" players, so a video is in step on every one; stage screens share "stage".</summary>
     private string ScopeFor(Guid screenId) => Config.Role(screenId) == ScreenRole.Confidence ? "stage" : "live";
 
-    private readonly Dictionary<Guid, (OutputFeedKind Kind, int Width, int Height, OutputScaleMode Mode, bool Spanned, string? Look)> shown = [];
+    private readonly Dictionary<Guid, (OutputFeedKind Kind, int Width, int Height, OutputScaleMode Mode, bool Spanned, string? Look, KeyFeedMode Key)> shown = [];
+
+    /// <summary>What fills a screen's outputs where nothing is drawn: black, or its key colour while it is a key feed.</summary>
+    private Brush Backdrop(Guid screenId) =>
+        KeyFeeds.Fill(Config.KeyFeed(Config.Feed(SwiftUuid.Format(screenId)))) is { } key ? Painting.Brush(key) : Brushes.Black;
 
     /// <summary>
     /// After any change to the setup: re-applies every slice's corrections (cheap, so a slider can
@@ -293,18 +310,29 @@ public sealed class OutputManager
             {
                 var (w, h) = window.PixelSize(slice);
                 ApplyCorrections(slice, w, h);
+                slice.SetBackdrop(Backdrop(slice.ScreenId));
             }
+            // A display that only carries key feeds of one colour is that colour edge to edge.
+            var backdrops = window.Slices.Select(s => Backdrop(s.ScreenId)).Distinct().ToList();
+            window.SetBackdrop(backdrops.Count == 1 ? backdrops[0] : Brushes.Black);
         }
         foreach (var feed in feeds.Values)
+        {
             foreach (var slice in feed.Slices)
+            {
                 ApplyCorrections(slice, feed.Width, feed.Height);
+                slice.SetBackdrop(Backdrop(slice.ScreenId));
+            }
+        }
+        foreach (var preview in previews.Values)
+            preview.Background = preview.View.Letterbox = Backdrop(preview.ScreenId);
         var changed = new HashSet<Guid>();
         var looksChanged = false;
         foreach (var screen in Config.Screens)
         {
             var feed = Config.Feed(SwiftUuid.Format(screen.Id));
             var look = feed.Kind == OutputFeedKind.Program ? feed.SlideThemeKey : null;
-            var key = (feed.Kind, screen.Width, screen.Height, Config.ScaleMode(screen.Id), Config.IsSpanned(screen.Id), look);
+            var key = (feed.Kind, screen.Width, screen.Height, Config.ScaleMode(screen.Id), Config.IsSpanned(screen.Id), look, Config.KeyFeed(feed));
             var known = shown.TryGetValue(screen.Id, out var was);
             if (force || !known || was != key) changed.Add(screen.Id);
             if (known && was.Look != look || !known && look is not null) looksChanged = true;
@@ -407,6 +435,7 @@ public sealed class OutputManager
         }
         preview.Show();
         preview.Activate();
+        preview.Background = preview.View.Letterbox = Backdrop(screen.Id);
         preview.View.Present(SceneFor(screen.Id), SceneTransition.Cut);
         StatusChanged?.Invoke();
     }

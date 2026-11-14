@@ -84,6 +84,13 @@ public sealed class OutputWindow : Window
         LayoutSlices();
     }
 
+    /// <summary>The colour of any part of the display no slice covers: black, or the key colour when the display carries a key feed.</summary>
+    public void SetBackdrop(Brush brush)
+    {
+        surface.Background = brush;
+        Background = brush;
+    }
+
     private void LayoutSlices()
     {
         var size = surface.RenderSize;

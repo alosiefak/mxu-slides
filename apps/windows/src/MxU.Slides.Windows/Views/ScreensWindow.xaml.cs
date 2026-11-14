@@ -20,7 +20,14 @@ namespace MxU.Slides.Windows.Views;
 /// </summary>
 public partial class ScreensWindow : Window
 {
-    private sealed record ScreenRow(Guid Id, string Title, string Detail);
+    private sealed record ScreenRow(Guid Id, string Title, string Detail, KeyFeedMode Key = KeyFeedMode.Off)
+    {
+        // The "KEY" chip on a key feed's row, in its key colour so black and green tell apart at a glance.
+        public Visibility KeyChip => Key == KeyFeedMode.Off ? Visibility.Collapsed : Visibility.Visible;
+        public Brush KeyBrush => Key == KeyFeedMode.Green ? Brushes.Lime : Brushes.Black;
+        public Brush KeyText => Key == KeyFeedMode.Green ? Brushes.Black : Brushes.White;
+        public string KeyHelp => $"Key feed for a video switcher: words and overlays only, {Key.DisplayName().ToLowerInvariant()}";
+    }
 
     private sealed record Choice<T>(T Value, string Label)
     {
@@ -58,6 +65,7 @@ public partial class ScreensWindow : Window
             new Choice<OutputScaleMode>(OutputScaleMode.Fit, "Show everything (bars where the shapes differ)"),
             new Choice<OutputScaleMode>(OutputScaleMode.Fill, "Fill the screen (trim the edges)"),
         };
+        KeyFeedCombo.ItemsSource = Enum.GetValues<KeyFeedMode>().Select(m => new Choice<KeyFeedMode>(m, m.DisplayName())).ToList();
         SizePresets.ItemsSource = ScreenEditing.AddScreenSizes.Select(s => new Choice<ScreenSizeChoice>(s, s.Label)).ToList();
         FpsCombo.ItemsSource = ScreenEditing.FrameRates.Select(r => new Choice<int>(r, $"{r} fps")).ToList();
         CountCombo.ItemsSource = Enumerable.Range(ScreenEditing.MinOutputCount, ScreenEditing.MaxOutputCount - ScreenEditing.MinOutputCount + 1).ToList();
@@ -93,7 +101,7 @@ public partial class ScreensWindow : Window
     private void RefreshList(Guid? select)
     {
         loading = true;
-        var rows = Config.Screens.Select(s => new ScreenRow(s.Id, s.Name, Summary(s))).ToList();
+        var rows = Config.Screens.Select(s => new ScreenRow(s.Id, s.Name, Summary(s), Config.KeyFeed(Config.Feed(SwiftUuid.Format(s.Id))))).ToList();
         ScreenList.ItemsSource = rows;
         ScreenList.SelectedItem = rows.FirstOrDefault(r => r.Id == select) ?? rows.FirstOrDefault();
         loading = false;
@@ -176,6 +184,7 @@ public partial class ScreensWindow : Window
         LayoutHelp.Text = ScreenEditing.LayoutHelp(layout);
         TestPattern.IsChecked = Config.TestPatternScreens.Contains(sid);
         ShowLook(sid);
+        ShowKeyFeed(sid);
         loading = false;
         if (sliceId is null || Config.SliceInfo(sliceId.Value)?.ScreenId != sid) sliceId = sid;
         ShowSlices();
@@ -299,6 +308,31 @@ public partial class ScreensWindow : Window
         loading = true;
         ShowLook(id);
         loading = false;
+    }
+
+    // MARK: Key feed (words and overlays only, over black or green, for a video switcher)
+
+    private void ShowKeyFeed(Guid sid)
+    {
+        var mode = Config.KeyFeed(sid);
+        var audience = Config.Role(sid) == ScreenRole.Audience;
+        KeyFeedCombo.SelectedItem = KeyFeedCombo.Items.Cast<Choice<KeyFeedMode>>().First(c => c.Value == mode);
+        KeyFeedCombo.IsEnabled = audience;
+        KeyFeedHelp.Text = !audience
+            ? "A stage screen shows its stage layout, so it can't be a key feed."
+            : mode switch
+            {
+                KeyFeedMode.Black => "This screen shows only words and overlays over black. Set the switcher's keyer to a luma key. Dark boxes and shadows vanish with the black.",
+                KeyFeedMode.Green => "This screen shows only words and overlays over green. Set the switcher's keyer to a chroma key on green. Avoid green in the words and overlays.",
+                _ => "Shows only words and overlays over black or green, so a video switcher such as an ATEM can lay them over the camera.",
+            };
+    }
+
+    private void KeyFeed_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (loading || screenId is not { } id || KeyFeedCombo.SelectedItem is not Choice<KeyFeedMode> mode) return;
+        // Saved with the screen; the outputs redraw themselves (OutputManager listens to the setup).
+        Config.SetKeyFeed(id, mode.Value);
     }
 
     // MARK: Layout

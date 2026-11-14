@@ -11,7 +11,7 @@ using AnimatedScene = MxU.Slides.Core.Animation.AnimatedScene;
 namespace MxU.Slides.Windows.ViewModels;
 
 /// <summary>One screen in the Screens panel: its name and job, what carries it, and whether it's on air.</summary>
-public sealed record ScreenRow(Guid Id, string Name, ScreenRole Role, string Carrier, bool IsLive);
+public sealed record ScreenRow(Guid Id, string Name, ScreenRole Role, string Carrier, bool IsLive, KeyFeedMode Key = KeyFeedMode.Off);
 
 /// <summary>
 /// The operator's view of the outputs: the output preset ("look") switcher, each screen's
@@ -73,7 +73,8 @@ public sealed partial class MainViewModel
 
     public List<ScreenRow> ScreenRows() => Outputs is not { } outputs
         ? []
-        : [.. outputs.Config.Screens.Select(s => new ScreenRow(s.Id, s.Name, outputs.Config.Role(s.Id), outputs.ScreenCarrier(s.Id), outputs.IsScreenLive(s.Id)))];
+        : [.. outputs.Config.Screens.Select(s => new ScreenRow(s.Id, s.Name, outputs.Config.Role(s.Id), outputs.ScreenCarrier(s.Id), outputs.IsScreenLive(s.Id),
+            outputs.Config.KeyFeed(outputs.Config.Feed(SwiftUuid.Format(s.Id)))))];
 
     /// <summary>Takes one screen on or off air; the others stay as they are.</summary>
     public void SetScreenLive(Guid screenId, bool live)

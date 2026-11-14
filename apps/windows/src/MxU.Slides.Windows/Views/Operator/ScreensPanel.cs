@@ -85,7 +85,10 @@ public sealed class ScreensPanel : UserControl
             };
             var caption = new TextBlock
             {
-                Text = $"{(screen.Role == ScreenRole.Confidence ? "Stage" : "Audience")} · {screen.Carrier}", FontSize = 10, Margin = new Thickness(8, 1, 6, 0),
+                // A key feed says so here, so nobody wonders why that screen has no background.
+                Text = $"{(screen.Role == ScreenRole.Confidence ? "Stage" : "Audience")} · {screen.Carrier}"
+                    + (screen.Key == KeyFeedMode.Off ? "" : $" · KEY ({(screen.Key == KeyFeedMode.Green ? "green" : "black")})"),
+                FontSize = 10, Margin = new Thickness(8, 1, 6, 0),
                 VerticalAlignment = VerticalAlignment.Center, Foreground = EditorKit.Res<Brush>("FaintText"), TextTrimming = TextTrimming.CharacterEllipsis,
             };
             var line = new DockPanel { Margin = new Thickness(8, 3, 6, 3) };

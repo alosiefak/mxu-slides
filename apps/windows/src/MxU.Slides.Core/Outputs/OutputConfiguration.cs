@@ -175,6 +175,7 @@ public sealed partial class OutputConfiguration
         masks = masks.Remove(id);
         activeMaskIds = activeMaskIds.Remove(id);
         screenLooks = screenLooks.Remove(id);
+        keyFeeds = keyFeeds.Remove(id);
         foreach (var slice in ExtraSlices(id)) ClearSliceState(slice.Id);
         screenSlices = screenSlices.Remove(id);
         placements = placements.Remove(id);
