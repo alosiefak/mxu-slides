@@ -76,6 +76,13 @@ public sealed class PlaceholderScreenConfig
     /// <summary>Only this one design of the theme.</summary>
     [JsonPropertyName("slideThemeSlideId"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? SlideThemeSlideId { get; set; }
+
+    /// <summary>
+    /// Windows only: "black" or "green" when this screen is a key feed for a video switcher
+    /// (<see cref="KeyFeedMode"/>), or null for an ordinary screen. The Mac ignores it.
+    /// </summary>
+    [JsonPropertyName("keyFeed"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? KeyFeed { get; set; }
 }
 
 /// <summary>One saved extra slice: its region of the canvas (unit coordinates) and its own settings.</summary>
@@ -162,6 +169,7 @@ public static class ScreenSetup
             SlideThemeId = outputs.ScreenLook(screen.Id)?.ThemeId,
             SlideThemeFolder = outputs.ScreenLook(screen.Id)?.Folder,
             SlideThemeSlideId = outputs.ScreenLook(screen.Id)?.SlideId,
+            KeyFeed = outputs.KeyFeed(screen.Id).Raw(),
         }).ToList();
 
     /// <summary>
@@ -194,6 +202,7 @@ public static class ScreenSetup
             if (config.VideoDelayFrames is { } delay) outputs.SetVideoDelay(config.Id, delay);
             if (config.SlideThemeId is { Length: > 0 } themeId)
                 outputs.SetScreenLook(config.Id, new SlideThemeLook(themeId, config.SlideThemeFolder, config.SlideThemeSlideId));
+            outputs.SetKeyFeed(config.Id, KeyFeeds.Parse(config.KeyFeed));
             // Restored claims were all valid when saved, so restore them alongside each other: a frame
             // packed with several outputs comes back packed. (The Mac restores exclusively, which
             // keeps only the last output on a shared device.)

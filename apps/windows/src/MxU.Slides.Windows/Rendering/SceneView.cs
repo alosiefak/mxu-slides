@@ -218,7 +218,18 @@ public sealed partial class SceneView : FrameworkElement
     public bool Offscreen { get; set; }
 
     /// <summary>Colour outside the scene when the view's shape differs from the canvas.</summary>
-    public Brush Letterbox { get; set; } = Brushes.Black;
+    public Brush Letterbox
+    {
+        get => letterbox;
+        set
+        {
+            if (ReferenceEquals(letterbox, value)) return;
+            letterbox = value;
+            InvalidateVisual(); // a key feed switched on or off: the bars change colour straight away
+        }
+    }
+
+    private Brush letterbox = Brushes.Black;
 
     public AnimatedScene? Scene => current?.Scene;
 
