@@ -255,10 +255,21 @@ public sealed class SpottingTests
         Assert.Equal((short)(0.125f * 32767f), BitConverter.ToInt16(first, 0));
     }
 
+    // What Windows' recognizer hears depends on the PC: its speech pack, its voice and its Windows
+    // version. GitHub's test machine (Windows Server, another voice) hears the same sermon differently,
+    // so these two tests would fail there for reasons that say nothing about our code. They run on a
+    // real PC; GitHub sets GITHUB_ACTIONS=true on its machines.
+    private static void SkipOnGitHub()
+    {
+        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+            Assert.Skip("What the recognizer hears depends on the PC's voice and speech pack; this runs on a real PC, not GitHub's machine.");
+    }
+
     [Fact]
     public void ASynthesizedSermonIsHeardByWindowsOwnRecognizer()
     {
         if (SpeechWorker.Recognizer() is null) Assert.Skip("This PC has no English speech pack, so Windows' offline recognizer can't run.");
+        SkipOnGitHub();
         var wav = Path.Combine(Path.GetTempPath(), $"MxU spotter test {Guid.NewGuid():N}.wav");
         try
         {
@@ -307,6 +318,7 @@ public sealed class SpottingTests
         // A live microphone has no file: its sound arrives in small blocks down a pipe, and both
         // recognizers read the same blocks. Here the pipe is fed a spoken sentence, then closed.
         if (SpeechWorker.Recognizer() is null) Assert.Skip("This PC has no English speech pack, so Windows' offline recognizer can't run.");
+        SkipOnGitHub();
         using var sound = new MemoryStream();
         using (var voice = new SpeechSynthesizer())
         {
