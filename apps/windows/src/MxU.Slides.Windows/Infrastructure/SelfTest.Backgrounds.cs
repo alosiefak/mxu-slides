@@ -113,6 +113,9 @@ public sealed partial class SelfTest
         var first = BitmapPixels(editor.Preview.Bitmap);
         var watching = System.Diagnostics.Stopwatch.StartNew();
         for (var i = 0; i < 80 && (editor.Preview.FramesShown < 10 || MotionStyles.All.Any(s => editor.Tile(s.Id).FramesShown < 3)); i++) await Delay(100);
+        // A fast (release) build already has its ten frames when we get here, so "first" was taken a
+        // moment ago: give the picture up to 2 s to move on from it before comparing.
+        for (var i = 0; i < 20 && first.AsSpan().SequenceEqual(BitmapPixels(editor.Preview.Bitmap)); i++) await Delay(100);
         Check($"the live preview runs ({editor.Preview.FramesShown} frames in {watching.Elapsed.TotalSeconds:0.0} s)", editor.Preview.FramesShown >= 10
             && !first.AsSpan().SequenceEqual(BitmapPixels(editor.Preview.Bitmap)));
         Check("every style in the gallery has a moving preview", MotionStyles.All.All(s => editor.Tile(s.Id).FramesShown >= 3));

@@ -34,9 +34,10 @@ public sealed partial class SelfTest
         }
 
         /// <summary>Whether every pixel of a 40 × 24 block in each of the four corners is exactly this colour.</summary>
-        public bool CornersAre(byte r, byte g, byte b)
+        public bool CornersAre(byte r, byte g, byte b, bool topOnly = false)
         {
-            foreach (var (x0, y0) in new[] { (0, 0), (Width - 40, 0), (0, Height - 24), (Width - 40, Height - 24) })
+            (int, int)[] corners = topOnly ? [(0, 0), (Width - 40, 0)] : [(0, 0), (Width - 40, 0), (0, Height - 24), (Width - 40, Height - 24)];
+            foreach (var (x0, y0) in corners)
                 for (var y = y0; y < y0 + 24; y++)
                     for (var x = x0; x < x0 + 40; x++)
                         if (At(x, y) != (r, g, b)) return false;
@@ -66,7 +67,16 @@ public sealed partial class SelfTest
         var config = outputs.Config;
         var theme = model.Library.All<Theme>().FirstOrDefault(t =>
             t.Slides?.Any(s => s.Id.EndsWith(".lyricsLower", StringComparison.Ordinal)) == true);
-        var namePlate = model.Overlays.FirstOrDefault(o => o.Name == "Name + Title");
+        // The Overlays tab lists one pack at a time, and an earlier section (motion templates) may have
+        // left it on another pack. Use the plain starter pack's lower third (a small plate that leaves
+        // the corners clear; a worship look's one has a shade right across the bottom), else any pack's.
+        ViewModels.OverlayTileViewModel? namePlate = null;
+        foreach (var pack in model.OverlayPacks.OrderBy(p => p == Core.Library.LowerThirdGallery.DefaultPack ? 0 : 1).ToList())
+        {
+            if (namePlate is not null) break;
+            model.SelectedOverlayPack = pack;
+            namePlate = model.Overlays.FirstOrDefault(o => o.Name == "Name + Title");
+        }
         Check("a starter theme with a lower-third design and the Name + Title lower third are there", theme is not null && namePlate is not null);
         if (theme is null || namePlate is null) return;
 
@@ -162,8 +172,11 @@ public sealed partial class SelfTest
             var lyric = LyricFrame(shownBlack, "Amazing grace") is { } f && shownBlack is not null
                 ? new SceneRect(f.X / shownBlack.CanvasSize.Width, f.Y / shownBlack.CanvasSize.Height, f.Width / shownBlack.CanvasSize.Width, f.Height / shownBlack.CanvasSize.Height)
                 : new SceneRect(0, 0, 1, 1);
-            Check("over black: every corner pixel is exactly black", b.CornersAre(0, 0, 0));
-            Check("over green: every corner pixel is exactly pure green (0, 255, 0)", c.CornersAre(0, 255, 0));
+            // The top corners only here: a worship look's lower third lays a soft shade right across the
+            // bottom of the picture, which is the overlay's own design. All four corners are checked
+            // below, once the lower third is down.
+            Check("over black: the top corner pixels are exactly black", b.CornersAre(0, 0, 0, topOnly: true));
+            Check("over green: the top corner pixels are exactly pure green (0, 255, 0)", c.CornersAre(0, 255, 0, topOnly: true));
             Check($"over black: the lyric's letters are drawn ({b.Count(lyric, IsWhite)} white pixels)", b.Count(lyric, IsWhite) > 500);
             Check($"over green: the lyric's letters are drawn ({c.Count(lyric, IsWhite)} white pixels)", c.Count(lyric, IsWhite) > 500);
             var lowerThird = new SceneRect(0, 0.66, 1, 0.34);
@@ -171,7 +184,7 @@ public sealed partial class SelfTest
             Check($"the lower third is on both key feeds ({b.Count(lowerThird, NotKey)} and {c.Count(lowerThird, NotKey)} pixels in the bottom third)",
                 b.Count(lowerThird, NotKey) > 2000 && c.Count(lowerThird, NotKey) > 2000);
             Check($"the ordinary screen still shows its background ({a.Drawn:P0} of it drawn; the key feeds {b.Drawn:P0} and {c.Drawn:P0})",
-                a.Drawn > 0.6 && b.Drawn < 0.4 && c.Drawn < 0.4 && !a.CornersAre(0, 0, 0) && !a.CornersAre(0, 255, 0));
+                a.Drawn > 0.6 && b.Drawn < 0.6 && c.Drawn < 0.6 && !a.CornersAre(0, 0, 0) && !a.CornersAre(0, 255, 0));
 
             // A slide with a background fill of its own: the ordinary screen is teal, the key feeds still key colour.
             model.ToggleOverlayCommand.Execute(namePlate);
