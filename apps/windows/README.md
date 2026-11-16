@@ -63,6 +63,7 @@ GitHub Actions (`.github/workflows/windows.yml`) checks the models, builds the a
 | Add a song | **New Song**, paste or type lyrics with section names (Verse 1, Chorus…) |
 | Import | **Import** (Ctrl+I): PowerPoint `.pptx`, ProPresenter 7 (`.pro`, `.probundle`, `.proPlaylist`, `.protheme`), SongSelect `.txt`, ChordPro (`.cho`, `.chopro`, `.pro`) or plain text. Imports go into a "PowerPoint Import" or "ProPresenter Import" folder |
 | Move from ProPresenter | **Screens & Settings › Import ProPresenter library…**: presentations, media, themes, props, messages, stage layouts and playlists. Run it again to pick up changes; your edits here are kept |
+| Move from OpenLP | **Screens & Settings › Import from OpenLP…**: songs (with authors, copyright, CCLI number and verse order) and custom slides, from this PC, a copy of OpenLP's data folder, `songs.sqlite` or a zip. OpenLP's files are not changed; run it again and songs already here are left out. Not yet tried on a real OpenLP database: see [docs/phase15/openlp-import.md](docs/phase15/openlp-import.md) |
 | Change a song's order | **Edit lyrics** › *Play order*, e.g. `V1, C, V2, C, B, C x2`. Or use the arrangement chip above the slides to make named arrangements and drag their blocks |
 | Chords | Right-click a slide › **Chords…**. The key chip beside the title transposes, and sets a capo for the stage display |
 | Make slides from sermon notes | **Notes** in the library: paste or import Word, PDF, RTF, ODT, PowerPoint or text, then **Make Slides…** |

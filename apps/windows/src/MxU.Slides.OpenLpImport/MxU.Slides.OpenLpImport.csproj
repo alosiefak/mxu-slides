@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- OpenLP import (Windows-only; the Mac has no twin): reads the songs and custom slides out of
+       OpenLP's SQLite databases and saves them into a LibraryStore as ordinary songs and decks.
+       Pure logic, no WPF. See docs/phase15/openlp-import.md and HOW-IT-WORKS section 63. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MxU.Slides.OpenLpImport</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MxU.Slides.OpenLpImport.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Reads SQLite files. MIT; it brings SQLitePCLRaw (Apache-2.0) and e_sqlite3.dll, a build of
+       SQLite itself (public domain). Pinned to the 10.0 line to match the .NET 10 the app is built on. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.15" />
+  </ItemGroup>
+
+  <!-- Their licence notices land next to the app, as Automerge's do (MxU.Slides.Sync). -->
+  <ItemGroup>
+    <None Include="SQLITE-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
