@@ -176,6 +176,8 @@ public sealed partial class SelfTest
         // The preview runs on its own thread, below normal priority: wait (up to 10 s) for it, then check it moves.
         var first = BitmapPixels(editor.Preview.Bitmap);
         for (var i = 0; i < 100 && (editor.Preview.FramesShown < 10 || editor.Preview.StillsShown < 1); i++) await Delay(100);
+        // On a fast release build the frames may still be on a held moment: give the picture up to 2 s more to move.
+        for (var i = 0; i < 20 && first.AsSpan().SequenceEqual(BitmapPixels(editor.Preview.Bitmap)); i++) await Delay(100);
         Check($"the live preview plays ({editor.Preview.FramesShown} frames)", editor.Preview.FramesShown >= 10 && !first.AsSpan().SequenceEqual(BitmapPixels(editor.Preview.Bitmap)));
         Check("each look has a still of this opener", editor.Preview.StillsShown >= 1
             && OpenerLooks.All.All(l => BitmapPixels(editor.Preview.Stills[l.Id]).Where((_, i) => i % 4 == 1).Any(g => g > 150)));
