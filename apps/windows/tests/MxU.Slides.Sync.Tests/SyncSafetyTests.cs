@@ -170,18 +170,31 @@ public sealed class SyncSafetyTests
         MacMakes(fixture, Samples.Song());
         fixture.Sync();
         var away = fixture.Shared + " (unplugged)";
-        Directory.Move(fixture.Shared, away);
+        MoveFolder(fixture.Shared, away);
 
         fixture.WindowsEdit<Presentation>("song", s => s.MusicKey = "Bb");
         fixture.Sync(twice: true);
         Assert.Equal(SyncState.WaitingForFolder, fixture.Engine.Status.State);
         Assert.NotNull(fixture.Store.Get<Presentation>("song"));
 
-        Directory.Move(away, fixture.Shared);
+        MoveFolder(away, fixture.Shared);
         fixture.Sync(twice: true);
         Assert.Equal(SyncState.UpToDate, fixture.Engine.Status.State);
         Assert.Equal("Bb", fixture.MacRead<Presentation>(Songs, "song").MusicKey);
         Assert.NotNull(fixture.Store.Get<Presentation>("song"));
+    }
+
+    /// <summary>
+    /// Renames a folder to "unplug" it. Just after a sync, Windows (often the virus scanner checking
+    /// the files we wrote) can hold the folder open for a moment, so try for up to 5 seconds.
+    /// </summary>
+    private static void MoveFolder(string from, string to)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try { Directory.Move(from, to); return; }
+            catch (Exception e) when ((e is IOException or UnauthorizedAccessException) && attempt < 50) { Thread.Sleep(100); }
+        }
     }
 
     // MARK: What this version can't read, and never writing what the Mac can't
