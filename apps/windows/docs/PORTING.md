@@ -435,6 +435,12 @@ The Mac's tests for the files in these four tables are ported with them. Each ph
   - `Infrastructure/SelfTest.KeyFeed.cs`, `tests/MxU.Slides.Core.Tests/Outputs/KeyFeedTests.cs`.
   - Saved as `keyFeed` on the screen in this PC's `settings.json`, beside the screen's look. Nothing is stored in the library or in Windows extras.
   - Changes to files already listed: `Core/Outputs/ScreenSetup.cs` (the `keyFeed` field, saved and restored), `OutputConfiguration.cs` (removing a screen forgets its key feed) and `OutputConfiguration.Feeds.cs` (`PreviewProvider` calls `KeyedProgram`; one line). `Outputs/OutputManager.cs`, `OutputWindow.cs` and `SliceView.cs` got the backdrop colour and the transition swap; `Rendering/SceneView.cs`'s `Letterbox` redraws when it changes; `Views/ScreensWindow.xaml(.cs)` got the drop-down and the KEY chip; `Views/Operator/ScreensPanel.cs` and `ScreenRow` say "KEY".
+- **Phase 15, importing from OpenLP** (section 63; the Mac has no twin). The walkthrough is [phase15/openlp-import.md](phase15/openlp-import.md).
+  - `src/MxU.Slides.OpenLpImport/*`: `OpenLpSource` (finds the databases in a file, folder or zip and works on copies), `OpenLpDatabase` (reads whichever columns that OpenLP version has), `OpenLpLyrics` (the lyrics XML, split marks, formatting tags), `OpenLpSongMapper` (a song as ChordPro text into `LyricTextImporter`; the verse order as an arrangement; custom slides as decks), `OpenLpImporter` (duplicates, the result), `Testing/OpenLpSampleData` (the made-up databases). Tests: `tests/MxU.Slides.OpenLpImport.Tests`.
+  - `ViewModels/MainViewModel.OpenLp.cs`, `Views/OpenLpImportWindow.cs`, `Views/MainWindow.OpenLp.cs`, `Infrastructure/SelfTest.OpenLp.cs`.
+  - Third-party: `Microsoft.Data.Sqlite` 10.0.15 (MIT), which brings `SQLitePCLRaw` 2.1.13 (Apache-2.0) and `e_sqlite3.dll`, a build of SQLite (public domain). Their notices ship beside the app as `SQLITE-NOTICES.txt`.
+  - Nothing new is stored in shared documents or Windows extras. An imported song is an ordinary `Presentation` with the origin `lyricsFile` and the detail "OpenLP".
+  - Changes to files already listed: `Views/MainWindow.xaml.cs` (`ImportFiles` sends `.sqlite` and `.zip` to the OpenLP window; the Import dialog's filter), `Views/SettingsWindow.xaml(.cs)` (the button), `Views/OnboardingWindow.cs` (the choice in "Bring your songs in"), `Infrastructure/SelfTest.cs` (one `Section` line).
 
 ## Not ported yet, not done, not verified
 
@@ -448,6 +454,7 @@ These work in the unit tests and the self-test, which use stand-ins. Nobody has 
 - **Planning Center with a real token.** The import (Phase 6) has only been run against made-up answers.
 - **The service assistant with the real Anthropic API** (Phase 12). Every test talks to a stand-in server, `FakeAnthropicServer`. No call was ever made to Anthropic. See "Phase 12" below.
 - **Anything that listens, with a real voice** (Phase 12): the scripture spotter, live captions and the sermon transcript were tried only with Windows' synthetic voice.
+- **OpenLP import never tried on a real database** (Phase 15). It was written from OpenLP's source code and tested on made-up databases the tests build, in the layouts of OpenLP 2.0, 2.4 and 3.x. See "Phase 15" below.
 - **A montage with real music and photos** (Phase 13). The tests make their own click tracks and coloured pictures. See "Phase 13" below.
 - **The key feed never tried on a real ATEM** (Phase 14). The pictures the app sends were checked pixel by pixel, on stand-in network outputs. No switcher has keyed them, and it was not seen on a real second HDMI display. See "Phase 14" below, and [phase14/atem-key-feed.md](phase14/atem-key-feed.md).
 
@@ -645,3 +652,16 @@ The walkthrough is [phase14/atem-key-feed.md](phase14/atem-key-feed.md).
 - Masks, keystone, colour correction and edge blending are left as they are on a key feed screen, though they make no sense there. Nothing switches them off or warns.
 - On a key feed, blur dissolve, film burn, the fades through a colour and the picture transitions all play as a plain dissolve.
 - The key colour can't be changed (black, or pure green), and there is no blue.
+
+### Phase 15: importing from OpenLP
+
+The walkthrough is [phase15/openlp-import.md](phase15/openlp-import.md).
+
+- **OpenLP import never tried on a real database.** Every test uses a made-up database built at run time. The table layouts were checked against OpenLP's current source, not against files written by OpenLP 2.0 or 2.4 themselves.
+- "Find OpenLP on this PC" looks only in `%APPDATA%\openlp\data`. If the church moved the data folder in OpenLP's settings, it must be chosen by hand. The button was never pressed on a PC that has OpenLP.
+- Not imported: song books and song numbers, topics, comments, alternate titles, a song's own theme, linked audio, a custom slide's credits, and which author wrote the words or the music. Bibles, images, media, presentations, themes and service files are left out on purpose.
+- Colours, bold and italics made with OpenLP's formatting tags are dropped; the words stay.
+- A church's own formatting tag is recognised only when the song holds it both opened and closed. Otherwise it is kept as words and listed in the summary.
+- A lyric line that reads like a section name ("Chorus") starts a new section. The summary lists it; nothing prevents it.
+- Lyrics are re-cut into slides by the app's own phrasing, so slide breaks differ from OpenLP's. Only OpenLP's split marks are kept as breaks.
+- The import is not an undo step (neither is the ProPresenter import).

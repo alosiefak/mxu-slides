@@ -237,6 +237,11 @@ internal sealed class OnboardingWindow : Window
             flow.Choose(OnboardingFlow.ContentChoice.ImportSongs);
             _ = ImportProPresenterAsync();
         });
+        Choice("Import from OpenLP…", "Songs and custom slides from OpenLP, on this PC or from a copy of its data folder.", () =>
+        {
+            flow.Choose(OnboardingFlow.ContentChoice.ImportSongs);
+            window?.ImportFromOpenLp(this);
+        });
         Choice("Import PowerPoint or Lyrics Files…", ".pptx decks, SongSelect and ChordPro files, plain text lyrics, and .mxuslides from a Mac.", () =>
         {
             flow.Choose(OnboardingFlow.ContentChoice.ImportSongs);

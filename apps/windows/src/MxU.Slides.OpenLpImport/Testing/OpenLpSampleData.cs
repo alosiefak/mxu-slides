@@ -171,6 +171,8 @@ public static class OpenLpSampleData
             : "CREATE TABLE media_files (id INTEGER PRIMARY KEY, song_id INTEGER, file_name VARCHAR(255) NOT NULL, type VARCHAR(64) NOT NULL DEFAULT 'audio', weight INTEGER DEFAULT 0)");
         Run(connection, "INSERT INTO song_books (id, name, publisher) VALUES (1, 'The Made-Up Hymnal', 'Nobody & Sons')");
 
+        // One transaction for all the rows: SQLite then writes to disk once, not once per song.
+        Run(connection, "BEGIN");
         var authorIds = new Dictionary<string, long>();
         long songId = 0;
         foreach (var song in songs)
@@ -205,6 +207,7 @@ public static class OpenLpSampleData
                 }
             }
         }
+        Run(connection, "COMMIT");
         return path;
     }
 

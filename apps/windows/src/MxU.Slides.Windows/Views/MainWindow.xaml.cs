@@ -306,25 +306,27 @@ public partial class MainWindow : Window
         {
             Title = "Import",
             Multiselect = true,
-            Filter = $"Everything MxU Slides can import|*.mxuslides;*.pptx;{ProPresenterPatterns};{LyricsPatterns}"
+            Filter = $"Everything MxU Slides can import|*.mxuslides;*.pptx;{ProPresenterPatterns};{LyricsPatterns};*.sqlite"
                 + $"|MxU Slides presentations (from a Mac or another PC)|*.mxuslides|ProPresenter 7|{ProPresenterPatterns}"
-                + $"|PowerPoint decks|*.pptx|Lyrics files|{LyricsPatterns}|All files|*.*",
+                + $"|PowerPoint decks|*.pptx|Lyrics files|{LyricsPatterns}|OpenLP songs (songs.sqlite, or a zip of its data folder)|*.sqlite;*.zip|All files|*.*",
         };
         if (dialog.ShowDialog(this) != true) return;
         await ImportFiles(dialog.FileNames);
     }
 
-    /// <summary>Sends each file to its importer: .mxuslides presentations, PowerPoint, ProPresenter, and lyrics for the rest.</summary>
+    /// <summary>Sends each file to its importer: .mxuslides presentations, PowerPoint, ProPresenter, OpenLP (.sqlite, .zip), and lyrics for the rest.</summary>
     internal async Task ImportFiles(IReadOnlyList<string> files)
     {
         var slides = files.Where(MainViewModel.IsPresentationFile).ToList();
         var decks = files.Where(IsPowerPoint).ToList();
         var pro = files.Except(slides).Where(f => !IsPowerPoint(f) && MainViewModel.IsProPresenterFile(f)).ToList();
-        var lyrics = files.Except(slides).Except(decks).Except(pro).ToList();
+        var openLp = files.Where(IsOpenLpFile).ToList();
+        var lyrics = files.Except(slides).Except(decks).Except(pro).Except(openLp).ToList();
         if (lyrics.Count > 0) model.ImportLyricsFiles(lyrics);
         if (slides.Count > 0) await model.ImportPresentationFilesAsync(slides);
         if (decks.Count > 0) await model.ImportPowerPointAsync(decks);
         if (pro.Count > 0) await model.ImportProPresenterAsync(pro);
+        foreach (var file in openLp) ImportFromOpenLp(path: file); // its own window: progress, then a summary (MainWindow.OpenLp.cs)
 
         static bool IsPowerPoint(string path) => string.Equals(Path.GetExtension(path), ".pptx", StringComparison.OrdinalIgnoreCase);
     }

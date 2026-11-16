@@ -393,6 +393,26 @@ public class OpenLpImporterTests
     }
 
     [Fact]
+    public async Task ALibraryOfFiveHundredSongsImports()
+    {
+        using var folder = new TempFolder();
+        using var library = new TestLibrary();
+        var songs = Enumerable.Range(1, 500).Select(n => new OpenLpSampleData.Song(
+            $"Made-Up Song {n:000}",
+            OpenLpSampleData.Xml(("v", "1", $"Line one of song {n}\nLine two of song {n}"), ("c", "1", $"The chorus of song {n}\nSung again")),
+            VerseOrder: "v1 c1 v1 c1", Ccli: (9000000 + n).ToString(System.Globalization.CultureInfo.InvariantCulture))).ToList();
+        var path = OpenLpSampleData.WriteSongs(folder.Combine("songs.sqlite"), OpenLpShape.V3, songs);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var result = await Import(library, path);
+        TestContext.Current.SendDiagnosticMessage($"500 songs imported in {watch.Elapsed.TotalSeconds:0.0} s");
+
+        Assert.Equal(500, result.SongsImported);
+        Assert.Empty(result.Warnings);
+        Assert.Equal(500, library.Store.All<Presentation>().Count);
+    }
+
+    [Fact]
     public void OpenLpIsFoundInAppDataOnlyWhenItsSongsAreThere()
     {
         // A pretend %APPDATA%: the real one on this PC is never looked at by a test.

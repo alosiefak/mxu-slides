@@ -16,8 +16,15 @@
     <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
   </ItemGroup>
 
+  <!-- Reads SQLite files. MIT; it brings SQLitePCLRaw (Apache-2.0) and e_sqlite3.dll, a build of
+       SQLite itself (public domain). Pinned to the 10.0 line to match the .NET 10 the app is built on. -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.15" />
+  </ItemGroup>
+
+  <!-- Their licence notices land next to the app, as Automerge's do (MxU.Slides.Sync). -->
+  <ItemGroup>
+    <None Include="SQLITE-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -403,6 +403,8 @@ public partial class SettingsWindow : Window
         await model.ImportProPresenterLibraryAsync(dialog.FolderName);
     }
 
+    private void ImportOpenLp_Click(object sender, RoutedEventArgs e) => (Owner as MainWindow)?.ImportFromOpenLp(this);
+
     private void OpenLibrary_Click(object sender, RoutedEventArgs e) => MainWindow.OpenFolder(model.Settings.LibraryPath);
 
     private void OpenBackups_Click(object sender, RoutedEventArgs e) => MainWindow.OpenFolder(model.Library.BackupDirectory);

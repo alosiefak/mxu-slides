@@ -19,6 +19,9 @@
     <ProjectReference Include="..\MxU.Slides.Core\MxU.Slides.Core.csproj" />
     <ProjectReference Include="..\MxU.Slides.LocalApi\MxU.Slides.LocalApi.csproj" />
     <ProjectReference Include="..\MxU.Slides.MotionTemplates\MxU.Slides.MotionTemplates.csproj" />
+    <!-- Phase 15, the OpenLP import. It brings in Microsoft.Data.Sqlite (MIT), which reads SQLite files through
+         SQLitePCLRaw (Apache-2.0) and its e_sqlite3.dll, a build of SQLite itself (public domain). -->
+    <ProjectReference Include="..\MxU.Slides.OpenLpImport\MxU.Slides.OpenLpImport.csproj" />
     <ProjectReference Include="..\MxU.Slides.PptxImport\MxU.Slides.PptxImport.csproj" />
     <ProjectReference Include="..\MxU.Slides.ProImport\MxU.Slides.ProImport.csproj" />
     <ProjectReference Include="..\MxU.Slides.Production\MxU.Slides.Production.csproj" />
