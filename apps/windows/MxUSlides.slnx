@@ -6,6 +6,7 @@
     <Project Path="src/MxU.Slides.Core/MxU.Slides.Core.csproj" />
     <Project Path="src/MxU.Slides.LocalApi/MxU.Slides.LocalApi.csproj" />
     <Project Path="src/MxU.Slides.MotionTemplates/MxU.Slides.MotionTemplates.csproj" />
+    <Project Path="src/MxU.Slides.OpenLpImport/MxU.Slides.OpenLpImport.csproj" />
     <Project Path="src/MxU.Slides.PptxImport/MxU.Slides.PptxImport.csproj" />
     <Project Path="src/MxU.Slides.ProImport/MxU.Slides.ProImport.csproj" />
     <Project Path="src/MxU.Slides.Production/MxU.Slides.Production.csproj" />
@@ -20,6 +21,7 @@
     <Project Path="tests/MxU.Slides.Core.Tests/MxU.Slides.Core.Tests.csproj" />
     <Project Path="tests/MxU.Slides.LocalApi.Tests/MxU.Slides.LocalApi.Tests.csproj" />
     <Project Path="tests/MxU.Slides.MotionTemplates.Tests/MxU.Slides.MotionTemplates.Tests.csproj" />
+    <Project Path="tests/MxU.Slides.OpenLpImport.Tests/MxU.Slides.OpenLpImport.Tests.csproj" />
     <Project Path="tests/MxU.Slides.PptxImport.Tests/MxU.Slides.PptxImport.Tests.csproj" />
     <Project Path="tests/MxU.Slides.ProImport.Tests/MxU.Slides.ProImport.Tests.csproj" />
     <Project Path="tests/MxU.Slides.Production.Tests/MxU.Slides.Production.Tests.csproj" />
